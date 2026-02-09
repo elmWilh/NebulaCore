@@ -1,4 +1,3 @@
-# nebula_gui_flask/app.py — FINAL VERSION 2026 (with Core auto-detection)
 import eventlet
 eventlet.monkey_patch()
 
@@ -15,7 +14,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'nebula-secret-2026'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-# Auto-detect Core port (8000 → 8080 → 5000)
+# Auto-detect Core port
 def detect_core_url():
     ports = [8000, 8080, 5000]
     for port in ports:
@@ -32,12 +31,14 @@ def detect_core_url():
 
 CORE_URL = detect_core_url()
 
-# Fetch Metrics
+# Fetch Metrics — ИСПРАВЛЕН ПУТЬ
 def get_core_metrics():
     try:
+        # Убрали /api/, так как в main.py ядра его нет
         r = requests.get(f"{CORE_URL}/metrics/current", timeout=5)
         if r.status_code == 200:
             return r.json()
+        print(f"[Core] Response error: {r.status_code}")
     except Exception as e:
         print(f"[Error] Failed to connect to Core: {e}")
     return None
@@ -56,13 +57,13 @@ def api_metrics():
     if not data:
         return jsonify({"error": "Core offline", "status": "offline"}), 503
 
-    # Processing data using keys from your API
     return jsonify({
         "cpu": data.get("cpu", "—"),
-        "ram": f"{data.get('ram_used_gb', 0):.1f} / {data.get('ram_total_gb', 0):.1f} GB",
-        "disk": f"{data.get('disk_used_gb', 0):.0f} / {data.get('disk_total_gb', 0):.0f} GB",
-        "network": f"Up {data.get('network_sent_mb', 0)//1024:.1f} GB  Down {data.get('network_recv_mb', 0)//1024:.1f} GB",
-        "containers": 27, # Static placeholders from original
+        # Приводим к формату твоего HTML
+        "ram": f"{data.get('ram_percent', 0)}%",
+        "disk": f"{data.get('disk_percent', 0)}%",
+        "network": f"{data.get('network_recv_mb', 0)}↓ / {data.get('network_sent_mb', 0)}↑ Mb",
+        "containers": 27,
         "servers": 12,
         "alerts": 2,
         "tasks": 9
@@ -71,12 +72,13 @@ def api_metrics():
 @app.route('/api/logs/history')
 def api_logs_history():
     try:
+        # Убрали /api/
         r = requests.get(f"{CORE_URL}/logs/history?limit=200", timeout=5)
         return jsonify(r.json() if r.status_code == 200 else [])
     except:
         return jsonify([])
 
-# Real-time logs via WebSocket
+# Real-time logs — ИСПРАВЛЕН ORIGIN
 def core_log_listener():
     def on_message(ws, message):
         try:
@@ -92,17 +94,19 @@ def core_log_listener():
         print(f"[Log WS] Connection error: {error}")
 
     def on_close(ws, close_status_code, close_msg):
-        print("[Log WS] Connection closed. Reconnecting in 3 seconds...")
+        print("[Log WS] Connection closed. Reconnecting...")
         threading.Timer(3.0, core_log_listener).start()
 
     def on_open(ws):
-        print("[Log WS] Connected to Nebula Core — Streaming real-time logs")
+        print("[Log WS] Connected to Nebula Core")
 
     while True:
         try:
+            # Путь без /api/ и добавление header Origin для обхода 403
             ws_url = CORE_URL.replace("http", "ws") + "/logs/stream"
             ws = websocket.WebSocketApp(
                 ws_url,
+                header={"Origin: http://127.0.0.1:8000"},
                 on_open=on_open,
                 on_message=on_message,
                 on_error=on_error,
@@ -113,11 +117,8 @@ def core_log_listener():
             print(f"[Log WS] Critical error: {e}. Retrying in 5 seconds...")
             time.sleep(5)
 
-# Start log listener thread
 threading.Thread(target=core_log_listener, daemon=True).start()
 
-# Application entry point
 if __name__ == '__main__':
     print(f"Nebula Panel started → http://127.0.0.1:5000")
-    print(f"Connecting to Core: {CORE_URL}")
     socketio.run(app, host='127.0.0.1', port=5000, debug=False)

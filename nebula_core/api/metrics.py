@@ -5,7 +5,6 @@ import time
 
 router = APIRouter(prefix="/metrics", tags=["Metrics"])
 
-# Глобальное состояние — обновляется из MetricsService через EventBus
 latest_metrics = {
     "uptime": 0.0,
     "cpu": 0.0,
@@ -15,22 +14,18 @@ latest_metrics = {
     "timestamp": 0
 }
 
-# Автоматическая подписка на событие метрик при импорте модуля
 from nebula_core.core.context import context
 
 def on_metrics_update(data: dict):
     latest_metrics.update(data)
     latest_metrics["timestamp"] = int(time.time())
 
-# Подписываемся один раз при загрузке модуля
 if context.runtime and context.runtime.event_bus:
     context.runtime.event_bus.on("service.metrics.update", on_metrics_update)
 
 
 @router.get("/current")
 async def get_current_metrics():
-    """Возвращает актуальные метрики системы (живые + из кэша)"""
-    # Берём свежие значения на случай, если сервис ещё не успел обновить
     cpu = psutil.cpu_percent(interval=None)
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
