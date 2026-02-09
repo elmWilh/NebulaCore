@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+{% block page_content %}
+<div style="padding: 20px; background: var(--panel); border-radius: 12px; height: calc(100vh - 160px); display: flex; flex-direction: column;">
+  <h2 style="margin: 0 0 16px; color: var(--accent);">Nebula Core Logs</h2>
+  
+  <div id="log-container" style="flex: 1; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; background: #0a0a0d; padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+    <div style="color: #888;">Waiting for logs...</div>
+  </div>
+
+  <div style="margin-top: 12px; text-align: center;">
+    <button onclick="clearLogs()" style="padding: 8px 16px; cursor: pointer; background: var(--border); color: var(--text); border: 1px solid var(--border-accent); border-radius: 4px;">Clear Console</button>
+    <label style="margin-left: 15px; cursor: pointer;">
+      <input type="checkbox" id="autoscroll" checked> Autoscroll
+    </label>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+  const socket = io();
+  const container = document.getElementById('log-container');
+  const autoscroll = document.getElementById('autoscroll');
+
+  const levelColors = {
+    "INFO": "#4ade80",
+    "WARNING": "#fbbf24",
+    "ERROR": "#f87171",
+    "DEBUG": "#94a3b8"
+  };
+
+  function addLog(entry) {
+    // Remove initial "Waiting" message on first log
+    if (container.innerText === 'Waiting for logs...') {
+      container.innerHTML = '';
+    }
+
+    const div = document.createElement('div');
+    div.style.marginBottom = '4px';
+    div.style.color = levelColors[entry.level] || "#fff";
+    div.innerHTML = `<span style="color:#888">[${entry.iso}]</span> <strong>${entry.level}</strong> ${entry.message}`;
+    container.appendChild(div);
+    
+    if (autoscroll.checked) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }
+
+  socket.on('log_update', (data) => {
+    if (data.type === 'history') {
+      container.innerHTML = '';
+      data.data.forEach(addLog);
+    } else {
+      addLog(data);
+    }
+  });
+
+  function clearLogs() {
+    container.innerHTML = '<div style="color: #888;">Console cleared</div>';
+  }
+
+  // Initial history load
+  fetch('/api/logs/history').then(r => r.json()).then(logs => {
+    if (logs.length > 0) {
+      container.innerHTML = '';
+      logs.forEach(addLog);
+      container.scrollTop = container.scrollHeight;
+    }
+  });
+</script>
+{% endblock %}

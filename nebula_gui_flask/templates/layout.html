@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nebula Panel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-left">
+        <img src="{{ url_for('static', filename='img/logo-white.png') }}" alt="Nebula" class="logo">
+        <h1>Nebula Panel</h1>
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="sidebar">
+        <nav class="nav">
+          <div class="nav-section">
+            <div class="nav-section-title" onclick="toggleSection(this)">
+              <i class="bi bi-cpu"></i>
+              <span>Management</span>
+              <i class="bi bi-chevron-down arrow"></i>
+            </div>
+            <div class="nav-links">
+              <a href="/" class="nav-link active"><i class="bi bi-speedometer2"></i> Dashboard</a>
+              <a href="#" class="nav-link"><i class="bi bi-box"></i> Containers</a>
+              <a href="#" class="nav-link"><i class="bi bi-server"></i> Servers</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <div class="nav-section-title" onclick="toggleSection(this)">
+              <i class="bi bi-shield-lock"></i>
+              <span>Security</span>
+              <i class="bi bi-chevron-down arrow"></i>
+            </div>
+            <div class="nav-links">
+              <a href="#" class="nav-link"><i class="bi bi-people"></i> Users</a>
+              <a href="#" class="nav-link"><i class="bi bi-key"></i> Authentication</a>
+            </div>
+          </div>
+
+          <div class="nav-section">
+            <div class="nav-section-title" onclick="toggleSection(this)">
+              <i class="bi bi-gear"></i>
+              <span>System</span>
+              <i class="bi bi-chevron-down arrow"></i>
+            </div>
+            <div class="nav-links">
+              <a href="/logs" class="nav-link"><i class="bi bi-journal-text"></i> Logs</a>
+              <a href="#" class="nav-link"><i class="bi bi-sliders"></i> Settings</a>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+      <div class="content-wrapper">
+        <main class="content">
+          {% block page_content %}{% endblock %}
+        </main>
+
+        <footer class="footer">
+          <div class="footer-powered">
+            <span>Powered by</span>
+            <img src="{{ url_for('static', filename='img/nebula-core.png') }}" alt="Nebula Core" height="20">
+          </div>
+          <div class="footer-version">v1.0.0 • 2026</div>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleSection(el) {
+      el.classList.toggle('collapsed');
+      const links = el.nextElementSibling;
+      links.style.maxHeight = el.classList.contains('collapsed') ? '0' : links.scrollHeight + 'px';
+    }
+  </script>
+</body>
+</html>

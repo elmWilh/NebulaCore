@@ -1,0 +1,8 @@
+# Nebula Core (backend)
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+PyYAML
+psutil
+bcrypt

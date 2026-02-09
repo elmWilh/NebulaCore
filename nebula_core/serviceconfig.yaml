@@ -1,0 +1,11 @@
+services:
+  heartbeat:
+    enabled: true
+    interval: 3
+  metrics:
+    enabled: true
+    interval: 5
+  server:
+    host: "127.0.0.1"
+    port: 8080
+    debug: true

@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+
+{% block page_content %}
+<div class="grid">
+  <div class="card">
+    <div class="card-title">CPU Usage</div>
+    <div class="card-value" id="cpu">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">RAM Usage</div>
+    <div class="card-value" id="ram">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Disk Storage</div>
+    <div class="card-value" id="disk">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Network Throughput</div>
+    <div class="card-value" id="network">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Active Containers</div>
+    <div class="card-value" id="containers">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Servers Online</div>
+    <div class="card-value" id="servers">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Critical Alerts</div>
+    <div class="card-value" id="alerts">—</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Tasks in Queue</div>
+    <div class="card-value" id="tasks">—</div>
+  </div>
+</div>
+{% endblock %}
