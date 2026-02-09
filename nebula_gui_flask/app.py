@@ -102,7 +102,6 @@ def core_log_listener():
 
     while True:
         try:
-            # Путь без /api/ и добавление header Origin для обхода 403
             ws_url = CORE_URL.replace("http", "ws") + "/logs/stream"
             ws = websocket.WebSocketApp(
                 ws_url,
