@@ -188,7 +188,7 @@
     .dropdown { position: relative; display: inline-block; }
     .dropdown-content {
         display: none; position: absolute; right: 0; top: 100%; background: #111114;
-        min-width: 220px; border: 1px solid var(--border); border-radius: 12px;
+        min-width: 240px; border: 1px solid var(--border); border-radius: 12px;
         z-index: 9999; box-shadow: 0 20px 40px rgba(0,0,0,0.8); padding: 8px;
     }
     .dropdown-content a {
@@ -264,6 +264,9 @@ async function fetchUsers() {
                             <i class="bi bi-three-dots"></i>
                         </button>
                         <div id="drop-${user.username}" class="dropdown-content">
+                            <a href="/users/view/${user.username}">
+                                <i class="bi bi-shield-shaded"></i> Intelligence Profile
+                            </a>
                             <a href="javascript:void(0)" onclick="openEditModal('${user.username}', '${user.is_staff}')">
                                 <i class="bi bi-gear-wide-connected"></i> Full Configuration
                             </a>
@@ -321,7 +324,6 @@ async function saveUserEdit() {
     if(res.ok) { closeModal(); fetchUsers(); } else { alert("Operational Error: DB Locked or Access Denied"); }
 }
 
-// Global UI Behaviors
 window.onclick = () => document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
 document.addEventListener('DOMContentLoaded', initPage);
 

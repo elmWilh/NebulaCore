@@ -21,7 +21,7 @@
                 <label>Operator Identity</label>
                 <div class="input-inner">
                     <i class="bi bi-person"></i>
-                    <input type="text" name="admin_id" placeholder="Enter username" required>
+                    <input type="text" name="username" placeholder="Enter username" required>
                 </div>
             </div>
 
@@ -29,11 +29,9 @@
                 <label>Security Protocol</label>
                 <div class="input-inner">
                     <i class="bi bi-shield-lock"></i>
-                    <input type="password" name="secure_key" placeholder="Enter password" required>
+                    <input type="password" name="password" placeholder="Enter password" required>
                 </div>
             </div>
-
-            <input type="hidden" name="db_name" value="system.db">
 
             <button type="submit" class="btn-login" id="submitBtn">
                 <span id="btn-text">Authorize Session</span>
@@ -99,7 +97,6 @@
 <script>
 document.getElementById('loginForm').onsubmit = async (e) => {
     e.preventDefault();
-    
     const btn = document.getElementById('submitBtn');
     const alertBox = document.getElementById('auth-alert');
     const alertMsg = document.getElementById('alert-message');

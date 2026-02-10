@@ -1,7 +1,6 @@
-# nebula_gui_flask/core/bridge.py
 import requests
 import socket
-from flask import session, redirect, url_for, jsonify
+from flask import session, redirect, url_for, jsonify, abort
 from functools import wraps
 
 class NebulaBridge:
@@ -20,8 +19,16 @@ class NebulaBridge:
     def login_required(self, f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if 'user_id' not in session or not session.get('is_staff'):
+            if 'user_id' not in session:
                 return redirect(url_for('admin_login'))
+            return f(*args, **kwargs)
+        return decorated_function
+
+    def staff_required(self, f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not session.get('is_staff'):
+                abort(403)
             return f(*args, **kwargs)
         return decorated_function
 
@@ -44,8 +51,41 @@ class NebulaBridge:
                 session.permanent = True
                 session['user_id'] = admin_id
                 session['is_staff'] = True
+                session['db_name'] = 'system.db'
                 return True, None
             return False, "INVALID_ACCESS_KEY"
+        except Exception as e:
+            return False, str(e)
+
+    def resolve_user_sector(self, username):
+            try:
+                r = requests.get(
+                    f"{self.core_url}/system/lookup", 
+                    params={"username": username}, 
+                    timeout=3
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    return data.get('db_name'), data.get('type') 
+                return None, None
+            except:
+                return None, None
+
+    def user_auth(self, username, password, db_name):
+        try:
+            r = requests.post(
+                f"{self.core_url}/users/login",
+                params={"db_name": db_name},
+                data={"username": username, "password": password},
+                timeout=5
+            )
+            if r.status_code == 200:
+                session.permanent = True
+                session['user_id'] = username
+                session['is_staff'] = False
+                session['db_name'] = db_name
+                return True, None
+            return False, "INVALID_CREDENTIALS"
         except Exception as e:
             return False, str(e)
 
