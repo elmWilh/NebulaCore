@@ -1,7 +1,7 @@
 # img
 
-**Описание:** Изображения и иконки
+**Description:** Images and icons
 
 ---
-Этот раздел является частью проекта **Nebula Panel**.
-Все файлы и модули внутри этой директории связаны с вышеуказанным компонентом.
+This section is part of the **Nebula Panel** project.
+All files and modules within this directory are related to the above component.
