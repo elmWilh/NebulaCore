@@ -29,7 +29,7 @@ function updateMetrics() {
 }
 
 function setUIOffline() {
-    document.body.style.opacity = "0.6";
+   // document.body.style.opacity = "0.6";
     document.querySelectorAll('.card-value').forEach(el => el.textContent = "—");
     const cpuEl = document.getElementById('cpu');
     if (cpuEl) cpuEl.textContent = "Core offline";
@@ -37,3 +37,25 @@ function setUIOffline() {
 
 document.addEventListener('DOMContentLoaded', updateMetrics);
 setInterval(updateMetrics, 3000);
+
+// User menu interactions
+function toggleUserMenu(e) {
+    e.stopPropagation();
+    const menu = document.getElementById('userMenu');
+    if (!menu) return;
+    document.querySelectorAll('.user-menu').forEach(m => { if (m !== menu) m.classList.remove('show'); });
+    menu.classList.toggle('show');
+}
+
+function openProfile() {
+    alert('Open Profile — placeholder');
+}
+
+function openSettings() {
+    alert('Open Settings — placeholder');
+}
+
+// Close user menu on outside click
+window.addEventListener('click', () => {
+    document.querySelectorAll('.user-menu').forEach(m => m.classList.remove('show'));
+});

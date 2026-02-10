@@ -4,15 +4,17 @@ from typing import List, Optional
 
 class UserBase(BaseModel):
     username: str
+    email: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
+    is_staff: bool = False
 
 class User(UserBase):
     id: int
     is_active: bool = True
+    is_staff: bool = False
     roles: List[str] = []
 
-class Role(BaseModel):
-    name: str
-    permissions: List[str] = []
+    class Config:
+        from_attributes = True

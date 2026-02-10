@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+{% block page_content %}
+<div style="max-width: 600px; margin: 20px auto; padding: 25px; background: var(--panel); border-radius: 12px; border: 1px solid var(--border);">
+  <h2 style="color: var(--accent); margin-top: 0;">Create New User</h2>
+  
+  <form id="createUserForm" style="display: flex; flex-direction: column; gap: 15px;">
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <label style="color: var(--text-muted); font-size: 0.85rem;">Select Database</label>
+        <select id="target_db" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white; outline: none;">
+          <option value="">-- New Database --</option>
+        </select>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <label style="color: var(--text-muted); font-size: 0.85rem;">Or New Name</label>
+        <input type="text" id="new_db_name" placeholder="e.g. cluster_alpha" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white; outline: none;">
+      </div>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+      <input type="text" id="first_name" placeholder="First Name" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+      <input type="text" id="last_name" placeholder="Last Name" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+    </div>
+    
+    <input type="email" id="email" placeholder="Email (Required)" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+    <input type="text" id="username" placeholder="Username (Required)" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+      <input type="password" id="password" placeholder="Password" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+      <input type="password" id="confirm_password" placeholder="Repeat Password" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+    </div>
+
+    <select id="role" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+      <option value="user">User (Basic Access)</option>
+      <option value="moderator">Moderator</option>
+      <option value="staff">Administrator</option>
+    </select>
+
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+      <button type="submit" style="flex: 2; padding: 12px; background: var(--accent); color: black; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">Save User</button>
+      <a href="/users" style="flex: 1; text-align: center; padding: 12px; background: #222; color: white; border-radius: 6px; text-decoration: none;">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+// Load existing databases into select on mount
+async function loadDatabases() {
+    try {
+        const res = await fetch('/api/users/databases');
+        const data = await res.json();
+        const select = document.getElementById('target_db');
+        if (data.databases) {
+            data.databases.forEach(db => {
+                const opt = document.createElement('option');
+                opt.value = db;
+                opt.textContent = db;
+                select.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error("Failed to load databases list");
+    }
+}
+
+document.getElementById('createUserForm').onsubmit = async (e) => {
+    e.preventDefault();
+    
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm_password').value;
+    
+    if (password !== confirm) {
+        alert("Passwords do not match!");
+        return;
+    }
+
+    // Logic for choosing DB name
+    const selectedDb = document.getElementById('target_db').value;
+    const newDbInput = document.getElementById('new_db_name').value.trim();
+    
+    let dbToUse = newDbInput ? (newDbInput.endsWith('.db') ? newDbInput : newDbInput + '.db') : selectedDb;
+
+    if (!dbToUse) {
+        alert("Please select an existing database or enter a name for a new one.");
+        return;
+    }
+
+    const payload = {
+        username: document.getElementById('username').value,
+        password: password,
+        is_staff: document.getElementById('role').value === 'staff'
+    };
+
+    try {
+        const response = await fetch(`/api/users/create?db_name=${dbToUse}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            window.location.href = '/users';
+        } else {
+            const errorData = await response.json();
+            alert("Error: " + (errorData.detail || "Failed to create user"));
+        }
+    } catch (err) {
+        alert("Critical error: " + err.message);
+    }
+};
+
+loadDatabases();
+</script>
+{% endblock %}

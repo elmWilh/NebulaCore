@@ -1,4 +1,4 @@
-/* static/css/style.css — финальная премиум-версия */
+/* static/css/style.css */
 :root {
   --bg: #0a0a0f;
   --sidebar: #111114;
@@ -29,6 +29,30 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 .header-left { display: flex; align-items: center; gap: 16px; }
 .logo { height: 36px; border-radius: 8px; }
 .header h1 { font-size: 1.5rem; font-weight: 600; color: white; }
+
+/* Header right: user widget */
+.header-right { margin-left: auto; display: flex; align-items: center; }
+.user-dropdown { position: relative; }
+.user-btn { display: flex; align-items: center; gap: 10px; background: transparent; border: none; color: var(--text); cursor: pointer; padding: 8px 10px; border-radius: 10px; }
+.user-btn:hover { background: rgba(255,255,255,0.02); }
+.avatar-sm { width: 36px; height: 36px; border-radius: 10px; background: #121215; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); color: var(--text-muted); font-size: 1.25rem; }
+.avatar-lg { width: 64px; height: 64px; border-radius: 12px; background: #121215; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); color: var(--text-muted); font-size: 2rem; }
+.user-nick { font-weight: 700; margin-right: 6px; }
+.user-arrow { color: var(--text-muted); }
+
+.user-menu {
+  display: none; position: absolute; right: 0; top: calc(100% + 12px);
+  background: #0d0d12; border: 1px solid var(--border); border-radius: 12px;
+  min-width: 260px; padding: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); z-index: 2000;
+}
+.user-menu.show { display: block; animation: slideIn 0.16s ease; }
+.user-card { display: flex; gap: 12px; align-items: center; padding: 10px 8px; }
+.user-info .user-name { font-weight: 800; color: white; }
+.user-info .user-role { color: var(--text-muted); font-size: 0.85rem; margin-top: 4px; }
+.user-actions { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.user-actions a { color: var(--text-muted); text-decoration: none; padding: 10px 8px; border-radius: 8px; display: flex; gap: 10px; align-items: center; }
+.user-actions a:hover { background: rgba(88,101,255,0.06); color: var(--accent); }
+.logout-link { color: #ffb4b4; }
 
 /* Main */
 .main { flex: 1; display: flex; overflow: hidden; }

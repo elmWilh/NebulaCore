@@ -15,47 +15,75 @@
         <img src="{{ url_for('static', filename='img/logo-white.png') }}" alt="Nebula" class="logo">
         <h1>Nebula Panel</h1>
       </div>
+      {% if session.get('user_id') %}
+      <div class="header-right">
+        <div class="user-dropdown">
+          <button class="user-btn" onclick="toggleUserMenu(event)">
+            <div class="avatar-sm"><i class="bi bi-person-circle"></i></div>
+            <span class="user-nick">{{ session.get('user_id') }}</span>
+            <i class="bi bi-chevron-down user-arrow"></i>
+          </button>
+
+          <div class="user-menu" id="userMenu">
+            <div class="user-card">
+              <div class="avatar-lg"><i class="bi bi-person-circle"></i></div>
+              <div class="user-info">
+                <div class="user-name">{{ session.get('user_id') }}</div>
+                <div class="user-role">{{ 'Administrator' if session.get('is_staff') else 'User' }}</div>
+              </div>
+            </div>
+            <div class="user-actions">
+              <a href="#" onclick="openProfile(); return false;"><i class="bi bi-person"></i> Profile</a>
+              <a href="#" onclick="openSettings(); return false;"><i class="bi bi-gear"></i> Settings</a>
+              <a href="/logout" class="logout-link"><i class="bi bi-box-arrow-right"></i> Sign out</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
     </header>
 
     <div class="main">
       <aside class="sidebar">
         <nav class="nav">
-          <div class="nav-section">
+          
+          <div class="nav-section" data-id="mgmt">
             <div class="nav-section-title" onclick="toggleSection(this)">
               <i class="bi bi-cpu"></i>
               <span>Management</span>
               <i class="bi bi-chevron-down arrow"></i>
             </div>
             <div class="nav-links">
-              <a href="/" class="nav-link active"><i class="bi bi-speedometer2"></i> Dashboard</a>
-              <a href="#" class="nav-link"><i class="bi bi-box"></i> Containers</a>
+              <a href="/" class="nav-link {{ 'active' if request.path == '/' else '' }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
+              <a href="/docker" class="nav-link {{ 'active' if request.path == '/docker' else '' }}"><i class="bi bi-box"></i> Containers</a>
               <a href="#" class="nav-link"><i class="bi bi-server"></i> Servers</a>
             </div>
           </div>
 
-          <div class="nav-section">
+          <div class="nav-section" data-id="sec">
             <div class="nav-section-title" onclick="toggleSection(this)">
               <i class="bi bi-shield-lock"></i>
               <span>Security</span>
               <i class="bi bi-chevron-down arrow"></i>
             </div>
             <div class="nav-links">
-              <a href="#" class="nav-link"><i class="bi bi-people"></i> Users</a>
+              <a href="/users" class="nav-link {{ 'active' if request.path == '/users' else '' }}"><i class="bi bi-people"></i> Users</a>
               <a href="#" class="nav-link"><i class="bi bi-key"></i> Authentication</a>
             </div>
           </div>
 
-          <div class="nav-section">
+          <div class="nav-section" data-id="sys">
             <div class="nav-section-title" onclick="toggleSection(this)">
               <i class="bi bi-gear"></i>
               <span>System</span>
               <i class="bi bi-chevron-down arrow"></i>
             </div>
             <div class="nav-links">
-              <a href="/logs" class="nav-link"><i class="bi bi-journal-text"></i> Logs</a>
+              <a href="/logs" class="nav-link {{ 'active' if request.path == '/logs' else '' }}"><i class="bi bi-journal-text"></i> Logs</a>
               <a href="#" class="nav-link"><i class="bi bi-sliders"></i> Settings</a>
             </div>
           </div>
+
         </nav>
       </aside>
 
@@ -77,10 +105,39 @@
 
   <script>
     function toggleSection(el) {
-      el.classList.toggle('collapsed');
+      const section = el.parentElement;
+      const sectionId = section.getAttribute('data-id');
       const links = el.nextElementSibling;
-      links.style.maxHeight = el.classList.contains('collapsed') ? '0' : links.scrollHeight + 'px';
+      
+      el.classList.toggle('collapsed');
+      
+      if (el.classList.contains('collapsed')) {
+        links.style.maxHeight = '0';
+        localStorage.setItem('nav-' + sectionId, 'collapsed');
+      } else {
+        links.style.maxHeight = links.scrollHeight + 'px';
+        localStorage.setItem('nav-' + sectionId, 'expanded');
+      }
     }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.nav-section').forEach(section => {
+        const sectionId = section.getAttribute('data-id');
+        const title = section.querySelector('.nav-section-title');
+        const links = section.querySelector('.nav-links');
+        const hasActiveChild = links.querySelector('.active') !== null;
+        
+        const savedState = localStorage.getItem('nav-' + sectionId);
+
+        if (savedState === 'expanded' || (savedState === null && hasActiveChild)) {
+          title.classList.remove('collapsed');
+          links.style.maxHeight = links.scrollHeight + 'px';
+        } else {
+          title.classList.add('collapsed');
+          links.style.maxHeight = '0';
+        }
+      });
+    });
   </script>
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
