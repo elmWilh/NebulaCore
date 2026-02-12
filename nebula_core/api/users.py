@@ -3,17 +3,18 @@ from fastapi import APIRouter, HTTPException, Query, Form, Response, Depends
 from ..services.user_service import UserService
 from ..models.user import UserCreate
 from ..db import get_client_db, list_client_databases
+from .security import verify_staff_or_internal
 import bcrypt
 
 router = APIRouter(prefix="/users", tags=["Users"])
 user_service = UserService()
 
 @router.get("/databases")
-def get_available_databases():
+def get_available_databases(_=Depends(verify_staff_or_internal)):
     return {"databases": list_client_databases()}
 
 @router.get("/list")
-def list_users(db_name: str = Query(...)):
+def list_users(db_name: str = Query(...), _=Depends(verify_staff_or_internal)):
     with get_client_db(db_name) as conn:
         rows = conn.execute("SELECT id, username, is_staff FROM users").fetchall()
         return [dict(row) for row in rows]
@@ -40,7 +41,7 @@ def login(
         return {"status": "authorized", "redirect": "/dashboard"}
 
 @router.post("/create")
-def register_user(data: UserCreate, db_name: str = Query(...)):
+def register_user(data: UserCreate, db_name: str = Query(...), _=Depends(verify_staff_or_internal)):
     with get_client_db(db_name) as conn:
         try:
             user = user_service.create_user(conn, data)
@@ -49,7 +50,7 @@ def register_user(data: UserCreate, db_name: str = Query(...)):
             raise HTTPException(status_code=400, detail=f"Registration failed: {str(e)}")
 
 @router.post("/update")
-def update_user(data: dict):
+def update_user(data: dict, _=Depends(verify_staff_or_internal)):
     source_db = data.get("source_db")
     target_db = data.get("target_db")
     old_name = data.get("old_username")
@@ -98,7 +99,7 @@ def update_user(data: dict):
                     raise HTTPException(status_code=500, detail=f"Migration fatal error: {str(e)}")
 
 @router.delete("/terminate")
-def delete_user(username: str = Query(...), db_name: str = Query(...)):
+def delete_user(username: str = Query(...), db_name: str = Query(...), _=Depends(verify_staff_or_internal)):
     with get_client_db(db_name) as conn:
         exists = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
         if not exists:

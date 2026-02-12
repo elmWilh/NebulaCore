@@ -15,6 +15,7 @@
         <img src="{{ url_for('static', filename='img/logo-white.png') }}" alt="Nebula" class="logo">
         <h1>Nebula Panel</h1>
       </div>
+      
       {% if session.get('user_id') %}
       <div class="header-right">
         <div class="user-dropdown">
@@ -54,8 +55,15 @@
               <i class="bi bi-chevron-down arrow"></i>
             </div>
             <div class="nav-links">
-              <a href="/" class="nav-link {{ 'active' if request.path == '/' else '' }}"><i class="bi bi-speedometer2"></i> Dashboard</a>
-              <a href="/docker" class="nav-link {{ 'active' if request.path == '/docker' else '' }}"><i class="bi bi-box"></i> Containers</a>
+              <a href="/" class="nav-link {{ 'active' if request.path == '/' else '' }}">
+                <i class="bi bi-speedometer2"></i> Dashboard
+              </a>
+              <a href="/containers" class="nav-link {{ 'active' if request.path == '/containers' else '' }}">
+                <i class="bi bi-box"></i> Containers
+              </a>
+              <a href="/organizations" class="nav-link {{ 'active' if request.path == '/organizations' else '' }}">
+                <i class="bi bi-diagram-3"></i> Organizations
+              </a>
               <a href="#" class="nav-link"><i class="bi bi-server"></i> Servers</a>
             </div>
           </div>
@@ -68,7 +76,9 @@
               <i class="bi bi-chevron-down arrow"></i>
             </div>
             <div class="nav-links">
-              <a href="/users" class="nav-link {{ 'active' if request.path == '/users' else '' }}"><i class="bi bi-people"></i> Users</a>
+              <a href="/users" class="nav-link {{ 'active' if request.path == '/users' else '' }}">
+                <i class="bi bi-people"></i> Users
+              </a>
               <a href="#" class="nav-link"><i class="bi bi-key"></i> Authentication</a>
             </div>
           </div>
@@ -82,7 +92,9 @@
             </div>
             <div class="nav-links">
               {% if session.get('is_staff') %}
-              <a href="/logs" class="nav-link {{ 'active' if request.path == '/logs' else '' }}"><i class="bi bi-journal-text"></i> Logs</a>
+              <a href="/logs" class="nav-link {{ 'active' if request.path == '/logs' else '' }}">
+                <i class="bi bi-journal-text"></i> Logs
+              </a>
               {% endif %}
               <a href="#" class="nav-link"><i class="bi bi-sliders"></i> Settings</a>
             </div>
@@ -90,6 +102,7 @@
 
         </nav>
       </aside>
+
       <div class="content-wrapper">
         <main class="content">
           {% block page_content %}{% endblock %}
@@ -107,6 +120,7 @@
   </div>
 
   <script>
+    // Раскрытие/закрытие секций меню
     function toggleSection(el) {
       const section = el.parentElement;
       const sectionId = section.getAttribute('data-id');
@@ -123,16 +137,30 @@
       }
     }
 
+    // Меню пользователя
+    function toggleUserMenu(e) {
+        e.stopPropagation();
+        document.getElementById('userMenu').classList.toggle('show');
+    }
+
+    // Закрытие меню при клике вне его
+    window.onclick = function() {
+        document.getElementById('userMenu')?.classList.remove('show');
+    }
+
+    // Инициализация состояний меню при загрузке
     document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.nav-section').forEach(section => {
         const sectionId = section.getAttribute('data-id');
         const title = section.querySelector('.nav-section-title');
         const links = section.querySelector('.nav-links');
-        const hasActiveChild = links.querySelector('.active') !== null;
         
+        // Проверяем, есть ли внутри активная ссылка (чтобы открыть секцию автоматически)
+        const hasActiveChild = links.querySelector('.active') !== null;
         const savedState = localStorage.getItem('nav-' + sectionId);
 
-        if (savedState === 'expanded' || (savedState === null && hasActiveChild)) {
+        // Если секция содержит активную страницу или была развернута ранее — открываем
+        if (hasActiveChild || savedState === 'expanded' || (savedState === null && hasActiveChild)) {
           title.classList.remove('collapsed');
           links.style.maxHeight = links.scrollHeight + 'px';
         } else {

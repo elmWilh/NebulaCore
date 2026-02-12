@@ -1,0 +1,884 @@
+{% extends "layout.html" %}
+{% block page_content %}
+
+<style>
+    :root {
+        --bg: #050507;
+        --card: #0d0d12;
+        --border: rgba(255, 255, 255, 0.1);
+        --accent: #5865f2;
+        --accent-hover: #4752c4;
+        --text: #ffffff;
+        --text-muted: #a0a0a8;
+    }
+</style>
+
+<div class="container-fluid" style="padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+        <div style="display: flex; align-items: center; gap: 24px;">
+            <h2 style="font-weight: 700; letter-spacing: -0.5px; margin: 0; color: white;">Container Orchestration</h2>
+            {% if session.get('is_staff') %}
+            <div style="position: relative;">
+                <i class="bi bi-cpu" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.9rem;"></i>
+                <select id="node_selector" onchange="onNodeChanged()" class="premium-select">
+                </select>
+                <i class="bi bi-chevron-down" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem; pointer-events: none;"></i>
+            </div>
+            {% endif %}
+        </div>
+        {% if session.get('is_staff') %}
+        <button onclick="openCreateModal()" class="add-user-btn" style="border: none; cursor: pointer;">
+            <i class="bi bi-box-seam-fill"></i>
+            <span>Deploy Container</span>
+        </button>
+        {% endif %}
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 20px; margin-bottom: 32px;">
+        <div class="stat-card">
+            <div class="stat-label">Active Containers</div>
+            <div id="stat_active_containers" class="stat-value">— <span class="stat-sub">running / total</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Total RAM Usage</div>
+            <div id="stat_ram" class="stat-value">— <span class="stat-sub">/ —</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Active CPU Cores</div>
+            <div id="stat_cpu" class="stat-value">— <span class="stat-sub">/ —</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Network Load</div>
+            <div id="stat_net" class="stat-value">— <span class="stat-sub">Mb/s</span></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">System Health</div>
+            <div id="stat_health" class="stat-value health-optimal">Optimal <span id="stat_health_sub" class="stat-sub">pressure low</span></div>
+        </div>
+    </div>
+
+    <div class="table-card">
+        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+            <thead>
+                <tr class="table-header-row">
+                    <th style="padding: 18px 24px;">Container Identity</th>
+                    <th style="padding: 18px 24px;">Image / Environment</th>
+                    <th style="padding: 18px 24px;">Assigned Users</th>
+                    <th style="padding: 18px 24px;">Uptime / Status</th>
+                    <th style="padding: 18px 24px; text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="container_table_body">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="consoleModal" class="modal-overlay">
+    <div class="modal-content" style="width: 980px;">
+        <div class="modal-header">
+            <div>
+                <h3 id="consoleTitle" style="margin: 0; font-weight: 700; color: white;">Container Console</h3>
+                <p id="consoleSub" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Live log stream</p>
+            </div>
+            <button onclick="closeConsoleModal()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <div id="consoleStatus" style="font-size:0.8rem; color: var(--text-muted);">Waiting for logs...</div>
+                <button class="btn-secondary" style="padding:8px 14px;" onclick="refreshConsoleLogs()">
+                    <i class="bi bi-arrow-repeat"></i> Refresh
+                </button>
+            </div>
+            <pre id="consoleOutput" style="margin:0; max-height: 55vh; overflow:auto; padding:14px; border:1px solid var(--border); border-radius:12px; background:#060609; color:#d6d6de; font-size:0.78rem; line-height:1.45;"></pre>
+        </div>
+    </div>
+</div>
+
+{% if session.get('is_staff') %}
+<div id="containerModal" class="modal-overlay">
+    <div class="modal-content" style="width: 850px;">
+        <div class="modal-header">
+            <div>
+                <h3 id="modalTitle" style="margin: 0; font-weight: 700; color: white;">Container Architect</h3>
+                <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Define execution parameters and resource limits</p>
+            </div>
+            <button onclick="closeModal()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div style="padding: 32px; max-height: 70vh; overflow-y: auto;">
+            <div class="modal-grid">
+                <div class="modal-col">
+                    <div class="input-field">
+                        <label>Instance Name</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-tag"></i>
+                            <input type="text" id="cont_name" placeholder="e.g. production-api-01">
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Docker Image</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-database-down"></i>
+                            <input type="text" id="cont_image" placeholder="ubuntu:latest">
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Assigned Operators</label>
+                        <div class="user-picker">
+                            <div class="input-wrapper">
+                                <i class="bi bi-search"></i>
+                                <input type="text" id="cont_user_search" placeholder="Search user..." oninput="renderUserPicker(this.value)">
+                            </div>
+                            <div id="cont_users_list" class="users-list"></div>
+                            <div id="cont_users_selected" class="selected-users"></div>
+                        </div>
+                        <span class="input-hint" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; display: block;">Select users who can view/manage this container</span>
+                    </div>
+                </div>
+
+                <div class="modal-col">
+                    <div class="input-field">
+                        <label>Memory Limit (MB)</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-memory"></i>
+                            <input type="number" id="cont_ram_input" value="512">
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Port Mapping</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-ethernet"></i>
+                            <input type="text" id="cont_ports" placeholder="8080:80">
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>CPU Weight</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-speedometer2"></i>
+                            <input type="number" id="cont_cpu" value="1024">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-box">
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <div class="status-icon-bg" style="background: rgba(74, 222, 128, 0.1); color: #4ade80;">
+                        <i class="bi bi-rocket-takeoff"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; font-size: 0.9rem; color: white;">Auto-Restart Policy</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">Restart container on crash or system reboot</div>
+                    </div>
+                </div>
+                <label class="ios-switch">
+                    <input type="checkbox" id="cont_restart" checked>
+                    <span class="ios-slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button onclick="closeModal()" class="btn-secondary">Discard</button>
+            <button onclick="saveContainer()" class="btn-primary" id="saveBtn">Deploy Instance</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if session.get('is_staff') %}
+<div id="deployProgressModal" class="modal-overlay">
+    <div class="modal-content" style="width: 760px;">
+        <div class="modal-header">
+            <div>
+                <h3 style="margin: 0; font-weight: 700; color: white;">Deployment Progress</h3>
+                <p id="deployStage" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Preparing deployment...</p>
+            </div>
+            <button onclick="closeDeployProgressModal()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div style="padding: 24px 28px;">
+            <div style="height: 12px; background: #09090c; border: 1px solid var(--border); border-radius: 999px; overflow: hidden;">
+                <div id="deployProgressFill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #4f7cff, #67e8f9); transition: width 0.35s ease;"></div>
+            </div>
+            <div id="deployProgressText" style="margin-top: 10px; color: var(--text-muted); font-size: 0.82rem;">0%</div>
+            <details style="margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; background: #09090d;">
+                <summary style="padding: 12px 14px; cursor: pointer; color: #d3d3db; font-weight: 600;">Deployment Log</summary>
+                <pre id="deployLogOutput" style="margin:0; max-height: 320px; overflow:auto; padding: 12px 14px; color: #bfc1d1; font-size: 0.78rem; line-height: 1.45;"></pre>
+            </details>
+        </div>
+        <div class="modal-footer">
+            <button id="deployProgressCloseBtn" onclick="closeDeployProgressModal()" class="btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<style>
+    .premium-select {
+        background: #0d0d12; color: var(--text); border: 1px solid var(--border);
+        padding: 10px 40px 10px 36px; border-radius: 8px; outline: none;
+        cursor: pointer; font-size: 0.9rem; appearance: none; min-width: 220px; transition: 0.2s;
+    }
+    .premium-select:hover { border-color: var(--accent); }
+    .add-user-btn {
+        padding: 12px 24px; background: var(--accent); color: white;
+        text-decoration: none; border-radius: 10px; font-weight: 600;
+        font-size: 0.85rem; display: flex; align-items: center; gap: 10px;
+        transition: 0.3s; box-shadow: 0 4px 15px rgba(88, 101, 255, 0.3);
+    }
+    .add-user-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .table-card { background: var(--card); border-radius: 16px; border: 1px solid var(--border); overflow: visible; }
+    .table-header-row { border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+    .table-header-row th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); font-weight: 700; }
+    .table-row-hover:hover { background: rgba(255,255,255,0.01) !important; }
+    .container-icon-bg {
+        width: 44px; height: 44px; background: rgba(88, 101, 255, 0.08); 
+        border-radius: 14px; display: flex; align-items: center; justify-content: center; 
+        border: 1px solid rgba(88, 101, 255, 0.2); font-size: 1.3rem;
+    }
+    .stat-card { background: var(--card); border: 1px solid var(--border); padding: 20px; border-radius: 16px; }
+    .stat-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; font-weight: 700; }
+    .stat-value { font-size: 1.4rem; font-weight: 800; color: white; margin-top: 8px; }
+    .stat-sub { font-size: 0.8rem; color: var(--text-muted); font-weight: 400; }
+    .health-optimal { color: #4ade80; }
+    .health-stable { color: #22c55e; }
+    .health-elevated { color: #f59e0b; }
+    .health-critical { color: #ef4444; }
+    .user-avatar-mini {
+        width: 28px; height: 28px; border-radius: 50%; border: 2px solid #0d0d12;
+        background: var(--accent); color: white; display: flex; align-items: center;
+        justify-content: center; font-size: 0.65rem; font-weight: 800; transition: 0.2s;
+    }
+    .modal-overlay {
+        display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85); z-index: 9999; align-items: center; justify-content: center;
+        backdrop-filter: blur(12px); animation: fadeIn 0.2s ease;
+    }
+    .modal-content { background: #0d0d12; border: 1px solid var(--border); border-radius: 24px; box-shadow: 0 40px 80px rgba(0,0,0,0.7); overflow: hidden; }
+    .modal-header { padding: 24px 32px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .close-modal-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; transition: 0.2s; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+    .modal-col { display: flex; flex-direction: column; gap: 24px; }
+    .input-field label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; margin-bottom: 10px; display: block; }
+    .input-wrapper { position: relative; display: flex; align-items: center; }
+    .input-wrapper i { position: absolute; left: 16px; color: var(--text-muted); font-size: 1rem; }
+    .input-wrapper input {
+        width: 100%; padding: 14px 16px 14px 46px; background: #050507;
+        border: 1px solid var(--border); border-radius: 12px; color: white;
+        outline: none; transition: 0.2s; font-size: 0.9rem;
+    }
+    .input-wrapper input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
+    .user-picker { display: flex; flex-direction: column; gap: 10px; }
+    .users-list {
+        max-height: 170px; overflow: auto; border: 1px solid var(--border); border-radius: 12px;
+        background: #07070b; padding: 6px;
+    }
+    .user-option {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 12px; border-radius: 10px; color: #d8d8e0; cursor: pointer; font-size: 0.84rem;
+        border: 1px solid transparent; transition: 0.18s;
+    }
+    .user-option:hover { background: rgba(88, 101, 255, 0.08); border-color: rgba(88, 101, 255, 0.18); }
+    .user-option.is-selected { background: rgba(88, 101, 255, 0.13); border-color: rgba(88, 101, 255, 0.38); }
+    .selected-users { min-height: 34px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .user-chip {
+        padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(88, 101, 255, 0.35);
+        background: rgba(88, 101, 255, 0.16); color: #d7dbff; font-size: 0.74rem; font-weight: 600;
+    }
+    .status-box {
+        margin-top: 32px; padding: 20px; background: rgba(255,255,255,0.03);
+        border-radius: 16px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border);
+    }
+    .ios-switch { position: relative; display: inline-block; width: 48px; height: 26px; }
+    .ios-switch input { opacity: 0; width: 0; height: 0; }
+    .ios-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #2a2a2e; transition: .4s; border-radius: 34px; }
+    .ios-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .ios-slider { background-color: #4ade80; }
+    input:checked + .ios-slider:before { transform: translateX(22px); }
+    .badge { padding: 6px 12px; border-radius: 8px; font-size: 0.65rem; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; }
+    .badge-user { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid var(--border); }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 12px rgba(74, 222, 128, 0.4); }
+    .action-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; padding: 8px; transition: 0.2s; border-radius: 8px; }
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content {
+        display: none; position: absolute; right: 0; top: 100%; background: #111114;
+        min-width: 200px; border: 1px solid var(--border); border-radius: 12px;
+        z-index: 9999; box-shadow: 0 20px 40px rgba(0,0,0,0.8); padding: 8px;
+    }
+    .dropdown-content a {
+        color: var(--text-muted); padding: 10px 14px; text-decoration: none;
+        display: flex; align-items: center; gap: 12px; font-size: 0.85rem; transition: 0.2s; border-radius: 8px;
+    }
+    .dropdown-content a:hover { background: rgba(88, 101, 255, 0.1); color: var(--accent); }
+    .show { display: block !important; animation: slideIn 0.2s ease; }
+    .modal-footer { padding: 24px 32px; background: rgba(255,255,255,0.01); border-top: 1px solid var(--border); display: flex; gap: 16px; justify-content: flex-end; }
+    .btn-primary { padding: 14px 32px; background: var(--accent); color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.2s; }
+    .btn-secondary { padding: 14px 24px; background: transparent; color: white; border: 1px solid var(--border); border-radius: 12px; font-weight: 600; cursor: pointer; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+
+<script>
+const isStaff = {{ 'true' if session.get('is_staff') else 'false' }};
+let assignableUsers = [];
+let selectedUsers = new Set();
+
+async function loadAssignableUsers() {
+    if (!isStaff) return;
+    const usersRes = await fetch('/api/users/databases');
+    if (!usersRes.ok) {
+        assignableUsers = [];
+        renderUserPicker('');
+        return;
+    }
+
+    const dbPayload = await usersRes.json();
+    const dbs = Array.isArray(dbPayload?.databases) ? dbPayload.databases : [];
+    if (dbs.length === 0) {
+        assignableUsers = [];
+        renderUserPicker('');
+        return;
+    }
+
+    assignableUsers = [];
+
+    for (const db of dbs) {
+        const uRes = await fetch(`/api/users/list?db_name=${encodeURIComponent(db)}`);
+        if (!uRes.ok) continue;
+
+        const users = await uRes.json();
+        if (!Array.isArray(users)) continue;
+
+        users
+            .filter(u => !u.is_staff)
+            .forEach(u => {
+                assignableUsers.push({
+                    username: u.username,
+                    db
+                });
+            });
+    }
+
+    renderUserPicker('');
+}
+
+let metricsInterval = null;
+let containersInterval = null;
+let previousNetworkTotal = null;
+let hasContainerTableRendered = false;
+let lastContainersSignature = '';
+let currentContainers = [];
+let consoleContainerId = null;
+let consolePollInterval = null;
+let deployJobId = null;
+let deployPollInterval = null;
+
+function toggleUserSelection(username) {
+    if (selectedUsers.has(username)) selectedUsers.delete(username);
+    else selectedUsers.add(username);
+    renderUserPicker(document.getElementById('cont_user_search')?.value || '');
+}
+
+function renderSelectedUsers() {
+    const target = document.getElementById('cont_users_selected');
+    if (!target) return;
+    target.innerHTML = '';
+    if (selectedUsers.size === 0) {
+        target.innerHTML = '<span style="font-size:0.75rem; color: var(--text-muted);">No users selected</span>';
+        return;
+    }
+    Array.from(selectedUsers).sort().forEach(u => {
+        const chip = document.createElement('span');
+        chip.className = 'user-chip';
+        chip.textContent = u;
+        target.appendChild(chip);
+    });
+}
+
+function renderUserPicker(searchText) {
+    const listEl = document.getElementById('cont_users_list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const query = (searchText || '').toLowerCase().trim();
+    const filtered = assignableUsers.filter(u => {
+        const label = `${u.username} ${u.db}`.toLowerCase();
+        return !query || label.includes(query);
+    });
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = '<div style="padding:10px; color: var(--text-muted); font-size:0.8rem;">No users found</div>';
+        renderSelectedUsers();
+        return;
+    }
+
+    filtered.forEach(user => {
+        const row = document.createElement('div');
+        row.className = `user-option${selectedUsers.has(user.username) ? ' is-selected' : ''}`;
+        row.onclick = () => toggleUserSelection(user.username);
+        row.innerHTML = `
+            <div>${user.username}</div>
+            <div style="font-size:0.72rem; color: var(--text-muted);">${user.db}</div>
+        `;
+        listEl.appendChild(row);
+    });
+    renderSelectedUsers();
+}
+
+function asNumber(value, fallback = 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function applyHealthState(status, pressure) {
+    const el = document.getElementById('stat_health');
+    el.classList.remove('health-optimal', 'health-stable', 'health-elevated', 'health-critical');
+
+    const normalized = (status || 'optimal').toLowerCase();
+    if (normalized === 'critical') {
+        el.classList.add('health-critical');
+    } else if (normalized === 'elevated') {
+        el.classList.add('health-elevated');
+    } else if (normalized === 'stable') {
+        el.classList.add('health-stable');
+    } else {
+        el.classList.add('health-optimal');
+    }
+
+    const pressureText = Number.isFinite(pressure) ? `pressure ${pressure.toFixed(1)}%` : 'telemetry unavailable';
+    el.innerHTML = `${normalized[0].toUpperCase()}${normalized.slice(1)} <span id="stat_health_sub" class="stat-sub">${pressureText}</span>`;
+}
+
+function startLiveTelemetry() {
+    if (metricsInterval) clearInterval(metricsInterval);
+    if (containersInterval) clearInterval(containersInterval);
+    updateStats();
+    fetchContainers(true);
+    metricsInterval = setInterval(updateStats, 3000);
+    containersInterval = setInterval(fetchContainers, 15000);
+}
+
+function normalizeNode(raw) {
+    if (typeof raw === 'string') {
+        return { id: raw, label: raw.toUpperCase(), status: 'active' };
+    }
+    return {
+        id: raw?.id || raw?.name || 'node',
+        label: raw?.label || raw?.name || raw?.id || 'Unknown node',
+        status: (raw?.status || 'active').toLowerCase()
+    };
+}
+
+async function initPage() {
+    try {
+        if (isStaff) {
+            const nodeRes = await fetch('/api/containers/nodes');
+            const nodeData = await nodeRes.json();
+            const selector = document.getElementById('node_selector');
+            if (selector) {
+                selector.innerHTML = '';
+
+                const nodes = Array.isArray(nodeData?.nodes) ? nodeData.nodes : [];
+                const activeNodeId = nodeData?.active_node || (nodes[0]?.id || nodes[0]);
+
+                nodes.map(normalizeNode).forEach(node => {
+                    const opt = document.createElement('option');
+                    opt.value = node.id;
+                    opt.disabled = node.status !== 'active';
+                    opt.textContent = `${node.label} (${node.status === 'active' ? 'Active' : 'Offline'})`;
+                    if (node.id === activeNodeId) opt.selected = true;
+                    selector.appendChild(opt);
+                });
+            }
+        }
+
+        await loadAssignableUsers();
+
+        startLiveTelemetry();
+    } catch (e) { console.error("Nebula API Failure", e); }
+}
+
+async function updateStats() {
+    try {
+        const res = await fetch('/api/metrics');
+        if (!res.ok) throw new Error('metrics unavailable');
+        const data = await res.json();
+
+        const ramUsed = asNumber(data.ram_used_gb, 0);
+        const ramTotal = asNumber(data.ram_total_gb, 0);
+        const ramPercent = asNumber(data.ram_percent, 0);
+        const cpuPercent = asNumber(data.cpu_percent, 0);
+        const cpuCoresTotal = asNumber(data.cpu_cores_total, 1);
+        const cpuCoresActive = asNumber(data.cpu_cores_active, 0);
+        const netUp = asNumber(data.network_sent_mb, 0);
+        const netDown = asNumber(data.network_recv_mb, 0);
+        const netTotal = netUp + netDown;
+        const trendIcon = previousNetworkTotal === null ? '•' : (netTotal >= previousNetworkTotal ? '↑' : '↓');
+        previousNetworkTotal = netTotal;
+        const activeContainers = asNumber(data.active_containers, 0);
+        const totalContainers = asNumber(data.containers, activeContainers);
+
+        document.getElementById('stat_active_containers').innerHTML = `${activeContainers} <span class="stat-sub">running / ${totalContainers} total</span>`;
+        document.getElementById('stat_ram').innerHTML = `${ramUsed.toFixed(1)} GB <span class="stat-sub">/ ${ramTotal.toFixed(1)} GB (${ramPercent.toFixed(1)}%)</span>`;
+        document.getElementById('stat_cpu').innerHTML = `${cpuCoresActive.toFixed(1)} / ${cpuCoresTotal} <span class="stat-sub">${cpuPercent.toFixed(1)}% busy</span>`;
+        document.getElementById('stat_net').innerHTML = `↑ ${netUp.toFixed(2)} ↓ ${netDown.toFixed(2)} <span class="stat-sub">${trendIcon} total ${netTotal.toFixed(2)} MB/s</span>`;
+
+        const healthPressure = Math.max(cpuPercent, ramPercent, asNumber(data.disk_percent, 0));
+        applyHealthState(data.health_status, healthPressure);
+    } catch (e) {
+        document.getElementById('stat_active_containers').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
+        document.getElementById('stat_ram').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
+        document.getElementById('stat_cpu').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
+        document.getElementById('stat_net').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
+        applyHealthState('critical', NaN);
+    }
+}
+
+function updateActiveContainersStat(containers) {
+    const total = containers.length;
+    const running = containers.filter(c => (c.status || '').toLowerCase() === 'running').length;
+    document.getElementById('stat_active_containers').innerHTML = `${running} <span class="stat-sub">running / ${total} total</span>`;
+}
+
+function onNodeChanged() {
+    hasContainerTableRendered = false;
+    lastContainersSignature = '';
+    fetchContainers(true);
+}
+
+async function fetchContainers(showLoader = false) {
+    const tbody = document.getElementById('container_table_body');
+    const selectedNode = document.getElementById('node_selector')?.value || '';
+    const listUrl = selectedNode ? `/api/containers/list?node=${encodeURIComponent(selectedNode)}` : '/api/containers/list';
+    if (!hasContainerTableRendered || showLoader) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:60px;"><i class="bi bi-arrow-repeat spin" style="font-size:2rem; color:var(--accent);"></i></td></tr>';
+    }
+
+    try {
+        const response = await fetch(listUrl);
+        const containers = await response.json();
+
+        if (!response.ok) {
+            const detail = (containers && containers.detail) ? containers.detail : 'Failed to sync with Nebula Core';
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#ff4f4f;">${detail}</td></tr>`;
+            hasContainerTableRendered = true;
+            return;
+        }
+
+        if (!Array.isArray(containers) || containers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No active containers on this node</td></tr>';
+            hasContainerTableRendered = true;
+            currentContainers = [];
+            lastContainersSignature = '[]';
+            updateActiveContainersStat([]);
+            return;
+        }
+
+        updateActiveContainersStat(containers);
+        const signature = JSON.stringify(containers.map(c => [c.id, c.name, c.status, c.image, (c.users || []).join(',')]));
+        if (signature === lastContainersSignature && hasContainerTableRendered) {
+            currentContainers = containers;
+            return;
+        }
+
+        currentContainers = containers;
+        lastContainersSignature = signature;
+        tbody.innerHTML = '';
+
+        containers.forEach(cont => {
+            const row = document.createElement('tr');
+            row.className = "table-row-hover";
+            row.style.borderBottom = '1px solid var(--border)';
+            const encodedName = encodeURIComponent(cont.name || cont.id);
+            
+            const usersHtml = (cont.users || []).map((u, i) => 
+                `<div class="user-avatar-mini" style="margin-left: ${i === 0 ? '0' : '-8px'}; background: ${stringToColor(u)}" title="${u}">${u[0].toUpperCase()}</div>`
+            ).join('');
+
+            row.innerHTML = `
+                <td style="padding: 18px 24px;">
+                    <div style="display:flex; align-items:center; gap:16px;">
+                        <div class="container-icon-bg"><i class="bi bi-box-seam" style="color:var(--accent);"></i></div>
+                        <div>
+                            <div style="font-weight:700; color:white; font-size:0.9rem;">${cont.name}</div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">ID: ${cont.id}</div>
+                        </div>
+                    </div>
+                </td>
+                <td style="padding: 18px 24px;">
+                    <span class="badge badge-user">${cont.image}</span>
+                </td>
+                <td style="padding: 18px 24px;">
+                    <div style="display:flex;">${usersHtml}</div>
+                </td>
+                <td style="padding: 18px 24px;">
+                    <div style="display:flex; align-items:center; gap:10px; color:${cont.status === 'running' ? '#4ade80' : '#ff4f4f'}; font-size:0.8rem; font-weight:700;">
+                        <div class="pulse-dot" style="background:${cont.status === 'running' ? '#4ade80' : '#ff4f4f'}"></div> 
+                        ${cont.status.toUpperCase()}
+                    </div>
+                </td>
+                <td style="padding: 18px 24px; text-align: right;">
+                    <div class="dropdown">
+                        <button class="action-btn" onclick="toggleMenu(event, '${cont.id}')">
+                            <i class="bi bi-three-dots"></i>
+                        </button>
+                        <div id="drop-${cont.id}" class="dropdown-content">
+                            <a href="javascript:void(0)" onclick="openConsoleModal('${cont.id}', decodeURIComponent('${encodedName}')); return false;"><i class="bi bi-terminal"></i> Console</a>
+                            <a href="javascript:void(0)" onclick="startContainer('${cont.id}'); return false;"><i class="bi bi-play-fill"></i> Start</a>
+                            <a href="javascript:void(0)" onclick="stopContainer('${cont.id}'); return false;"><i class="bi bi-stop-fill"></i> Stop</a>
+                            <a href="javascript:void(0)" onclick="restartContainer('${cont.id}'); return false;"><i class="bi bi-arrow-clockwise"></i> Restart</a>
+                            ${isStaff ? `
+                            <hr style="border:0; border-top:1px solid var(--border); margin:6px 0;">
+                            <a href="javascript:void(0)" style="color:#ff6b6b;" onclick="deleteContainer('${cont.id}'); return false;"><i class="bi bi-trash3"></i> Delete</a>
+                            ` : ''}
+                        </div>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        hasContainerTableRendered = true;
+    } catch (e) { 
+        if (!hasContainerTableRendered) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#ff4f4f;">Failed to sync with Nebula Core</td></tr>';
+            hasContainerTableRendered = true;
+        }
+    }
+}
+
+async function restartContainer(containerId) {
+    if (!confirm(`Restart container ${containerId}?`)) return;
+    try {
+        const res = await fetch(`/api/containers/restart/${containerId}`, { method: 'POST' });
+        if (!res.ok) {
+            const err = await res.json();
+            alert(`Restart failed: ${err.detail || 'Unknown error'}`);
+            return;
+        }
+        fetchContainers(true);
+    } catch (e) {
+        alert('Failed to restart container');
+    }
+}
+
+async function startContainer(containerId) {
+    try {
+        const res = await fetch(`/api/containers/start/${containerId}`, { method: 'POST' });
+        if (!res.ok) {
+            const err = await res.json();
+            alert(`Start failed: ${err.detail || 'Unknown error'}`);
+            return;
+        }
+        fetchContainers(true);
+    } catch (e) {
+        alert('Failed to start container');
+    }
+}
+
+async function stopContainer(containerId) {
+    try {
+        const res = await fetch(`/api/containers/stop/${containerId}`, { method: 'POST' });
+        if (!res.ok) {
+            const err = await res.json();
+            alert(`Stop failed: ${err.detail || 'Unknown error'}`);
+            return;
+        }
+        fetchContainers(true);
+    } catch (e) {
+        alert('Failed to stop container');
+    }
+}
+
+async function deleteContainer(containerId) {
+    const confirmed = confirm(
+        `Delete container ${containerId}?\n\nThis action is destructive and can stop services permanently.`
+    );
+    if (!confirmed) return;
+
+    try {
+        const res = await fetch(`/api/containers/delete/${containerId}`, { method: 'POST' });
+        if (!res.ok) {
+            const err = await res.json();
+            alert(`Delete failed: ${err.detail || 'Unknown error'}`);
+            return;
+        }
+        fetchContainers(true);
+    } catch (e) {
+        alert('Failed to delete container');
+    }
+}
+
+async function refreshConsoleLogs() {
+    if (!consoleContainerId) return;
+    const output = document.getElementById('consoleOutput');
+    const status = document.getElementById('consoleStatus');
+    try {
+        status.textContent = 'Fetching latest logs...';
+        const res = await fetch(`/api/containers/logs/${consoleContainerId}?tail=300`);
+        const data = await res.json();
+        if (!res.ok) {
+            output.textContent = '';
+            status.textContent = `Log stream error: ${data.detail || 'Unknown error'}`;
+            return;
+        }
+        output.textContent = data.logs || '';
+        output.scrollTop = output.scrollHeight;
+        status.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+        status.textContent = 'Failed to fetch logs';
+    }
+}
+
+function openConsoleModal(containerId, containerName) {
+    consoleContainerId = containerId;
+    document.getElementById('consoleTitle').textContent = `Container Console: ${containerName}`;
+    document.getElementById('consoleSub').textContent = `Container ID: ${containerId}`;
+    document.getElementById('consoleModal').style.display = 'flex';
+    if (consolePollInterval) clearInterval(consolePollInterval);
+    refreshConsoleLogs();
+    consolePollInterval = setInterval(refreshConsoleLogs, 4000);
+}
+
+function closeConsoleModal() {
+    document.getElementById('consoleModal').style.display = 'none';
+    if (consolePollInterval) clearInterval(consolePollInterval);
+    consolePollInterval = null;
+    consoleContainerId = null;
+}
+
+function openDeployProgressModal() {
+    document.getElementById('deployProgressModal').style.display = 'flex';
+    document.getElementById('deployProgressFill').style.width = '0%';
+    document.getElementById('deployProgressText').textContent = '0%';
+    document.getElementById('deployStage').textContent = 'Preparing deployment...';
+    document.getElementById('deployLogOutput').textContent = '';
+}
+
+function closeDeployProgressModal() {
+    document.getElementById('deployProgressModal').style.display = 'none';
+    if (deployPollInterval) clearInterval(deployPollInterval);
+    deployPollInterval = null;
+    deployJobId = null;
+}
+
+async function pollDeployStatus() {
+    if (!deployJobId) return;
+    try {
+        const res = await fetch(`/api/containers/deploy/status/${deployJobId}`);
+        const data = await res.json();
+        if (!res.ok) {
+            document.getElementById('deployStage').textContent = data.detail || 'Failed to fetch deployment status';
+            return;
+        }
+
+        document.getElementById('deployProgressFill').style.width = `${Math.min(100, Math.max(0, data.progress || 0))}%`;
+        document.getElementById('deployProgressText').textContent = `${data.progress || 0}%`;
+        document.getElementById('deployStage').textContent = data.stage || 'Deploying...';
+        document.getElementById('deployLogOutput').textContent = (data.logs || []).join('\n');
+
+        if (data.status === 'success') {
+            if (deployPollInterval) clearInterval(deployPollInterval);
+            deployPollInterval = null;
+            closeModal();
+            fetchContainers(true);
+        } else if (data.status === 'failed') {
+            if (deployPollInterval) clearInterval(deployPollInterval);
+            deployPollInterval = null;
+            document.getElementById('deployStage').textContent = data.error || 'Deployment failed';
+        }
+    } catch (e) {
+        document.getElementById('deployStage').textContent = 'Connection error during deployment monitoring';
+    }
+}
+
+async function saveContainer() {
+    if (!isStaff) return;
+    const btn = document.getElementById('saveBtn');
+    const data = {
+        name: document.getElementById('cont_name').value,
+        image: document.getElementById('cont_image').value,
+        ram: parseInt(document.getElementById('cont_ram_input').value),
+        cpu: parseInt(document.getElementById('cont_cpu').value),
+        ports: document.getElementById('cont_ports').value,
+        restart: document.getElementById('cont_restart').checked,
+        users: Array.from(selectedUsers)
+    };
+
+    if(!data.name || !data.image) { alert("Instance name and Image are required"); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Deploying...';
+
+    try {
+        openDeployProgressModal();
+        const res = await fetch('/api/containers/deploy/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (res.ok) {
+            const out = await res.json();
+            deployJobId = out.job_id;
+            if (deployPollInterval) clearInterval(deployPollInterval);
+            deployPollInterval = setInterval(pollDeployStatus, 1000);
+            await pollDeployStatus();
+        } else {
+            const err = await res.json();
+            closeDeployProgressModal();
+            alert("Deployment Error: " + (err.detail || "Unknown error"));
+        }
+    } catch (e) {
+        closeDeployProgressModal();
+        alert("Fatal connection error");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Deploy Instance';
+    }
+}
+
+function stringToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) { hash = str.charCodeAt(i) + ((hash << 5) - hash); }
+    return `hsl(${hash % 360}, 60%, 60%)`;
+}
+
+function toggleMenu(e, id) {
+    e.stopPropagation();
+    const menu = document.getElementById('drop-' + id);
+    document.querySelectorAll('.dropdown-content').forEach(d => { if(d !== menu) d.classList.remove('show'); });
+    menu.classList.toggle('show');
+}
+
+function openCreateModal() {
+    if (!isStaff) return;
+    selectedUsers = new Set();
+    const search = document.getElementById('cont_user_search');
+    if (search) search.value = '';
+    renderUserPicker('');
+    document.getElementById('containerModal').style.display = 'flex';
+}
+
+function closeModal() { document.getElementById('containerModal').style.display = 'none'; }
+
+window.onclick = (e) => {
+    document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+    const containerModal = document.getElementById('containerModal');
+    const consoleModal = document.getElementById('consoleModal');
+    const deployModal = document.getElementById('deployProgressModal');
+    if (containerModal && e.target === containerModal) closeModal();
+    if (consoleModal && e.target === consoleModal) closeConsoleModal();
+    if (deployModal && e.target === deployModal) closeDeployProgressModal();
+};
+document.addEventListener('DOMContentLoaded', initPage);
+window.addEventListener('beforeunload', () => {
+    if (metricsInterval) clearInterval(metricsInterval);
+    if (containersInterval) clearInterval(containersInterval);
+    if (consolePollInterval) clearInterval(consolePollInterval);
+    if (deployPollInterval) clearInterval(deployPollInterval);
+});
+</script>
+
+{% endblock %}

@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     FOREIGN KEY(role_id) REFERENCES roles(id),
     FOREIGN KEY(permission_id) REFERENCES permissions(id)
 );
+CREATE TABLE IF NOT EXISTS container_permissions (
+    container_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    PRIMARY KEY(container_id, username)
+);
 """
 
 def ensure_dirs():

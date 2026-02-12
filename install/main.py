@@ -4,6 +4,9 @@ import requests
 import argparse
 import time
 import sqlite3
+import subprocess
+import shutil
+import platform
 from modules.security import generate_installer_key, verify_master_key, get_core_token
 
 CORE_API_URL = "http://127.0.0.1:8000/system/internal/core"
@@ -78,6 +81,125 @@ def first_run_setup():
     
     input("\nPress Enter to return to menu...")
 
+
+def is_docker_installed():
+    return shutil.which("docker") is not None
+
+
+def detect_distro():
+    try:
+        if os.path.exists('/etc/os-release'):
+            with open('/etc/os-release') as f:
+                data = f.read()
+            if 'ID_LIKE' in data and 'debian' in data.lower():
+                return 'debian'
+            if 'ID_LIKE' in data and ('rhel' in data.lower() or 'fedora' in data.lower()):
+                return 'rhel'
+    except:
+        pass
+    return platform.system().lower()
+
+
+def install_docker():
+    distro = detect_distro()
+    print(f"Detected platform: {distro}")
+    if distro in ('debian', 'ubuntu', 'linux'):
+        print("Installing Docker using official convenience script...")
+        try:
+            subprocess.run(["/bin/sh", "-c", "curl -fsSL https://get.docker.com -o get-docker.sh"], check=True)
+            subprocess.run(["sudo", "sh", "get-docker.sh"], check=True)
+            os.remove('get-docker.sh')
+            print("Docker installed (or attempted).")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"Installation failed: {e}")
+            return False
+    else:
+        print("Automatic installer not available for this OS. Please follow Docker docs:")
+        print("https://docs.docker.com/engine/install/")
+        return False
+
+
+def start_docker_service():
+    try:
+        subprocess.run(["sudo", "systemctl", "start", "docker"], check=True)
+        subprocess.run(["sudo", "systemctl", "enable", "docker"], check=True)
+        print("Docker service started and enabled.")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to start Docker via systemctl: {e}")
+        return False
+
+
+def check_docker_status():
+    try:
+        out = subprocess.run(["docker", "info"], capture_output=True, text=True)
+        return out.returncode == 0, out.stdout + out.stderr
+    except FileNotFoundError:
+        return False, "docker binary not found"
+
+
+def manage_docker_interactive():
+    print("\n=== Docker Installer / Manager ===")
+    installed = is_docker_installed()
+    print(f"Docker installed: {installed}")
+    ok, info = check_docker_status() if installed else (False, "Not installed")
+    print(f"Docker daemon running: {ok}")
+    if installed and ok:
+        print("Docker is already installed and running.")
+        return
+
+    print("Options:")
+    print(" [1] Install Docker (uses official script)")
+    print(" [2] Start Docker service")
+    print(" [3] Install + Start (recommended)")
+    print(" [0] Back")
+    choice = input("Select >> ")
+    if choice == '1':
+        if install_docker():
+            print("Installation finished. You may need to log out/in if you added your user to docker group.")
+    elif choice == '2':
+        start_docker_service()
+    elif choice == '3':
+        if not installed:
+            install_docker()
+        start_docker_service()
+    else:
+        return
+
+    print("Checking status...")
+    ok, info = check_docker_status()
+    print("OK:" if ok else "ERROR:")
+    print(info)
+
+    # If docker is installed but permission denied, offer to add user to `docker` group
+    if not ok and 'permission denied' in info.lower():
+        ans = input("Permission denied to access Docker socket. Add current user to 'docker' group? (YES/NO): ").strip().upper()
+        if ans == 'YES':
+            add_user_to_docker_group()
+
+
+def add_user_to_docker_group():
+    username = os.getenv('SUDO_USER') or os.getenv('USER')
+    if not username:
+        try:
+            username = os.getlogin()
+        except Exception:
+            username = None
+
+    if not username:
+        print("Could not determine current user. Please run: sudo usermod -aG docker <your-user>")
+        return False
+
+    try:
+        print(f"Adding user '{username}' to group 'docker'...")
+        subprocess.run(["sudo", "usermod", "-aG", "docker", username], check=True)
+        print("User added to 'docker' group. You must log out and log back in (or run 'newgrp docker') for changes to take effect.")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to add user to group: {e}")
+        return False
+
 def run_interactive():
     if os.path.exists(ENV_PATH):
         try:
@@ -101,6 +223,7 @@ def run_interactive():
         print("-" * 65)
         print(" [1] Run First-Time Setup / Create Admin")
         print(" [2] View System Status")
+        print(" [3] Install / Start Docker Daemon")
         print(" [7] HARD RESET (Delete Database)")
         print(" [0] Exit")
         print("-" * 65)
@@ -117,6 +240,8 @@ def run_interactive():
                 print(f"Core Response: {r.json()}")
             except:
                 print("Core Offline.")
+        elif choice == "3":
+            manage_docker_interactive()
         elif choice == "7":
             if input("Type 'ERASE' to confirm: ") == "ERASE":
                 if os.path.exists(DB_PATH):
@@ -137,3 +262,5 @@ if __name__ == "__main__":
         sys.exit(check_system())
     else:
         run_interactive()
+
+

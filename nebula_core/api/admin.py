@@ -2,8 +2,7 @@
 import os
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Header, Depends, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, StringConstraints, Field
 
 from ..db import get_connection, SYSTEM_DB
@@ -11,7 +10,6 @@ from ..services.user_service import UserService
 
 router = APIRouter(prefix="/system/internal/core", tags=["System-Security"])
 user_service = UserService()
-templates = Jinja2Templates(directory="nebula_core/templates")
 
 INTERNAL_AUTH_KEY = os.getenv("NEBULA_INSTALLER_TOKEN", "LOCAL_DEV_KEY_2026")
 
@@ -38,7 +36,7 @@ def verify_internal_access(x_nebula_token: str = Header(None)):
 
 @router.get("/login", response_class=HTMLResponse)
 async def get_login_page(request: Request):
-    return templates.TemplateResponse("admin_login.html", {"request": request})
+    return HTMLResponse("<html><body><h3>Nebula Core Admin Login Endpoint</h3></body></html>")
 
 @router.post("/login")
 async def process_login(
@@ -53,13 +51,9 @@ async def process_login(
         ).fetchone()
 
         if not user or not user_service.verify_password(secure_key, user["password_hash"]):
-            return templates.TemplateResponse(
-                "admin_login.html", 
-                {"request": request, "error": "INVALID_ACCESS_KEY"}
-            )
+            raise HTTPException(status_code=401, detail="INVALID_ACCESS_KEY")
 
-        response = RedirectResponse(url="/system/internal/core/dashboard", status_code=303)
-        return response
+        return {"status": "authorized", "admin_id": admin_id}
 
 @router.post("/init-admin")
 def create_master_admin(data: AdminCreate, _=Depends(verify_internal_access)):

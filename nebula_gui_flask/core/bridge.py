@@ -35,8 +35,14 @@ class NebulaBridge:
     def fetch_metrics(self):
         try:
             r = requests.get(f"{self.core_url}/metrics/current", timeout=5)
-            return r.json() if r.status_code == 200 else None
-        except:
+            if r.status_code == 200:
+                return r.json()
+
+            fallback = requests.get(f"{self.core_url}/system/status", timeout=5)
+            if fallback.status_code == 200:
+                return fallback.json().get('system')
+            return None
+        except Exception:
             return None
 
     def admin_auth(self, admin_id, secure_key):
@@ -58,18 +64,18 @@ class NebulaBridge:
             return False, str(e)
 
     def resolve_user_sector(self, username):
-            try:
-                r = requests.get(
-                    f"{self.core_url}/system/lookup", 
-                    params={"username": username}, 
-                    timeout=3
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    return data.get('db_name'), data.get('type') 
-                return None, None
-            except:
-                return None, None
+        try:
+            r = requests.get(
+                f"{self.core_url}/system/lookup", 
+                params={"username": username}, 
+                timeout=3
+            )
+            if r.status_code == 200:
+                data = r.json()
+                return data.get('db_name'), data.get('type') 
+            return None, None
+        except:
+            return None, None
 
     def user_auth(self, username, password, db_name):
         try:
@@ -91,6 +97,8 @@ class NebulaBridge:
 
     def proxy_request(self, method, endpoint, params=None, json_data=None, form_data=None):
         url = f"{self.core_url}{endpoint}"
+        cookies = {"nebula_session": f"{session.get('user_id')}:{session.get('db_name')}"}
+        
         try:
             r = requests.request(
                 method=method,
@@ -98,8 +106,12 @@ class NebulaBridge:
                 params=params,
                 json=json_data,
                 data=form_data,
-                timeout=5
+                cookies=cookies,
+                timeout=10
             )
-            return r.json(), r.status_code
+            try:
+                return r.json(), r.status_code
+            except:
+                return {"detail": r.text}, r.status_code
         except Exception as e:
-            return {"detail": str(e)}, 500
+            return {"detail": f"Core Connection Error: {str(e)}"}, 500

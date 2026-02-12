@@ -1,7 +1,8 @@
 # nebula_core/api/files.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from ..core.context import context
+from .security import verify_staff_or_internal
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -9,7 +10,7 @@ class FileContent(BaseModel):
     content: str
 
 @router.get("/{path:path}")
-async def read_file(path: str):
+async def read_file(path: str, _=Depends(verify_staff_or_internal)):
     try:
         content = await context.runtime.get_service("file_service").read_file(path)
         return {"path": path, "content": content}
@@ -19,7 +20,7 @@ async def read_file(path: str):
         raise HTTPException(status_code=403, detail=f"Access denied for {path}")
 
 @router.post("/{path:path}")
-async def write_file(path: str, file: FileContent):
+async def write_file(path: str, file: FileContent, _=Depends(verify_staff_or_internal)):
     try:
         await context.runtime.get_service("file_service").write_file(path, file.content)
         return {"status": "ok", "path": path}
@@ -27,7 +28,7 @@ async def write_file(path: str, file: FileContent):
         raise HTTPException(status_code=403, detail=f"Access denied for {path}")
 
 @router.delete("/{path:path}")
-async def delete_file(path: str):
+async def delete_file(path: str, _=Depends(verify_staff_or_internal)):
     try:
         await context.runtime.get_service("file_service").delete_file(path)
         return {"status": "deleted", "path": path}
@@ -37,7 +38,7 @@ async def delete_file(path: str):
         raise HTTPException(status_code=403, detail=f"Access denied for {path}")
 
 @router.get("/dir/{path:path}")
-async def list_directory(path: str = ""):
+async def list_directory(path: str = "", _=Depends(verify_staff_or_internal)):
     try:
         files = await context.runtime.get_service("file_service").list_dir(path)
         return {"path": path, "files": files}
@@ -47,7 +48,7 @@ async def list_directory(path: str = ""):
         raise HTTPException(status_code=403, detail=f"Access denied for {path}")
 
 @router.post("/dir/{path:path}")
-async def create_directory(path: str):
+async def create_directory(path: str, _=Depends(verify_staff_or_internal)):
     try:
         await context.runtime.get_service("file_service").make_dir(path)
         return {"status": "ok", "path": path}
@@ -55,7 +56,7 @@ async def create_directory(path: str):
         raise HTTPException(status_code=403, detail=f"Access denied for {path}")
 
 @router.delete("/dir/{path:path}")
-async def delete_directory(path: str):
+async def delete_directory(path: str, _=Depends(verify_staff_or_internal)):
     try:
         await context.runtime.get_service("file_service").delete_dir(path)
         return {"status": "deleted", "path": path}

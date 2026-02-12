@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Load environment: project root first, then override with installer .env if present
 load_dotenv()  # root .env
-installer_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'install', '.env')
+installer_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'install', '.env')
 if os.path.exists(installer_env):
     # installer .env may contain NEBULA_INSTALLER_TOKEN — prefer it when present
     load_dotenv(installer_env, override=True)
@@ -34,12 +34,15 @@ app = FastAPI(
 )
 
 # Middleware
+raw_origins = os.getenv("NEBULA_CORS_ORIGINS", "http://127.0.0.1:5000,http://localhost:5000")
+allow_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Nebula-Token"],
 )
 
 @app.middleware("http")
@@ -64,4 +67,4 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     logger.info("Nebula Core shutdown: requesting runtime shutdown")
-    await runtime.request_shutdown("fastapi_shutdown")
+    await runtime.request_shutdown()

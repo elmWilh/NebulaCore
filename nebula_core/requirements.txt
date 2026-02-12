@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+bcrypt
+Jinja2
+python-multipart
+PyYAML
+
+docker
