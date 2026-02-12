@@ -1,153 +1,155 @@
-# 🌌 Nebula Panel: Installation & Configuration Guide
+# Nebula Panel
 
-Nebula Panel is a dual-component infrastructure management suite designed for security and scalability.
+Nebula Panel — это платформа управления инфраструктурой и контейнерами с разделением прав между администраторами и обычными пользователями.
 
-### System Architecture
+## Архитектура
 
-* **`nebula_core` (FastAPI):** The brain of the operation. Handles the API, RBAC (Role-Based Access Control), and direct Docker socket integration. Runs on port `8000`.
-* **`nebula_gui_flask` (Flask):** The visual interface. Handles user sessions and provides a dashboard for container management. Runs on port `5000`.
-* **Storage:** Distributed SQLite architecture.
-* `system.db`: Global admin and system settings.
-* `clients/*.db`: Isolated databases for specific client environments.
+- `nebula_core` (FastAPI): API, управление пользователями и ролями, оркестрация Docker, системные и контейнерные метрики.
+- `nebula_gui_flask` (Flask): веб-интерфейс для авторизации, управления пользователями, контейнерами и мониторинга.
 
+## Ключевые возможности
 
+- Авторизация администраторов и пользователей.
+- Разделение доступа к контейнерам:
+  - админ видит весь сервер и весь пул контейнеров;
+  - пользователь видит только назначенные ему контейнеры.
+- Управление контейнерами:
+  - deploy c прогрессом и логом развёртки;
+  - start/stop/restart;
+  - просмотр логов контейнера;
+  - удаление контейнера с подтверждением.
+- Система ролей и пользователей (SQLite).
+- Метрики:
+  - для админа — метрики всего сервера;
+  - для пользователя — агрегированные метрики только его контейнеров.
+- Базовые security-ограничения на критичные API (users/roles/files/logs).
 
----
+## Хранилище данных
 
-## 🛠️ Phase 1: Environment Preparation
+- `storage/databases/system.db` — системная БД (администраторы, системные права).
+- `storage/databases/clients/*.db` — клиентские БД пользователей.
 
-### 1. System Dependencies
+## Быстрый старт (Ubuntu)
 
-Ensure your Ubuntu system is up to date and has the necessary runtimes.
+### 1. Зависимости
 
 ```bash
-sudo apt update && sudo apt install -y curl python3 python3-venv python3-pip
-
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip curl
 ```
 
-### 2. Service User Setup
-
-Create a dedicated system user to run the panel securely.
+### 2. Подготовка проекта
 
 ```bash
-# Create the group and user
-sudo groupadd --force nebulapanel
-sudo useradd -m -s /bin/bash -g nebulapanel -G sudo nebulapanel
-
-# Set a password for the service user
-sudo passwd nebulapanel
-
-```
-
-### 3. Directory Permissions
-
-Replace `/path/to/NebulaCore` with your actual installation directory.
-
-```bash
-sudo chown -R nebulapanel:nebulapanel /path/to/NebulaCore
-sudo find /path/to/NebulaCore -type d -exec chmod 770 {} \;
-sudo find /path/to/NebulaCore -type f -exec chmod 660 {} \;
-sudo chmod +x /path/to/NebulaCore/startcore.sh
-
-```
-
----
-
-## 📦 Phase 2: Installation
-
-### 4. Python Environment
-
-Set up the virtual environment and install dependencies for both Core and GUI.
-
-```bash
-cd /path/to/NebulaCore
+export PROJECT_DIR=/opt/NebulaCore
+cd "$PROJECT_DIR"
 python3 -m venv .venv
 source .venv/bin/activate
-
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install -r nebula_gui_flask/requirements.txt
-
 ```
 
-### 5. Docker Integration
+### 3. Docker
 
-Nebula requires Docker access to manage containers. You can install it via the built-in script or manually.
-
-| Method | Command |
-| --- | --- |
-| **Auto (Recommended)** | `python install/main.py` -> Select Option `3` |
-| **Manual** | `curl -fsSL https://get.docker.com |
-
-**Crucial:** Add the panel user to the Docker group:
+Вариант A (через инсталлятор проекта):
 
 ```bash
-sudo usermod -aG docker nebulapanel
+cd "$PROJECT_DIR"
+source .venv/bin/activate
+python install/main.py
+```
+
+Вариант B (ручной):
+
+```bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+rm get-docker.sh
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
 newgrp docker
-
+docker info
 ```
 
----
-
-## 🚀 Phase 3: Initialization & Launch
-
-### 6. Start the Core Service
-
-The Core must be running before the GUI can function.
+### 4. Запуск Core
 
 ```bash
-# Option A: Direct
+cd "$PROJECT_DIR"
+source .venv/bin/activate
 python -m nebula_core
-
-# Option B: Via helper script
-./startcore.sh nebulapanel
-
 ```
 
-### 7. First-Time Setup (Admin Creation)
-
-With the Core running in one terminal, open another to create your root administrator.
-
-1. Run the installer: `python install/main.py`
-2. Select **Option 1**: `Run First-Time Setup / Create Admin`.
-3. **Note:** Passwords must be at least **12 characters** long.
-
-### 8. Start the Web GUI
+### 5. Первичная инициализация администратора
 
 ```bash
-cd /path/to/NebulaCore/nebula_gui_flask
+cd "$PROJECT_DIR"
+source .venv/bin/activate
+python install/main.py
+```
+
+В меню выберите:
+
+- `Run First-Time Setup / Create Admin`
+
+### 6. Запуск GUI
+
+В отдельном терминале:
+
+```bash
+cd "$PROJECT_DIR/nebula_gui_flask"
 source ../.venv/bin/activate
 python app.py
-
 ```
 
-Access the panel at: **`http://127.0.0.1:5000`**
+Открыть в браузере:
 
----
+- `http://127.0.0.1:5000`
 
-## 👥 User & Access Management
+## Основные URL
 
-### Creating Users
+- GUI: `http://127.0.0.1:5000`
+- Core API: `http://127.0.0.1:8000`
 
-| Method | Steps |
-| --- | --- |
-| **Web UI** | Go to `Users` -> `Add User` -> Select DB -> Save. |
-| **API (curl)** | `curl -X POST "http://localhost:8000/users/create?db_name=client.db" -H "Content-Type: application/json" -d '{"username":"dev_user","password":"StrongPassword123!","is_staff":false}'` |
+## Безопасность (рекомендации для production)
 
-### Role Assignment (RBAC)
+- Не держите Core открытым наружу без reverse proxy и firewall.
+- Задайте окружение и секреты через `.env`:
+  - `NEBULA_INSTALLER_TOKEN`
+  - `NEBULA_CORS_ORIGINS`
+  - `NEBULA_CORE_HOST`
+  - `NEBULA_CORE_PORT`
+  - `NEBULA_CORE_RELOAD=false`
+- Используйте HTTPS на внешнем периметре.
+- Регулярно ротируйте токены и пароли администраторов.
 
-To grant specific permissions via the API:
+## Описание возможностей по ролям
 
-1. **Create Role:**
-`curl -X POST "http://localhost:8000/roles/create?db_name=client.db&name=DEVOPS"`
-2. **Assign to User:**
-`curl -X POST "http://localhost:8000/roles/assign?db_name=client.db&username=dev_user&role_name=DEVOPS"`
+### Администратор
 
----
+- Управление пользователями, ролями и назначениями контейнеров.
+- Полный доступ к операциям контейнеров.
+- Просмотр системных метрик всего узла.
+- Доступ к административным логам.
 
-## ✅ Post-Installation Checklist
+### Пользователь
 
-* [ ] GUI loads at port `5000`.
-* [ ] Admin login successful.
-* [ ] `docker ps` runs without `sudo` for the `nebulapanel` user.
-* [ ] System and Client databases are created in `storage/databases/`.
+- Просмотр только назначенных контейнеров.
+- Операции с назначенными контейнерами (в рамках выданных прав интерфейса).
+- Просмотр только своих агрегированных метрик.
+
+## Будущее проекта
+
+Планируемые направления:
+
+- Полноценная модель авторизации с подписанными server-side сессиями/JWT.
+- Расширенная RBAC/ABAC-модель с тонкими правами на операции контейнеров.
+- Аудит-трассировка действий (кто/когда/что изменил).
+- Встроенные лимиты и политики (quota) по CPU/RAM/Storage на пользователя и группу.
+- Поддержка нескольких узлов/кластеров с real-time статусами.
+- Улучшенный observability-слой (алерты, графики, retention, экспорт в Prometheus).
+- Миграция на отказоустойчивый backend-хранилище конфигурации.
+
+## Лицензия
+
+См. файл `LICENSE`.

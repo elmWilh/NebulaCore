@@ -1,7 +1,30 @@
 # nebula_gui_flask
 
-**Description:** GUI version 1 (Flask + Bootstrap)
+`nebula_gui_flask` — веб-интерфейс Nebula Panel на Flask.
 
----
-This section is part of the **Nebula Panel** project.
-All files and modules within this directory are related to the above component.
+## Что делает компонент
+
+- Авторизация пользователей и администраторов.
+- Панели Dashboard / Users / Containers / Logs.
+- Управление контейнерами через проксирование запросов в Core API.
+- UI развёртки контейнера с прогрессом и логом.
+
+## Точка входа
+
+```bash
+cd nebula_gui_flask
+python app.py
+```
+
+По умолчанию GUI слушает `127.0.0.1:5000`.
+
+## Особенности
+
+- Интерфейс разделяет доступ по ролям (staff/user).
+- Для staff доступны расширенные операции и административные логи.
+- Для user отображаются только назначенные контейнеры и их метрики.
+
+## Рекомендации
+
+- Для production используйте HTTPS и reverse proxy.
+- Храните секреты и токены в `.env`, не в исходниках.

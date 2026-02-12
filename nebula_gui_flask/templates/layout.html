@@ -120,7 +120,6 @@
   </div>
 
   <script>
-    // Раскрытие/закрытие секций меню
     function toggleSection(el) {
       const section = el.parentElement;
       const sectionId = section.getAttribute('data-id');
@@ -137,29 +136,24 @@
       }
     }
 
-    // Меню пользователя
     function toggleUserMenu(e) {
         e.stopPropagation();
         document.getElementById('userMenu').classList.toggle('show');
     }
 
-    // Закрытие меню при клике вне его
     window.onclick = function() {
         document.getElementById('userMenu')?.classList.remove('show');
     }
 
-    // Инициализация состояний меню при загрузке
     document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.nav-section').forEach(section => {
         const sectionId = section.getAttribute('data-id');
         const title = section.querySelector('.nav-section-title');
         const links = section.querySelector('.nav-links');
         
-        // Проверяем, есть ли внутри активная ссылка (чтобы открыть секцию автоматически)
         const hasActiveChild = links.querySelector('.active') !== null;
         const savedState = localStorage.getItem('nav-' + sectionId);
 
-        // Если секция содержит активную страницу или была развернута ранее — открываем
         if (hasActiveChild || savedState === 'expanded' || (savedState === null && hasActiveChild)) {
           title.classList.remove('collapsed');
           links.style.maxHeight = links.scrollHeight + 'px';
