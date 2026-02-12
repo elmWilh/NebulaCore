@@ -1,212 +1,153 @@
-# Nebula Panel
+# 🌌 Nebula Panel: Installation & Configuration Guide
 
-Nebula Panel is an infrastructure management panel split into:
+Nebula Panel is a dual-component infrastructure management suite designed for security and scalability.
 
-- `nebula_core` (FastAPI): core, API, users, roles, access control, Docker integration.
-- `nebula_gui_flask` (Flask): web interface, login, user and container management.
+### System Architecture
 
-## Short project and core overview
+* **`nebula_core` (FastAPI):** The brain of the operation. Handles the API, RBAC (Role-Based Access Control), and direct Docker socket integration. Runs on port `8000`.
+* **`nebula_gui_flask` (Flask):** The visual interface. Handles user sessions and provides a dashboard for container management. Runs on port `5000`.
+* **Storage:** Distributed SQLite architecture.
+* `system.db`: Global admin and system settings.
+* `clients/*.db`: Isolated databases for specific client environments.
 
-- Core runs as `python -m nebula_core` and serves API on `127.0.0.1:8000`.
-- GUI runs as `python app.py` from `nebula_gui_flask` and serves on `127.0.0.1:5000`.
-- Data is stored in SQLite:
-- `storage/databases/system.db` - system database (admins, system-level access).
-- `storage/databases/clients/*.db` - client user databases.
-- GUI auto-detects Core on ports `8000`, `8080`, `5000`.
 
-## Full panel installation on Ubuntu
 
-### 1. Required dependencies
+---
 
-`curl` is mandatory.
+## 🛠️ Phase 1: Environment Preparation
+
+### 1. System Dependencies
+
+Ensure your Ubuntu system is up to date and has the necessary runtimes.
 
 ```bash
-sudo apt update
-sudo apt install -y curl
-sudo apt install -y python3 python3-venv python3-pip
+sudo apt update && sudo apt install -y curl python3 python3-venv python3-pip
+
 ```
 
-### 2. Create group and system user for the panel
+### 2. Service User Setup
+
+Create a dedicated system user to run the panel securely.
 
 ```bash
+# Create the group and user
 sudo groupadd --force nebulapanel
 sudo useradd -m -s /bin/bash -g nebulapanel -G sudo nebulapanel
+
+# Set a password for the service user
 sudo passwd nebulapanel
+
 ```
 
-If the user already exists:
+### 3. Directory Permissions
+
+Replace `/path/to/NebulaCore` with your actual installation directory.
 
 ```bash
-sudo usermod -aG nebulapanel <your_user>
+sudo chown -R nebulapanel:nebulapanel /path/to/NebulaCore
+sudo find /path/to/NebulaCore -type d -exec chmod 770 {} \;
+sudo find /path/to/NebulaCore -type f -exec chmod 660 {} \;
+sudo chmod +x /path/to/NebulaCore/startcore.sh
+
 ```
 
-### 3. Grant access to the project folder
+---
+
+## 📦 Phase 2: Installation
+
+### 4. Python Environment
+
+Set up the virtual environment and install dependencies for both Core and GUI.
 
 ```bash
-sudo chown -R nebulapanel:nebulapanel /home/gufugu/Projects/NebulaCore
-sudo find /home/gufugu/Projects/NebulaCore -type d -exec chmod 770 {} \;
-sudo find /home/gufugu/Projects/NebulaCore -type f -exec chmod 660 {} \;
-sudo chmod +x /home/gufugu/Projects/NebulaCore/startcore.sh
-```
-
-### 4. Install Python project dependencies
-
-```bash
-cd /home/gufugu/Projects/NebulaCore
+cd /path/to/NebulaCore
 python3 -m venv .venv
 source .venv/bin/activate
+
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install -r nebula_gui_flask/requirements.txt
+
 ```
 
-### 5. Install Docker and grant user access
+### 5. Docker Integration
 
-Option A (via built-in Nebula installer):
+Nebula requires Docker access to manage containers. You can install it via the built-in script or manually.
 
-```bash
-cd /home/gufugu/Projects/NebulaCore
-source .venv/bin/activate
-python install/main.py
-```
+| Method | Command |
+| --- | --- |
+| **Auto (Recommended)** | `python install/main.py` -> Select Option `3` |
+| **Manual** | `curl -fsSL https://get.docker.com |
 
-In the menu, select `3` (`Install / Start Docker Daemon`).
-
-Option B (manual):
+**Crucial:** Add the panel user to the Docker group:
 
 ```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-rm get-docker.sh
-sudo systemctl enable --now docker
 sudo usermod -aG docker nebulapanel
 newgrp docker
-docker info
+
 ```
 
-### 6. Run Nebula Core
+---
+
+## 🚀 Phase 3: Initialization & Launch
+
+### 6. Start the Core Service
+
+The Core must be running before the GUI can function.
 
 ```bash
-cd /home/gufugu/Projects/NebulaCore
-source .venv/bin/activate
+# Option A: Direct
 python -m nebula_core
-```
 
-Or run as a specific user:
-
-```bash
+# Option B: Via helper script
 ./startcore.sh nebulapanel
+
 ```
 
-### 7. Initial setup (create first administrator)
+### 7. First-Time Setup (Admin Creation)
 
-Core must already be running.
+With the Core running in one terminal, open another to create your root administrator.
 
-```bash
-cd /home/gufugu/Projects/NebulaCore
-source .venv/bin/activate
-python install/main.py
-```
+1. Run the installer: `python install/main.py`
+2. Select **Option 1**: `Run First-Time Setup / Create Admin`.
+3. **Note:** Passwords must be at least **12 characters** long.
 
-In the menu:
-
-- `1` - `Run First-Time Setup / Create Admin`
-- enter `Username` and `Password`
-
-Important:
-
-- admin password is validated by Core (minimum 12 characters);
-- if needed, generate installer master key (`Generate Installer Master Key`).
-
-### 8. Run panel GUI
-
-In a separate terminal:
+### 8. Start the Web GUI
 
 ```bash
-cd /home/gufugu/Projects/NebulaCore/nebula_gui_flask
+cd /path/to/NebulaCore/nebula_gui_flask
 source ../.venv/bin/activate
 python app.py
+
 ```
 
-Open in browser:
+Access the panel at: **`http://127.0.0.1:5000`**
 
-- `http://127.0.0.1:5000`
+---
 
-## How to create a new user
+## 👥 User & Access Management
 
-### Via GUI (recommended)
+### Creating Users
 
-1. Login as administrator.
-2. Open `Users` -> `Add User`.
-3. Select `Database`.
-4. Enter `Username`, `Password`, `Role` (`staff` or `user`).
-5. Save.
+| Method | Steps |
+| --- | --- |
+| **Web UI** | Go to `Users` -> `Add User` -> Select DB -> Save. |
+| **API (curl)** | `curl -X POST "http://localhost:8000/users/create?db_name=client.db" -H "Content-Type: application/json" -d '{"username":"dev_user","password":"StrongPassword123!","is_staff":false}'` |
 
-### Via API
+### Role Assignment (RBAC)
 
-```bash
-curl -X POST "http://127.0.0.1:8000/users/create?db_name=client_a.db" \
-  -H "Content-Type: application/json" \
-  -d '{"username":"user1","password":"StrongPassword123!","is_staff":false}'
-```
+To grant specific permissions via the API:
 
-## How to grant permissions, create groups, and set access
+1. **Create Role:**
+`curl -X POST "http://localhost:8000/roles/create?db_name=client.db&name=DEVOPS"`
+2. **Assign to User:**
+`curl -X POST "http://localhost:8000/roles/assign?db_name=client.db&username=dev_user&role_name=DEVOPS"`
 
-### 1. Create role in a database
+---
 
-```bash
-curl -X POST "http://127.0.0.1:8000/roles/create?db_name=client_a.db&name=DEVOPS"
-```
+## ✅ Post-Installation Checklist
 
-### 2. Assign role to a user
-
-```bash
-curl -X POST "http://127.0.0.1:8000/roles/assign?db_name=client_a.db&username=user1&role_name=DEVOPS"
-```
-
-### 3. Create Linux system group for the project (if separate group is needed)
-
-```bash
-sudo groupadd --force nebula-project
-sudo usermod -aG nebula-project nebulapanel
-```
-
-### 4. Grant group access to the project
-
-```bash
-sudo chgrp -R nebula-project /home/gufugu/Projects/NebulaCore
-sudo chmod -R 770 /home/gufugu/Projects/NebulaCore
-```
-
-### 5. Grant Docker access
-
-```bash
-sudo usermod -aG docker nebulapanel
-newgrp docker
-docker ps
-```
-
-If the user is not in the `docker` group, container operations from Core may fail with `permission denied`.
-
-## Post-install verification
-
-```bash
-cd /home/gufugu/Projects/NebulaCore
-source .venv/bin/activate
-python -m nebula_core
-```
-
-In another terminal:
-
-```bash
-cd /home/gufugu/Projects/NebulaCore/nebula_gui_flask
-source ../.venv/bin/activate
-python app.py
-```
-
-Checks:
-
-- GUI opens at `http://127.0.0.1:5000`.
-- Admin login works.
-- User creation works.
-- `docker info` and `docker ps` run without `sudo` for the user running Core.
+* [ ] GUI loads at port `5000`.
+* [ ] Admin login successful.
+* [ ] `docker ps` runs without `sudo` for the `nebulapanel` user.
+* [ ] System and Client databases are created in `storage/databases/`.
