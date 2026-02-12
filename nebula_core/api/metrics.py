@@ -14,17 +14,24 @@ net_io_state = {
 
 latest_metrics = {"uptime": 0.0, "timestamp": 0}
 from nebula_core.core.context import context
+_metrics_listener_bound = False
 
 def on_metrics_update(data: dict):
     latest_metrics.update(data)
     latest_metrics["timestamp"] = int(time.time())
 
-if context.runtime and context.runtime.event_bus:
-    context.runtime.event_bus.on("service.metrics.update", on_metrics_update)
+async def _ensure_metrics_listener():
+    global _metrics_listener_bound
+    if _metrics_listener_bound:
+        return
+    if context.runtime and context.runtime.event_bus:
+        await context.runtime.event_bus.subscribe("service.metrics.update", on_metrics_update)
+        _metrics_listener_bound = True
 
 @router.get("/current")
 async def get_current_metrics():
     global net_io_state
+    await _ensure_metrics_listener()
     
     cpu = psutil.cpu_percent(interval=None)
     mem = psutil.virtual_memory()

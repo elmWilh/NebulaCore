@@ -1,5 +1,6 @@
 # nebula_core/core/events.py
 import asyncio
+import inspect
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Tuple
 
@@ -19,6 +20,10 @@ class EventBus:
             self._listeners.setdefault(event_name, []).append((listener, once))
             self._logger.debug("Listener subscribed to %s (once=%s)", event_name, once)
 
+    async def on(self, event_name: str, listener: Listener, *, once: bool = False):
+        """Compatibility alias for subscribe()."""
+        await self.subscribe(event_name, listener, once=once)
+
     async def unsubscribe(self, event_name: str, listener: Listener):
         async with self._lock:
             if event_name not in self._listeners:
@@ -37,24 +42,20 @@ class EventBus:
             self._logger.debug("No listeners for event: %s", event_name)
             return
 
-        tasks = []
-        for (listener, once) in listeners:
-            # schedule each listener
-            async def _call_listener(lst, pl, ev, once_flag):
-                try:
-                    await lst(pl)
-                except Exception as e:
-                    self._logger.exception("Error in listener for %s: %s", ev, e)
-                finally:
-                    if once_flag:
-                        # remove listener after execution
-                        await self.unsubscribe(ev, lst)
+        async def _call_listener(lst, pl, ev, once_flag):
+            try:
+                result = lst(pl)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as e:
+                self._logger.exception("Error in listener for %s: %s", ev, e)
+            finally:
+                if once_flag:
+                    await self.unsubscribe(ev, lst)
 
-            tasks.append(asyncio.create_task(_call_listener(listener, payload, event_name, once)))
-
-        # run all listeners concurrently; do not await here to keep emit non-blocking,
-        # but we return aggregated future so caller can await if desired
-        return asyncio.gather(*tasks)
+        await asyncio.gather(
+            *(_call_listener(listener, payload, event_name, once) for (listener, once) in listeners)
+        )
 
     async def clear(self, event_name: str):
         async with self._lock:

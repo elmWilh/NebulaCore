@@ -26,6 +26,16 @@ async def resolve_user_location(username: str = Query(...)):
                     "db_name": "system.db", 
                     "type": "staff"
                 }
+            system_user = conn.execute(
+                "SELECT 1 FROM users WHERE username = ?",
+                (username,),
+            ).fetchone()
+            if system_user:
+                return {
+                    "status": "found",
+                    "db_name": "system.db",
+                    "type": "user",
+                }
     except Exception as e:
         print(f"[Lookup Error] System DB access failed: {e}")
 

@@ -33,6 +33,14 @@
                 </div>
             </div>
 
+            <div class="input-group-premium" id="otp-group" style="display: none;">
+                <label>Authenticator Code (if enabled)</label>
+                <div class="input-inner">
+                    <i class="bi bi-phone"></i>
+                    <input type="text" name="otp" id="otp-input" placeholder="6-digit code" maxlength="6" inputmode="numeric" pattern="[0-9]{6}">
+                </div>
+            </div>
+
             <button type="submit" class="btn-login" id="submitBtn">
                 <span id="btn-text">Authorize Session</span>
                 <i class="bi bi-arrow-right"></i>
@@ -101,6 +109,8 @@ document.getElementById('loginForm').onsubmit = async (e) => {
     const alertBox = document.getElementById('auth-alert');
     const alertMsg = document.getElementById('alert-message');
     const btnText = document.getElementById('btn-text');
+    const otpGroup = document.getElementById('otp-group');
+    const otpInput = document.getElementById('otp-input');
     
     btn.disabled = true;
     btnText.innerText = "Verifying...";
@@ -118,7 +128,22 @@ document.getElementById('loginForm').onsubmit = async (e) => {
             btnText.innerText = "Redirecting...";
             window.location.href = result.redirect;
         } else {
-            alertMsg.innerText = result.detail || "Access Denied";
+            if (result.detail === '2FA_REQUIRED') {
+                alertMsg.innerText = "2FA required: enter code from Google Authenticator";
+                otpGroup.style.display = 'block';
+                otpInput.required = true;
+                otpInput.focus();
+            } else if (result.detail === 'INVALID_2FA_CODE') {
+                alertMsg.innerText = "Invalid authenticator code";
+                otpGroup.style.display = 'block';
+                otpInput.required = true;
+                otpInput.focus();
+            } else {
+                if (otpGroup.style.display !== 'none') {
+                    otpInput.value = '';
+                }
+                alertMsg.innerText = result.detail || "Access Denied";
+            }
             alertBox.style.display = 'block';
             btn.disabled = false;
             btnText.innerText = "Authorize Session";

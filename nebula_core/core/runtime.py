@@ -23,7 +23,7 @@ class NebulaRuntime:
         self._started = False
 
         # Load services configuration
-        self.config_path = Path(config_path)
+        self.config_path = self._resolve_config_path(config_path)
         self.service_config = {}
         if self.config_path.exists():
             self.service_config = load_yaml_config(self.config_path)
@@ -31,11 +31,26 @@ class NebulaRuntime:
         else:
             logger.warning(f"Service config not found at {self.config_path}, using defaults")
 
+        services_cfg = self.service_config.get("services", self.service_config)
+
         # Extraction of server parameters for logging and external use
-        server_cfg = self.service_config.get("server", {})
+        server_cfg = services_cfg.get("server", {})
         self.host = server_cfg.get("host", "127.0.0.1")
         self.port = server_cfg.get("port", 8080)
         self.debug = server_cfg.get("debug", False)
+
+    @staticmethod
+    def _resolve_config_path(config_path: str) -> Path:
+        candidate = Path(config_path)
+        if candidate.is_absolute():
+            return candidate
+
+        cwd_candidate = Path.cwd() / candidate
+        if cwd_candidate.exists():
+            return cwd_candidate
+
+        module_candidate = Path(__file__).resolve().parents[1] / candidate
+        return module_candidate
 
     async def init(self):
         """Initializes the runtime and registers internal/external modules."""
@@ -48,29 +63,37 @@ class NebulaRuntime:
         from nebula_core.services.metrics_service import MetricsService
 
         # Setup Heartbeat Service
-        hb_cfg = self.service_config.get("heartbeat", {})
-        heartbeat = HeartbeatService(
-            name="heartbeat", 
-            interval=hb_cfg.get("interval", 3)
-        )
+        services_cfg = self.service_config.get("services", self.service_config)
+
+        hb_cfg = services_cfg.get("heartbeat", {})
+        heartbeat = None
+        if hb_cfg.get("enabled", True):
+            heartbeat = HeartbeatService(
+                name="heartbeat",
+                interval=hb_cfg.get("interval", 3)
+            )
 
         # Setup File Service
-        fs_cfg = self.service_config.get("file_service", {})
-        file_service = FileService(
-            root_path=fs_cfg.get("root_path", "data/files")
-        )
+        fs_cfg = services_cfg.get("file_service", {})
+        file_service = None
+        if fs_cfg.get("enabled", True):
+            file_service = FileService(
+                root_path=fs_cfg.get("root_path", "data/files")
+            )
 
         # Setup Metrics Service
-        m_cfg = self.service_config.get("metrics", {})
-        metrics_service = MetricsService(
-            name="metrics", 
-            interval=m_cfg.get("interval", 5)
-        )
+        m_cfg = services_cfg.get("metrics", {})
+        metrics_service = None
+        if m_cfg.get("enabled", True):
+            metrics_service = MetricsService(
+                name="metrics",
+                interval=m_cfg.get("interval", 5)
+            )
 
         # Register services for lifecycle management
-        self.register_service(file_service)
-        self.register_service(heartbeat)
-        self.register_service(metrics_service)
+        for svc in (file_service, heartbeat, metrics_service):
+            if svc:
+                self.register_service(svc)
 
         logger.info("Runtime init complete")
 

@@ -204,6 +204,27 @@
 
 <script>
 // --- Logic Core ---
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function jsQuote(value) {
+    return String(value ?? '')
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'")
+        .replaceAll('\n', '\\n')
+        .replaceAll('\r', '\\r');
+}
+
+function safeDomId(value) {
+    return String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 async function initPage() {
     try {
         const dbRes = await fetch('/api/users/databases');
@@ -235,6 +256,12 @@ async function fetchUsers() {
             const row = document.createElement('tr');
             row.className = "table-row-hover";
             row.style.borderBottom = '1px solid var(--border)';
+            const username = String(user.username ?? '');
+            const usernameHtml = escapeHtml(username);
+            const usernameJs = jsQuote(username);
+            const menuSuffix = safeDomId(username);
+            const menuId = `drop-${menuSuffix}`;
+            const encodedUsername = encodeURIComponent(username);
             row.innerHTML = `
                 <td style="padding: 18px 24px;">
                     <div style="display:flex; align-items:center; gap:16px;">
@@ -242,7 +269,7 @@ async function fetchUsers() {
                             <i class="bi bi-person-circle" style="color:var(--text-muted); font-size:1.2rem;"></i>
                         </div>
                         <div>
-                            <div style="font-weight:700; color:white; font-size:0.9rem;">${user.username}</div>
+                            <div style="font-weight:700; color:white; font-size:0.9rem;">${usernameHtml}</div>
                             <div style="font-size:0.75rem; color:var(--text-muted);">ID: ${user.id}</div>
                         </div>
                     </div>
@@ -260,21 +287,21 @@ async function fetchUsers() {
                 </td>
                 <td style="padding: 18px 24px; text-align: right;">
                     <div class="dropdown">
-                        <button class="action-btn" onclick="toggleMenu(event, '${user.username}')">
+                        <button class="action-btn" onclick="toggleMenu(event, '${menuId}')">
                             <i class="bi bi-three-dots"></i>
                         </button>
-                        <div id="drop-${user.username}" class="dropdown-content">
-                            <a href="/users/view/${user.username}">
+                        <div id="${menuId}" class="dropdown-content">
+                            <a href="/users/view/${encodedUsername}?db_name=${encodeURIComponent(dbName)}">
                                 <i class="bi bi-shield-shaded"></i> Intelligence Profile
                             </a>
-                            <a href="javascript:void(0)" onclick="openEditModal('${user.username}', '${user.is_staff}')">
+                            <a href="javascript:void(0)" onclick="openEditModal('${usernameJs}', '${user.is_staff}')">
                                 <i class="bi bi-gear-wide-connected"></i> Full Configuration
                             </a>
-                            <a href="javascript:void(0)" onclick="pinUser('${user.username}')">
+                            <a href="javascript:void(0)" onclick="pinUser('${usernameJs}')">
                                 <i class="bi bi-pin-angle"></i> Pin to Dashboard
                             </a>
                             <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;">
-                            <a href="javascript:void(0)" style="color:#ff6b6b;" onclick="banUser('${user.username}')">
+                            <a href="javascript:void(0)" style="color:#ff6b6b;" onclick="banUser('${usernameJs}')">
                                 <i class="bi bi-trash3"></i> Delete Member
                             </a>
                         </div>
@@ -289,7 +316,7 @@ async function fetchUsers() {
 // --- Interaction UI ---
 function toggleMenu(e, id) {
     e.stopPropagation();
-    const menu = document.getElementById('drop-' + id);
+    const menu = document.getElementById(id);
     document.querySelectorAll('.dropdown-content').forEach(d => { if(d !== menu) d.classList.remove('show'); });
     menu.classList.toggle('show');
 }

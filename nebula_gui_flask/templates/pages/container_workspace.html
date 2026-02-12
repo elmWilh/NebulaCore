@@ -1,0 +1,1940 @@
+{% extends "layout.html" %}
+{% block page_content %}
+<div class="container-fluid ws-shell">
+    <header class="workspace-header card-shell">
+        <div class="header-left">
+            <div class="workspace-title-row">
+                <a href="/containers" class="back-link" title="Back to containers">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+                <h2>Container Panel</h2>
+                <span id="ws-status-pill" class="status-pill">loading</span>
+            </div>
+            <div class="workspace-meta">
+                <span class="meta-item"><i class="bi bi-box-seam"></i> <span id="ws-name">{{ container_id }}</span></span>
+                <span class="meta-dot">/</span>
+                <span class="meta-item"><i class="bi bi-hash"></i> <span id="ws-id">{{ container_id }}</span></span>
+                <span class="meta-dot">/</span>
+                <span class="meta-item"><i class="bi bi-layers"></i> <span id="ws-image">loading image...</span></span>
+            </div>
+            <div id="workspace-context" class="workspace-context">Loading container context...</div>
+        </div>
+        <div class="workspace-actions">
+            <button class="btn-ghost" onclick="containerAction('start')"><i class="bi bi-play-fill"></i> Start</button>
+            <button class="btn-ghost" onclick="containerAction('stop')"><i class="bi bi-stop-fill"></i> Stop</button>
+            <button class="btn-ghost" onclick="containerAction('restart')"><i class="bi bi-arrow-repeat"></i> Restart</button>
+            <button class="btn-primary" onclick="refreshActiveTab()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+        </div>
+    </header>
+
+    <div class="ws-grid">
+        <aside class="ws-nav card-shell">
+            <nav>
+                <button class="tab-btn active" data-tab="terminal" onclick="switchTab('terminal')">
+                    <i class="bi bi-terminal"></i> <span>Terminal & Logs</span>
+                </button>
+                <button class="tab-btn" data-tab="files" onclick="switchTab('files')">
+                    <i class="bi bi-folder2-open"></i> <span>File Explorer</span>
+                </button>
+                <button class="tab-btn" data-tab="toolbox" onclick="switchTab('toolbox')">
+                    <i class="bi bi-tools"></i> <span>Toolbox</span>
+                </button>
+                <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
+                    <i class="bi bi-sliders"></i> <span>Settings</span>
+                </button>
+            </nav>
+        </aside>
+
+        <section class="ws-content card-shell">
+            <div id="tab-terminal" class="tab-pane active">
+                <div class="pane-header">
+                    <h3 class="pane-title">Live Console</h3>
+                    <p class="pane-subtitle">Unified terminal for app console or restricted workspace shell, with live logs in one stream.</p>
+                </div>
+
+                <div class="terminal-grid">
+                    <div class="terminal-panel unified-console">
+                        <div class="panel-head">
+                            <span class="head-label"><i class="bi bi-terminal-fill"></i> Live Terminal + Container Logs</span>
+                            <span id="logs-sync-state" class="head-note">not synced</span>
+                            <div class="window-dots" aria-hidden="true">
+                                <span class="dot red"></span>
+                                <span class="dot yellow"></span>
+                                <span class="dot green"></span>
+                            </div>
+                        </div>
+
+                        <div class="console-tools">
+                            <div class="log-controls">
+                                <label for="logs-tail">Tail</label>
+                                <input id="logs-tail" type="number" value="300" min="50" max="2000" title="Lines to fetch">
+                                <button class="chip-btn" onclick="loadLogs(true)">Load</button>
+                                <button id="logs-auto-btn" class="chip-btn active" onclick="toggleAutoLogs()">Auto: ON</button>
+                            </div>
+                            <div id="quick-row" class="quick-row">
+                                <button class="chip-btn" onclick="runCommandText('help')">help</button>
+                                <button class="chip-btn" onclick="runCommandText('list')">list</button>
+                                <button class="chip-btn" onclick="runCommandText('status')">status</button>
+                                <button class="chip-btn" onclick="runCommandText('stop')">stop</button>
+                            </div>
+                            <div class="inline-actions">
+                                <button class="chip-btn" onclick="copyText('live-console-output')"><i class="bi bi-clipboard"></i> Copy</button>
+                                <button class="chip-btn" onclick="downloadLogs()"><i class="bi bi-download"></i> Download</button>
+                                <button class="chip-btn" onclick="clearOutput('live-console-output', 'Console view cleared.')"><i class="bi bi-eraser"></i> Clear</button>
+                            </div>
+                        </div>
+
+                        <div class="console-input-row">
+                            <select id="cmd-mode" class="cmd-mode-select" title="Console mode" onchange="onConsoleModeChange()">
+                                <option value="console">App Console</option>
+                                <option value="shell">Workspace Shell</option>
+                            </select>
+                            <div class="prompt-wrapper">
+                                <span class="prompt">&gt;</span>
+                                <input id="cmd-input" type="text" placeholder="Type command..." onkeydown="if(event.key==='Enter'){runCommand();}">
+                            </div>
+                            <button id="cmd-run-btn" class="btn-run" onclick="runCommand()">Send</button>
+                        </div>
+                        <div id="cmd-status" class="action-status">Console ready.</div>
+                        <pre id="live-console-output" class="terminal-output logs-view">Loading stream...</pre>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-files" class="tab-pane">
+                <div class="pane-header">
+                    <h3 class="pane-title">File Explorer</h3>
+                    <p class="pane-subtitle">Explorer is restricted to workspace paths for safety.</p>
+                </div>
+
+                <div id="workspace-roots" class="roots-row"></div>
+
+                <div class="files-toolbar">
+                    <div class="path-input-group">
+                        <i class="bi bi-folder-symlink"></i>
+                        <input id="files-path" type="text" value="/data" onkeydown="if(event.key==='Enter'){loadFiles();}">
+                    </div>
+                    <div class="button-group">
+                        <button class="btn-ghost" onclick="goParentDir()"><i class="bi bi-arrow-up"></i> Up</button>
+                        <button class="btn-primary" onclick="loadFiles()"><i class="bi bi-arrow-repeat"></i> Reload</button>
+                    </div>
+                </div>
+
+                <div class="files-layout">
+                    <div id="files-list" class="files-list"></div>
+                </div>
+            </div>
+
+            <div id="tab-toolbox" class="tab-pane">
+                <div class="pane-header">
+                    <h3 class="pane-title">Quick Operations</h3>
+                    <p class="pane-subtitle">Apply common scenarios, then verify them with one click.</p>
+                </div>
+
+                <div id="tool-grid" class="tool-grid">
+                    <div class="tool-card" data-profiles="minecraft">
+                        <div class="tool-icon"><i class="bi bi-controller"></i></div>
+                        <div class="tool-info">
+                            <h4>Minecraft Java</h4>
+                            <p>Applies ports and startup command for a Java server baseline.</p>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="btn-tool" onclick="applyScenario('minecraft')">Apply</button>
+                            <button class="btn-tool outline" onclick="fixMinecraftBootLoop()">Fix Loop</button>
+                            <button class="btn-tool outline" onclick="switchTab('files')">Open Files</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-card" data-profiles="steam">
+                        <div class="tool-icon"><i class="bi bi-cpu"></i></div>
+                        <div class="tool-info">
+                            <h4>SteamCMD Dedicated</h4>
+                            <p>Preset for typical dedicated game server startup flow.</p>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="btn-tool" onclick="applyScenario('steamcmd')">Apply</button>
+                            <button class="btn-tool outline" onclick="switchTab('files')">Open Files</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-card" data-profiles="minecraft,steam,web,database,generic">
+                        <div class="tool-icon"><i class="bi bi-activity"></i></div>
+                        <div class="tool-info">
+                            <h4>Diagnostics</h4>
+                            <p>Fast visibility for process, ports, memory and storage pressure.</p>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="btn-tool outline" onclick="loadLogs(true)">Refresh Logs</button>
+                            <button class="btn-tool outline" onclick="refreshActiveTab()">Refresh Console</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-card" data-profiles="minecraft">
+                        <div class="tool-icon"><i class="bi bi-lightning-charge"></i></div>
+                        <div class="tool-info">
+                            <h4>Minecraft Ops</h4>
+                            <p>Common in-game operations with one click from panel.</p>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="btn-tool outline" onclick="runCommandText('list')">Players</button>
+                            <button class="btn-tool outline" onclick="runCommandText('save-all')">Save All</button>
+                            <button class="btn-tool outline" onclick="runCommandText('time set day')">Set Day</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-card" data-profiles="web,generic">
+                        <div class="tool-icon"><i class="bi bi-window-stack"></i></div>
+                        <div class="tool-info">
+                            <h4>Web Service Ops</h4>
+                            <p>Focus on logs, config files and restart flow for web apps and bots.</p>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="btn-tool outline" onclick="switchTab('files')">Open Config Files</button>
+                            <button class="btn-tool outline" onclick="switchTab('settings')">Open Port Settings</button>
+                            <button class="btn-tool outline" onclick="containerAction('restart')">Restart Service</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-card" data-profiles="database">
+                        <div class="tool-icon"><i class="bi bi-database"></i></div>
+                        <div class="tool-info">
+                            <h4>Database Ops</h4>
+                            <p>Safe defaults for DB containers: logs, backup path checks, controlled restart.</p>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="btn-tool outline" onclick="loadLogs(true)">Inspect DB Logs</button>
+                            <button class="btn-tool outline" onclick="switchTab('files')">Open Data Files</button>
+                            <button class="btn-tool outline" onclick="containerAction('restart')">Restart DB</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-settings" class="tab-pane">
+                <div class="pane-header">
+                    <h3 class="pane-title">Panel Settings</h3>
+                    <p class="pane-subtitle">Save startup preferences for this container.</p>
+                </div>
+
+                <div class="settings-card">
+                    <div class="form-group">
+                        <label>Port Forwarding Rules</label>
+                        <input id="set-ports" type="text" placeholder="e.g. 25565:25565, 19132:19132/udp">
+                        <small>Selected forwarding rules. Toggle available ports below to build this value.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Available Port Allocation</label>
+                        <div id="ports-selection-meta" class="ports-selection-meta">Loading available container ports...</div>
+                        <div class="ports-toolbar">
+                            <input id="ports-search" type="text" placeholder="Filter rules (e.g. 25565, udp, 127.0.0.1)" oninput="filterPortsSelection()">
+                            <button class="chip-btn" type="button" onclick="setAllPortsSelection(true)">Select All</button>
+                            <button class="chip-btn" type="button" onclick="setAllPortsSelection(false)">Clear</button>
+                        </div>
+                        <div id="ports-selection" class="ports-selection"></div>
+                        <small>Only pre-allocated container ports can be enabled here.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Startup Command</label>
+                        <input id="set-command" type="text" placeholder="e.g. ./start.sh or python app.py">
+                        <small id="startup-command-hint">Overrides default startup command.</small>
+                    </div>
+
+                    <div class="form-group restart-card">
+                        <label>Auto-Restart Policy</label>
+                        <div class="restart-row">
+                            <select id="restart-policy-select">
+                                <option value="always">always</option>
+                                <option value="unless-stopped">unless-stopped</option>
+                                <option value="on-failure">on-failure</option>
+                                <option value="no">no (disabled)</option>
+                            </select>
+                            <input id="restart-retries" type="number" value="0" min="0" max="50" placeholder="Retries" title="Used for on-failure only">
+                            <button class="btn-ghost" onclick="saveRestartPolicy()"><i class="bi bi-arrow-repeat"></i> Apply Policy</button>
+                        </div>
+                        <small id="restart-policy-hint" class="policy-hint">Tip: if you are testing mods/builds, disabling auto-restart can make debugging easier.</small>
+                    </div>
+
+                    <div class="settings-footer">
+                        <button class="btn-save" onclick="saveSettings()">
+                            <i class="bi bi-check-circle"></i> Save Settings
+                        </button>
+                        <span id="settings-meta" class="settings-meta"></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="toast-zone" class="toast-zone" aria-live="polite" aria-atomic="true"></div>
+
+<div id="file-preview-modal" class="file-modal-overlay" onclick="if(event.target===this){closeFilePreviewModal();}">
+    <div class="file-modal-content">
+        <div class="preview-header">
+            <span id="preview-path-title">File Preview</span>
+            <div class="inline-actions">
+                <button class="chip-btn" onclick="copyText('file-preview')"><i class="bi bi-clipboard"></i> Copy</button>
+                <button class="chip-btn" onclick="closeFilePreviewModal()"><i class="bi bi-x-lg"></i> Close</button>
+            </div>
+        </div>
+        <pre id="file-preview" class="terminal-output preview-box">Select a file to view its contents.</pre>
+    </div>
+</div>
+
+<style>
+    :root {
+        --bg-main: #0a0a0f;
+        --bg-card: #13141a;
+        --bg-input: #0f1016;
+        --bg-terminal: #0b0c11;
+        --border: rgba(255, 255, 255, 0.08);
+        --accent: #5865ff;
+        --accent-hover: #6875ff;
+        --accent-soft: rgba(88, 101, 255, 0.18);
+        --text-main: #e5e8f1;
+        --text-muted: #8d91a3;
+        --ok: #34d399;
+        --warn: #fbbf24;
+        --bad: #f87171;
+    }
+
+    .ws-shell {
+        padding: 24px;
+        max-width: 1640px;
+        margin: 0 auto;
+        color: var(--text-main);
+        font-family: "IBM Plex Sans", "Manrope", "Segoe UI", sans-serif;
+    }
+
+    .card-shell {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: linear-gradient(165deg, rgba(24, 25, 33, 0.96), rgba(15, 16, 22, 0.94));
+        box-shadow: 0 20px 38px rgba(0, 0, 0, 0.35);
+    }
+
+    .workspace-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+        padding: 16px 18px;
+        margin-bottom: 16px;
+        animation: fadeUp 0.35s ease;
+    }
+
+    .workspace-title-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+
+    .workspace-title-row h2 {
+        margin: 0;
+        font-size: 1.45rem;
+        letter-spacing: -0.02em;
+    }
+
+    .workspace-meta {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        align-items: center;
+    }
+
+    .workspace-context {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        margin-top: 7px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--accent-soft);
+        border-radius: 10px;
+        padding: 6px 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .workspace-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .back-link {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        color: var(--text-main);
+        background: rgba(255, 255, 255, 0.03);
+        transition: all 0.2s ease;
+    }
+
+    .back-link:hover {
+        transform: translateY(-1px);
+        border-color: var(--accent-soft);
+    }
+
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        padding: 3px 10px;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    .status-pill.running {
+        color: #9af1c8;
+        border-color: rgba(52, 211, 153, 0.4);
+        background: rgba(52, 211, 153, 0.14);
+        animation: pulseSoft 1.8s ease-in-out infinite;
+    }
+
+    .status-pill.stopped,
+    .status-pill.exited,
+    .status-pill.dead {
+        color: #fecaca;
+        border-color: rgba(248, 113, 113, 0.4);
+        background: rgba(248, 113, 113, 0.14);
+    }
+
+    .ws-grid {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 16px;
+        align-items: start;
+    }
+
+    .ws-nav {
+        padding: 10px;
+        position: sticky;
+        top: 14px;
+        animation: fadeUp 0.4s ease;
+    }
+
+    .tab-btn {
+        width: 100%;
+        border: 1px solid transparent;
+        border-radius: 12px;
+        background: transparent;
+        color: var(--text-muted);
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 12px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+        color: var(--text-main);
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-btn.active {
+        color: #f7f9ff;
+        background: linear-gradient(90deg, rgba(88, 101, 255, 0.5), rgba(88, 101, 255, 0.22));
+        border-color: var(--accent-soft);
+    }
+
+    .ws-content {
+        padding: 16px;
+        min-height: 700px;
+        animation: fadeUp 0.45s ease;
+    }
+
+    .tab-pane {
+        display: none;
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    .tab-pane.active {
+        display: block;
+        animation: paneIn 0.22s ease forwards;
+    }
+
+    .pane-header {
+        margin-bottom: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 12px;
+    }
+
+    .pane-title {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+
+    .pane-subtitle {
+        margin: 2px 0 0;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+    }
+
+    .terminal-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .terminal-panel {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: linear-gradient(180deg, #11131a, #0c0d13);
+        overflow: hidden;
+        min-height: 560px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .head-label {
+        font-size: 0.76rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .head-note {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+    }
+
+    .window-dots {
+        display: inline-flex;
+        gap: 6px;
+    }
+
+    .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        opacity: 0.9;
+    }
+
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #eab308; }
+    .dot.green { background: #22c55e; }
+
+    .console-tools {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .quick-row,
+    .inline-actions,
+    .log-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .log-controls label {
+        font-size: 0.74rem;
+        color: var(--text-muted);
+    }
+
+    .log-controls input {
+        width: 86px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--bg-input);
+        color: var(--text-main);
+    }
+
+    .chip-btn {
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text-main);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 0.74rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    }
+
+    .chip-btn:hover {
+        border-color: var(--accent-soft);
+        transform: translateY(-1px);
+    }
+
+    .chip-btn.active {
+        background: var(--accent-soft);
+        border-color: var(--accent-soft);
+        color: #e3e7ff;
+    }
+
+    .console-input-row {
+        display: grid;
+        grid-template-columns: 150px 1fr auto;
+        gap: 10px;
+        padding: 11px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .cmd-mode-select {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #0b0d13;
+        color: var(--text-main);
+        font-size: 0.8rem;
+        padding: 8px 9px;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+    }
+
+    .prompt-wrapper {
+        display: flex;
+        align-items: center;
+        background: #0b0d13;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0 10px;
+    }
+
+    .prompt {
+        color: var(--accent);
+        margin-right: 8px;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+    }
+
+    .prompt-wrapper input {
+        width: 100%;
+        border: none;
+        outline: none;
+        color: var(--text-main);
+        background: transparent;
+        padding: 9px 0;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+        font-size: 0.83rem;
+    }
+
+    .btn-run,
+    .btn-primary,
+    .btn-save,
+    .btn-ghost {
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-weight: 600;
+    }
+
+    .btn-run,
+    .btn-primary {
+        border: 1px solid transparent;
+        color: #f8fbff;
+        background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+        padding: 9px 13px;
+    }
+
+    .btn-run:hover,
+    .btn-primary:hover {
+        filter: brightness(1.06);
+        transform: translateY(-1px);
+    }
+
+    .btn-ghost {
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 9px 12px;
+    }
+
+    .btn-ghost:hover {
+        border-color: var(--accent-soft);
+    }
+
+    .btn-save {
+        border: 1px solid transparent;
+        color: #f7f9ff;
+        background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+        padding: 11px 15px;
+    }
+
+    .action-status {
+        font-size: 0.74rem;
+        color: var(--text-muted);
+        padding: 4px 12px 8px;
+    }
+
+    .terminal-output {
+        margin: 0;
+        border: none;
+        background: var(--bg-terminal);
+        color: #d9dced;
+        min-height: 340px;
+        max-height: 460px;
+        overflow: auto;
+        padding: 12px;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+        font-size: 0.79rem;
+        line-height: 1.48;
+    }
+
+    .logs-view {
+        color: #c9cedf;
+    }
+
+    .roots-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .root-chip {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 11px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text-main);
+    }
+
+    .root-chip:hover { border-color: var(--accent-soft); }
+
+    .files-toolbar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: stretch;
+    }
+
+    .path-input-group {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg-input);
+        padding: 0 10px;
+    }
+
+    .path-input-group input {
+        width: 100%;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: var(--text-main);
+        padding: 10px 0;
+        font-size: 0.85rem;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 8px;
+    }
+
+    .files-layout {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .files-list {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #0d0f15;
+        min-height: 460px;
+        max-height: 540px;
+        overflow: auto;
+    }
+
+    .file-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        cursor: pointer;
+        transition: background 0.15s ease;
+    }
+
+    .file-row:hover {
+        background: rgba(88, 101, 255, 0.1);
+    }
+
+    .file-row.error {
+        color: #fecaca;
+    }
+
+    .file-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .file-info span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.83rem;
+    }
+
+    .file-size {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+    }
+
+    .preview-container {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: 460px;
+    }
+
+    .preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 0.75rem;
+        color: var(--text-muted);
+    }
+
+    .preview-box {
+        max-height: 540px;
+        min-height: 420px;
+    }
+
+    .file-modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.72);
+        z-index: 10030;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(3px);
+    }
+
+    .file-modal-content {
+        width: min(1100px, 96vw);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #0d0f15;
+        overflow: hidden;
+        box-shadow: 0 28px 48px rgba(0, 0, 0, 0.42);
+    }
+
+    .tool-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+    }
+
+    .tool-card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: linear-gradient(150deg, rgba(25, 27, 35, 0.94), rgba(15, 16, 22, 0.96));
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: transform 0.18s ease, border-color 0.18s ease;
+    }
+
+    .tool-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent-soft);
+    }
+
+    .tool-card.is-hidden {
+        display: none;
+    }
+
+    .tool-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #cfd5ff;
+        background: rgba(88, 101, 255, 0.18);
+        border: 1px solid var(--accent-soft);
+    }
+
+    .tool-info h4 {
+        margin: 0;
+        font-size: 0.98rem;
+    }
+
+    .tool-info p {
+        margin: 0;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        line-height: 1.4;
+    }
+
+    .tool-actions {
+        margin-top: auto;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .btn-tool {
+        flex: 1;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        padding: 8px 9px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+        color: #f7fbff;
+        cursor: pointer;
+    }
+
+    .btn-tool.outline {
+        border-color: var(--border);
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    .settings-card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: #101219;
+        padding: 14px;
+        max-width: 900px;
+    }
+
+    .form-group {
+        margin-bottom: 14px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 7px;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #0b0d13;
+        color: var(--text-main);
+        padding: 9px 11px;
+        font-size: 0.85rem;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+    }
+
+    .form-group small {
+        display: block;
+        margin-top: 6px;
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        line-height: 1.4;
+    }
+
+    .ports-selection-meta {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+    }
+
+    .ports-toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .ports-toolbar input {
+        flex: 1;
+        min-width: 240px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #0b0d13;
+        color: var(--text-main);
+        padding: 7px 10px;
+        font-size: 0.78rem;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+    }
+
+    .ports-selection {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #0b0d13;
+        padding: 8px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 8px;
+        max-height: 240px;
+        overflow: auto;
+    }
+
+    .port-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.02);
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+        font-size: 0.78rem;
+        color: var(--text-main);
+    }
+
+    .port-toggle input {
+        accent-color: var(--accent);
+    }
+
+    .restart-card {
+        border: 1px solid rgba(251, 191, 36, 0.28);
+        border-radius: 12px;
+        padding: 10px;
+        background: rgba(251, 191, 36, 0.07);
+    }
+
+    .restart-row {
+        display: grid;
+        grid-template-columns: 1fr 140px auto;
+        gap: 8px;
+    }
+
+    .policy-hint {
+        color: #fcd34d;
+    }
+
+    .settings-footer {
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .settings-meta {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+    }
+
+    .toast-zone {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 10050;
+    }
+
+    .toast {
+        min-width: 260px;
+        max-width: 380px;
+        padding: 10px 11px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(15, 17, 25, 0.96);
+        color: var(--text-main);
+        font-size: 0.8rem;
+        box-shadow: 0 18px 32px rgba(0, 0, 0, 0.3);
+        animation: toastIn 0.2s ease;
+    }
+
+    .toast.ok { border-color: rgba(52, 211, 153, 0.5); }
+    .toast.warn { border-color: rgba(251, 191, 36, 0.5); }
+    .toast.error { border-color: rgba(248, 113, 113, 0.55); }
+
+    @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes paneIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes toastIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulseSoft {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.2); }
+        50% { box-shadow: 0 0 0 8px rgba(52, 211, 153, 0.03); }
+    }
+
+    @media (max-width: 1280px) {
+        .terminal-grid,
+        .tool-grid,
+        .files-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 1080px) {
+        .ws-grid { grid-template-columns: 1fr; }
+        .ws-nav { position: static; }
+        .workspace-header { flex-direction: column; align-items: flex-start; }
+        .restart-row { grid-template-columns: 1fr; }
+        .files-toolbar { flex-direction: column; }
+        .console-input-row { grid-template-columns: 1fr; }
+    }
+</style>
+
+<script>
+const containerId = {{ container_id|tojson }};
+let activeTab = 'terminal';
+let logsInterval = null;
+let logsAutoEnabled = true;
+let activeWorkspaceRoot = '/data';
+let currentContainerImage = '';
+let profilePolicy = null;
+let latestLogsText = '';
+let consoleEvents = [];
+let availablePorts = [];
+let currentConsoleMode = 'console';
+
+function showToast(message, level = 'ok', lifeMs = 2600) {
+    const zone = document.getElementById('toast-zone');
+    const node = document.createElement('div');
+    node.className = `toast ${level}`;
+    node.textContent = message;
+    zone.appendChild(node);
+    setTimeout(() => node.remove(), lifeMs);
+}
+
+function setStatus(text) {
+    const el = document.getElementById('workspace-context');
+    if (el) el.textContent = text;
+}
+
+function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.toggle('active', pane.id === `tab-${tab}`));
+
+    if (logsInterval) {
+        clearInterval(logsInterval);
+        logsInterval = null;
+    }
+
+    if (tab === 'terminal') {
+        loadLogs();
+        if (logsAutoEnabled) {
+            logsInterval = setInterval(loadLogs, 4000);
+        }
+    } else if (tab === 'files') {
+        loadFiles();
+    } else if (tab === 'settings') {
+        loadSettings();
+        loadRestartPolicy();
+    }
+}
+
+function refreshActiveTab() {
+    if (activeTab === 'terminal') {
+        Promise.all([loadContainerMeta(), loadLogs(true)]);
+        return;
+    }
+    if (activeTab === 'files') {
+        loadFiles();
+        return;
+    }
+    if (activeTab === 'settings') {
+        Promise.all([loadSettings(), loadRestartPolicy()]);
+        return;
+    }
+    loadContainerMeta();
+}
+
+function safeJoin(base, name) {
+    if (!base || base === '/') return `/${name}`;
+    return `${base.replace(/\/$/, '')}/${name}`;
+}
+
+function setStatusPill(status) {
+    const el = document.getElementById('ws-status-pill');
+    const normalized = String(status || 'unknown').toLowerCase();
+    el.textContent = normalized;
+    el.className = `status-pill ${normalized}`;
+}
+
+function formatNow() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function appendConsoleBlock(title, body, isError = false) {
+    const prefix = isError ? 'ERROR' : 'OK';
+    const block = `[${formatNow()}] ${prefix} - ${title}\n${(body || '(no output)').trim()}\n`;
+    consoleEvents.push(block);
+    if (consoleEvents.length > 25) consoleEvents = consoleEvents.slice(-25);
+    renderConsoleOutput();
+}
+
+function stripAnsi(text) {
+    return String(text || '').replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+}
+
+function filterLogNoise(text) {
+    const raw = stripAnsi(text || '');
+    if (!raw) return raw;
+    const noise = /Thread RCON Client .* (started|shutting down)$/;
+    return raw
+        .split('\n')
+        .filter(line => !noise.test(line))
+        .join('\n');
+}
+
+function renderConsoleOutput() {
+    const out = document.getElementById('live-console-output');
+    const eventsText = consoleEvents.length ? `${consoleEvents.join('\n')}\n\n` : '';
+    const logsText = latestLogsText || '(no logs)';
+    out.textContent = `${logsText}${eventsText}`;
+    out.scrollTop = out.scrollHeight;
+}
+
+function parsePorts(raw) {
+    return String(raw || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+}
+
+function configureQuickRow(profile, mode) {
+    const quickRow = document.getElementById('quick-row');
+    if (!quickRow) return;
+    const appCommandsByProfile = {
+        minecraft: ['help', 'list', 'save-all', 'stop']
+    };
+    const shellCommandsByProfile = {
+        python: ['pwd', 'ls -la', 'python --version', 'pip --version'],
+        web: ['pwd', 'ls -la', 'env | head -20', 'cat /etc/os-release | head -5'],
+        generic: ['pwd', 'ls -la', 'env | head -20']
+    };
+    const commands = mode === 'shell'
+        ? (shellCommandsByProfile[profile] || shellCommandsByProfile.generic)
+        : (appCommandsByProfile[profile] || []);
+    quickRow.innerHTML = '';
+    if (!commands.length) {
+        const hint = document.createElement('span');
+        hint.className = 'head-note';
+        hint.textContent = mode === 'shell'
+            ? 'No shell shortcuts for this profile.'
+            : 'No app-console shortcuts for this profile.';
+        quickRow.appendChild(hint);
+        return;
+    }
+    commands.forEach(cmd => {
+        const btn = document.createElement('button');
+        btn.className = 'chip-btn';
+        btn.type = 'button';
+        btn.textContent = cmd;
+        btn.onclick = () => runCommandText(cmd);
+        quickRow.appendChild(btn);
+    });
+}
+
+function configureConsoleMode(mode, profileName = 'generic') {
+    const prompt = document.querySelector('.prompt');
+    const input = document.getElementById('cmd-input');
+    const runBtn = document.getElementById('cmd-run-btn');
+    const status = document.getElementById('cmd-status');
+    const modeSelect = document.getElementById('cmd-mode');
+    const canUseConsole = !!(profilePolicy && profilePolicy.app_console_supported);
+    const canUseShell = !!(profilePolicy && profilePolicy.shell_allowed);
+
+    if (modeSelect) modeSelect.value = mode;
+    currentConsoleMode = mode;
+    if (prompt) prompt.textContent = mode === 'shell' ? '$' : '>';
+    if (runBtn) runBtn.textContent = mode === 'shell' ? 'Run' : 'Send';
+    if (input) {
+        input.placeholder = mode === 'shell'
+            ? 'Type shell command in container workspace'
+            : 'Type app console command (sent to process stdin)';
+    }
+
+    if (mode === 'shell' && !canUseShell) {
+        if (input) input.disabled = true;
+        if (runBtn) runBtn.disabled = true;
+        if (status) status.textContent = 'Workspace shell is disabled for this profile.';
+    } else if (mode === 'console' && !canUseConsole) {
+        if (input) input.disabled = true;
+        if (runBtn) runBtn.disabled = true;
+        if (status) status.textContent = 'Application console stdin is unavailable for this profile.';
+    } else {
+        if (input) input.disabled = false;
+        if (runBtn) runBtn.disabled = false;
+        if (status) {
+            status.textContent = mode === 'shell'
+                ? 'Workspace shell mode enabled with safety restrictions.'
+                : 'Application console mode enabled.';
+        }
+    }
+
+    configureQuickRow(profileName, mode);
+}
+
+function onConsoleModeChange() {
+    const modeSelect = document.getElementById('cmd-mode');
+    const requested = modeSelect?.value === 'shell' ? 'shell' : 'console';
+    const profileName = (profilePolicy && profilePolicy.profile) || 'generic';
+    configureConsoleMode(requested, profileName);
+}
+
+function configureStartupCommandHint(profileName) {
+    const input = document.getElementById('set-command');
+    const hint = document.getElementById('startup-command-hint');
+    if (!input || !hint) return;
+    const byProfile = {
+        minecraft: {
+            placeholder: 'Keep empty for image default (recommended)',
+            helper: 'For Minecraft presets, keep default entrypoint unless you know exact start flags.'
+        },
+        python: {
+            placeholder: 'e.g. python app.py or gunicorn app:app',
+            helper: 'Overrides default startup command for Python services.'
+        },
+        web: {
+            placeholder: 'e.g. nginx -g "daemon off;" or npm run start',
+            helper: 'Overrides default startup command for web services.'
+        },
+        database: {
+            placeholder: 'e.g. (usually keep image default)',
+            helper: 'Databases usually should keep image startup defaults.'
+        },
+        generic: {
+            placeholder: 'e.g. ./start.sh or python app.py',
+            helper: 'Overrides default startup command for this container.'
+        }
+    };
+    const cfg = byProfile[profileName] || byProfile.generic;
+    input.placeholder = cfg.placeholder;
+    hint.textContent = cfg.helper;
+}
+
+function configureToolbox(profile) {
+    const cards = Array.from(document.querySelectorAll('#tool-grid .tool-card'));
+    cards.forEach(card => {
+        const raw = String(card.dataset.profiles || '').trim();
+        if (!raw) {
+            card.classList.remove('is-hidden');
+            return;
+        }
+        const profiles = raw.split(',').map(v => v.trim()).filter(Boolean);
+        const visible = profiles.includes(profile);
+        card.classList.toggle('is-hidden', !visible);
+    });
+}
+
+function syncPortsInputFromSelection() {
+    const selected = Array.from(document.querySelectorAll('#ports-selection input[type="checkbox"]:checked'))
+        .map(node => node.value);
+    document.getElementById('set-ports').value = selected.join(', ');
+    const meta = document.getElementById('ports-selection-meta');
+    const total = document.querySelectorAll('#ports-selection .port-toggle').length;
+    if (meta && total > 0) {
+        meta.textContent = `Selected ${selected.length} of ${total} available rules.`;
+    }
+}
+
+function filterPortsSelection() {
+    const filter = String(document.getElementById('ports-search')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('#ports-selection .port-toggle').forEach(label => {
+        const text = String(label.dataset.rule || '').toLowerCase();
+        label.style.display = !filter || text.includes(filter) ? '' : 'none';
+    });
+}
+
+function setAllPortsSelection(enabled) {
+    document.querySelectorAll('#ports-selection .port-toggle input[type="checkbox"]').forEach(node => {
+        if (node.closest('.port-toggle')?.style.display === 'none') return;
+        node.checked = !!enabled;
+    });
+    syncPortsInputFromSelection();
+}
+
+function renderPortsSelection(rules, selectedRules = []) {
+    const host = document.getElementById('ports-selection');
+    const meta = document.getElementById('ports-selection-meta');
+    if (!host || !meta) return;
+
+    host.innerHTML = '';
+    const selectedSet = new Set(selectedRules);
+    if (!rules.length) {
+        meta.textContent = 'No pre-allocated ports found for this container.';
+        const empty = document.createElement('div');
+        empty.className = 'head-note';
+        empty.textContent = 'Deploy/recreate container with port bindings to manage allocation here.';
+        host.appendChild(empty);
+        return;
+    }
+
+    meta.textContent = `Available rules: ${rules.length}. Toggle what should remain active for this container.`;
+    rules.forEach(rule => {
+        const id = `port-rule-${rule.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const label = document.createElement('label');
+        label.className = 'port-toggle';
+        label.dataset.rule = rule;
+
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.id = id;
+        check.value = rule;
+        check.checked = selectedSet.size ? selectedSet.has(rule) : true;
+        check.addEventListener('change', syncPortsInputFromSelection);
+
+        const text = document.createElement('span');
+        text.textContent = rule;
+
+        label.appendChild(check);
+        label.appendChild(text);
+        host.appendChild(label);
+    });
+    syncPortsInputFromSelection();
+    filterPortsSelection();
+}
+
+function setButtonBusy(id, busy, idleText = 'Run', busyText = 'Running...') {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = !!busy;
+    btn.textContent = busy ? busyText : idleText;
+}
+
+async function apiJson(url, options = {}) {
+    const res = await fetch(url, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const msg = data.detail || `Request failed (${res.status})`;
+        throw new Error(msg);
+    }
+    return data;
+}
+
+async function loadContainerMeta() {
+    try {
+        const data = await apiJson(`/api/containers/detail/${containerId}`);
+        document.getElementById('ws-name').textContent = data.name || containerId;
+        document.getElementById('ws-id').textContent = (data.id || containerId).slice(0, 12);
+        document.getElementById('ws-image').textContent = data.image || 'unknown';
+        currentContainerImage = String(data.image || '').toLowerCase();
+        setStatusPill(data.status);
+        setStatus(`Working with ${data.name || containerId} (${data.status || 'unknown'}).`);
+    } catch (e) {
+        setStatus('Could not load container metadata.');
+        showToast(e.message, 'error');
+    }
+}
+
+async function loadProfilePolicy() {
+    try {
+        profilePolicy = await apiJson(`/api/containers/profile/${containerId}`);
+        const profileLabel = profilePolicy.label || profilePolicy.profile || 'container';
+        const profileName = profilePolicy.profile || 'generic';
+        const consoleAllowed = !!profilePolicy.app_console_supported;
+        const shellAllowed = !!profilePolicy.shell_allowed;
+        const modeSelect = document.getElementById('cmd-mode');
+        if (modeSelect) {
+            const appOpt = modeSelect.querySelector('option[value="console"]');
+            const shellOpt = modeSelect.querySelector('option[value="shell"]');
+            if (appOpt) appOpt.disabled = !consoleAllowed;
+            if (shellOpt) shellOpt.disabled = !shellAllowed;
+        }
+        configureToolbox(profileName);
+        configureStartupCommandHint(profileName);
+
+        if (consoleAllowed) {
+            configureConsoleMode('console', profileName);
+            setStatus(`Profile: ${profileLabel}. App console available.`);
+            return;
+        }
+        if (shellAllowed) {
+            configureConsoleMode('shell', profileName);
+            setStatus(`Profile: ${profileLabel}. Workspace shell available.`);
+            return;
+        }
+        configureConsoleMode('console', profileName);
+        setStatus(`Profile: ${profileLabel}. Interactive console is restricted; use logs and files.`);
+    } catch (e) {
+        profilePolicy = null;
+    }
+}
+
+async function containerAction(action) {
+    const labels = {
+        start: 'starting',
+        stop: 'stopping',
+        restart: 'restarting'
+    };
+    try {
+        setStatus(`Container is ${labels[action] || action}...`);
+        await apiJson(`/api/containers/${action}/${containerId}`, { method: 'POST' });
+        showToast(`Container ${action} command sent.`, 'ok');
+        await loadContainerMeta();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function runCommand() {
+    const input = document.getElementById('cmd-input');
+    const mode = currentConsoleMode === 'shell' ? 'shell' : 'console';
+    const cmd = (input.value || '').trim();
+    if (!cmd) {
+        showToast('Enter a command first.', 'warn');
+        return;
+    }
+
+    const idleLabel = mode === 'shell' ? 'Run' : 'Send';
+    const busyLabel = mode === 'shell' ? 'Running...' : 'Sending...';
+    setButtonBusy('cmd-run-btn', true, idleLabel, busyLabel);
+    document.getElementById('cmd-status').textContent = `Executing: ${cmd}`;
+
+    try {
+        if (mode === 'shell') {
+            const data = await apiJson(`/api/containers/exec/${containerId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: cmd })
+            });
+            const exitCode = Number(data.exit_code ?? 0);
+            appendConsoleBlock(`shell$ ${cmd} (exit ${exitCode})`, data.output || '(no output)', exitCode !== 0);
+            document.getElementById('cmd-status').textContent = `Shell command completed at ${formatNow()}`;
+        } else {
+            const data = await apiJson(`/api/containers/console-send/${containerId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: cmd })
+            });
+            const transport = String(data.transport || 'stdin');
+            const commandOutput = stripAnsi(String((data.output || '').trim()));
+            const resultText = commandOutput || (data.status || 'sent');
+            appendConsoleBlock(`console> ${cmd} [${transport}]`, resultText, false);
+            document.getElementById('cmd-status').textContent = `Console command sent via ${transport} at ${formatNow()}`;
+        }
+        await loadLogs();
+        input.value = '';
+    } catch (e) {
+        appendConsoleBlock(cmd, e.message, true);
+        document.getElementById('cmd-status').textContent = 'Command failed.';
+        showToast(e.message, 'error');
+    } finally {
+        setButtonBusy('cmd-run-btn', false, idleLabel, busyLabel);
+    }
+}
+
+function runCommandText(text) {
+    if (document.getElementById('cmd-input')?.disabled) {
+        showToast('Interactive console is unavailable for this profile.', 'warn');
+        return;
+    }
+    const input = document.getElementById('cmd-input');
+    input.value = text;
+    switchTab('terminal');
+    runCommand();
+}
+
+async function loadLogs(showToastOnManual = false) {
+    const syncState = document.getElementById('logs-sync-state');
+    const rawTail = parseInt(document.getElementById('logs-tail').value || '300', 10);
+    const tail = Math.max(50, Math.min(2000, Number.isFinite(rawTail) ? rawTail : 300));
+
+    try {
+        const data = await apiJson(`/api/containers/logs/${containerId}?tail=${tail}`);
+        latestLogsText = filterLogNoise(data.logs || '');
+        renderConsoleOutput();
+        syncState.textContent = `synced ${formatNow()}`;
+        if (showToastOnManual) showToast('Logs refreshed.', 'ok', 1600);
+    } catch (e) {
+        syncState.textContent = 'sync failed';
+        if (showToastOnManual) showToast(e.message, 'error');
+    }
+}
+
+function toggleAutoLogs() {
+    const btn = document.getElementById('logs-auto-btn');
+    if (logsInterval) {
+        clearInterval(logsInterval);
+        logsInterval = null;
+        logsAutoEnabled = false;
+        btn.classList.remove('active');
+        btn.textContent = 'Auto: OFF';
+        showToast('Auto log refresh paused.', 'warn');
+        return;
+    }
+    logsAutoEnabled = true;
+    loadLogs();
+    logsInterval = setInterval(loadLogs, 4000);
+    btn.classList.add('active');
+    btn.textContent = 'Auto: ON';
+    showToast('Auto log refresh enabled.', 'ok');
+}
+
+function clearOutput(targetId, statusText = 'Cleared.') {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    if (targetId === 'live-console-output') {
+        consoleEvents = [];
+        renderConsoleOutput();
+    } else {
+        el.textContent = '';
+    }
+    showToast(statusText, 'ok', 1400);
+}
+
+function copyText(targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const text = el.textContent || '';
+    if (!text.trim()) {
+        showToast('Nothing to copy.', 'warn');
+        return;
+    }
+    navigator.clipboard.writeText(text)
+        .then(() => showToast('Copied to clipboard.', 'ok', 1400))
+        .catch(() => showToast('Clipboard is blocked in this browser.', 'warn'));
+}
+
+function downloadLogs() {
+    const text = document.getElementById('live-console-output').textContent || '';
+    if (!text.trim()) {
+        showToast('No logs to download.', 'warn');
+        return;
+    }
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `container-${containerId}-logs.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    showToast('Log file downloaded.', 'ok', 1400);
+}
+
+async function initWorkspaceRoots() {
+    const rootsEl = document.getElementById('workspace-roots');
+    rootsEl.innerHTML = '';
+
+    try {
+        const data = await apiJson(`/api/containers/workspace-roots/${containerId}`);
+        const roots = Array.isArray(data.roots) ? data.roots : [];
+        activeWorkspaceRoot = data.preferred_path || '/data';
+        if (activeWorkspaceRoot && activeWorkspaceRoot !== '/') {
+            document.getElementById('files-path').value = activeWorkspaceRoot;
+        }
+
+        const visibleRoots = roots.filter(root => root !== '/');
+        if (visibleRoots.length === 0) {
+            rootsEl.innerHTML = '<span class="head-note">No workspace roots detected.</span>';
+            return;
+        }
+
+        visibleRoots.forEach(root => {
+            const btn = document.createElement('button');
+            btn.className = 'root-chip';
+            btn.type = 'button';
+            btn.textContent = root;
+            btn.onclick = () => {
+                document.getElementById('files-path').value = root;
+                loadFiles();
+            };
+            rootsEl.appendChild(btn);
+        });
+
+        setStatus(`Explorer starts at ${activeWorkspaceRoot}. Use Root button only when needed.`);
+    } catch (e) {
+        rootsEl.innerHTML = '<span class="head-note">Workspace roots unavailable.</span>';
+    }
+}
+
+async function loadFiles() {
+    const pathEl = document.getElementById('files-path');
+    const list = document.getElementById('files-list');
+    const path = (pathEl.value || activeWorkspaceRoot || '/data').trim() || '/data';
+    const renderFileState = (icon, text, isError = false) => {
+        list.innerHTML = '';
+        const row = document.createElement('div');
+        row.className = isError ? 'file-row error' : 'file-row';
+        const info = document.createElement('div');
+        info.className = 'file-info';
+        const iconEl = document.createElement('i');
+        iconEl.className = `bi ${icon}`;
+        const textEl = document.createElement('span');
+        textEl.textContent = text;
+        info.appendChild(iconEl);
+        info.appendChild(textEl);
+        row.appendChild(info);
+        list.appendChild(row);
+    };
+
+    renderFileState('bi-arrow-repeat', 'Loading...');
+
+    try {
+        const data = await apiJson(`/api/containers/files/${containerId}?path=${encodeURIComponent(path)}`);
+        pathEl.value = data.path || path;
+
+        if (!Array.isArray(data.entries) || data.entries.length === 0) {
+            renderFileState('bi-inbox', 'This directory is empty.');
+            return;
+        }
+
+        list.innerHTML = '';
+        data.entries.forEach(entry => {
+            const row = document.createElement('div');
+            row.className = 'file-row';
+            const icon = entry.type === 'dir' ? 'bi-folder2-open' : (entry.type === 'link' ? 'bi-link-45deg' : 'bi-file-earmark-text');
+            const info = document.createElement('div');
+            info.className = 'file-info';
+            const iconEl = document.createElement('i');
+            iconEl.className = `bi ${icon}`;
+            const nameEl = document.createElement('span');
+            nameEl.textContent = entry.name || '';
+            info.appendChild(iconEl);
+            info.appendChild(nameEl);
+            const sizeEl = document.createElement('div');
+            sizeEl.className = 'file-size';
+            sizeEl.textContent = entry.size || '';
+            row.appendChild(info);
+            row.appendChild(sizeEl);
+            row.onclick = () => {
+                if (entry.type === 'dir') {
+                    pathEl.value = safeJoin(data.path, entry.name);
+                    loadFiles();
+                } else {
+                    previewFile(safeJoin(data.path, entry.name));
+                }
+            };
+            list.appendChild(row);
+        });
+
+        setStatus(`Browsing ${pathEl.value}`);
+    } catch (e) {
+        renderFileState('bi-exclamation-triangle', e.message || 'Failed to load directory.', true);
+    }
+}
+
+async function previewFile(path) {
+    const modal = document.getElementById('file-preview-modal');
+    const pre = document.getElementById('file-preview');
+    const title = document.getElementById('preview-path-title');
+    title.textContent = path;
+    modal.style.display = 'flex';
+    pre.textContent = `Reading ${path}...`;
+
+    try {
+        const data = await apiJson(`/api/containers/file-content/${containerId}?path=${encodeURIComponent(path)}&max_bytes=200000`);
+        const trunc = data.truncated ? '\n\n--- file truncated ---' : '';
+        pre.textContent = `${data.content || '(empty file)'}${trunc}`;
+        setStatus(`Previewing ${path}`);
+    } catch (e) {
+        pre.textContent = `Cannot read file: ${e.message}`;
+    }
+}
+
+function closeFilePreviewModal() {
+    const modal = document.getElementById('file-preview-modal');
+    modal.style.display = 'none';
+}
+
+function goParentDir() {
+    const pathEl = document.getElementById('files-path');
+    const base = activeWorkspaceRoot || '/data';
+    const raw = (pathEl.value || base).trim();
+    if (!raw || raw === '/' || raw === base) {
+        pathEl.value = base;
+        loadFiles();
+        return;
+    }
+
+    const parts = raw.split('/').filter(Boolean);
+    parts.pop();
+    pathEl.value = '/' + parts.join('/');
+    if (pathEl.value === '' || pathEl.value === '/') pathEl.value = base;
+    loadFiles();
+}
+
+async function loadSettings() {
+    try {
+        const data = await apiJson(`/api/containers/settings/${containerId}`);
+        const savedRules = parsePorts(data.allowed_ports || '');
+        availablePorts = Array.isArray(data.available_ports) ? data.available_ports.map(v => String(v || '').trim()).filter(Boolean) : [];
+        document.getElementById('set-ports').value = savedRules.join(', ');
+        renderPortsSelection(availablePorts, savedRules);
+        document.getElementById('set-command').value = data.startup_command || '';
+        if (currentContainerImage.includes('minecraft') && String(data.startup_command || '').trim()) {
+            showToast('Minecraft image detected: custom startup command can break boot. Keep command empty.', 'warn', 4200);
+        }
+        if (data.updated_at) {
+            document.getElementById('settings-meta').textContent = `Last saved: ${data.updated_at}${data.updated_by ? ` by ${data.updated_by}` : ''}`;
+        } else {
+            document.getElementById('settings-meta').textContent = 'No saved settings yet.';
+        }
+    } catch (e) {
+        document.getElementById('settings-meta').textContent = e.message;
+    }
+}
+
+async function saveSettings() {
+    const selectedRules = Array.from(document.querySelectorAll('#ports-selection input[type="checkbox"]:checked'))
+        .map(node => node.value);
+    const fallbackRules = parsePorts(document.getElementById('set-ports').value);
+    const finalRules = selectedRules.length ? selectedRules : fallbackRules;
+    const payload = {
+        allowed_ports: finalRules.join(', '),
+        startup_command: document.getElementById('set-command').value
+    };
+
+    try {
+        const data = await apiJson(`/api/containers/settings/${containerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        document.getElementById('settings-meta').textContent = `Saved: ${data.updated_at || formatNow()}`;
+        showToast('Settings saved.', 'ok');
+        return true;
+    } catch (e) {
+        showToast(e.message, 'error');
+        return false;
+    }
+}
+
+async function loadRestartPolicy() {
+    try {
+        const data = await apiJson(`/api/containers/restart-policy/${containerId}`);
+        document.getElementById('restart-policy-select').value = data.restart_policy || 'no';
+        document.getElementById('restart-retries').value = String(data.maximum_retry_count || 0);
+        updateRestartHint();
+    } catch (e) {
+        showToast(`Restart policy unavailable: ${e.message}`, 'warn');
+    }
+}
+
+function updateRestartHint() {
+    const policy = document.getElementById('restart-policy-select').value;
+    const hint = document.getElementById('restart-policy-hint');
+    if (policy === 'no') {
+        hint.textContent = 'Auto-restart is disabled. Useful for debugging and controlled shutdowns.';
+        return;
+    }
+    if (policy === 'on-failure') {
+        hint.textContent = 'Container restarts only on failure. Set retries if needed.';
+        return;
+    }
+    hint.textContent = 'Container will restart automatically. Disable only if you want manual lifecycle control.';
+}
+
+async function saveRestartPolicy() {
+    const policy = document.getElementById('restart-policy-select').value;
+    const retriesRaw = parseInt(document.getElementById('restart-retries').value || '0', 10);
+    const retries = Number.isFinite(retriesRaw) ? Math.max(0, retriesRaw) : 0;
+
+    try {
+        await apiJson(`/api/containers/restart-policy/${containerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                restart_policy: policy,
+                maximum_retry_count: retries
+            })
+        });
+        updateRestartHint();
+        showToast(`Restart policy updated to '${policy}'.`, 'ok');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+function applyScenario(type) {
+    if (type === 'minecraft') {
+        document.getElementById('set-ports').value = '25565:25565';
+        document.getElementById('set-command').value = '';
+        switchTab('settings');
+        showToast('Minecraft profile applied. Startup command was cleared to avoid Java flag crash.', 'warn', 4200);
+        return;
+    }
+
+    if (type === 'steamcmd') {
+        document.getElementById('set-ports').value = '27015:27015/udp, 27016:27016/udp';
+        document.getElementById('set-command').value = './start.sh';
+        switchTab('settings');
+        showToast('SteamCMD scenario applied to Settings.', 'ok');
+    }
+}
+
+async function fixMinecraftBootLoop() {
+    try {
+        document.getElementById('set-ports').value = '25565:25565';
+        document.getElementById('set-command').value = '';
+        const saved = await saveSettings();
+        if (!saved) return;
+        showToast('Minecraft startup command cleared. Restarting container...', 'ok', 2600);
+        await containerAction('restart');
+    } catch (e) {
+        showToast(`Fix failed: ${e.message}`, 'error');
+    }
+}
+
+document.getElementById('restart-policy-select')?.addEventListener('change', updateRestartHint);
+
+window.addEventListener('beforeunload', () => {
+    if (logsInterval) clearInterval(logsInterval);
+});
+
+document.addEventListener('DOMContentLoaded', async () => {
+    configureQuickRow('generic', 'console');
+    configureToolbox('generic');
+    configureStartupCommandHint('generic');
+    configureConsoleMode('console', 'generic');
+    await loadContainerMeta();
+    await loadProfilePolicy();
+    await initWorkspaceRoots();
+    await loadSettings();
+    await loadRestartPolicy();
+    switchTab('terminal');
+});
+</script>
+{% endblock %}

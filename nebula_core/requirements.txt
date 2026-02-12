@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 bcrypt
+pyotp
 Jinja2
 python-multipart
 PyYAML

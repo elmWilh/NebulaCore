@@ -1,14 +1,15 @@
-# nebula_core/core/config.py
 import yaml
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
 CONFIG_PATH = Path(__file__).parent.parent / "serviceconfig.yaml"
 
-def load_yaml_config():
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+
+def load_yaml_config(config_path: str | Path | None = None):
+    target = Path(config_path) if config_path else CONFIG_PATH
+    if target.exists():
+        with open(target, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
     return {}
 
 class Settings(BaseSettings):

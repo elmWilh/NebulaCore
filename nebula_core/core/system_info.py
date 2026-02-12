@@ -11,7 +11,7 @@ def get_system_info():
         "os": platform.system(),
         "release": platform.release(),
         "python": platform.python_version(),
-        "cpu_percent": psutil.cpu_percent(interval=0.5),
+        "cpu_percent": psutil.cpu_percent(interval=None),
         "memory": psutil.virtual_memory().percent,
         "uptime_seconds": int(uptime),
         "hostname": platform.node(),

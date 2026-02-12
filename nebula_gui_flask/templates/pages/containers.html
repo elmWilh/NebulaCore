@@ -107,6 +107,21 @@
         </div>
 
         <div style="padding: 32px; max-height: 70vh; overflow-y: auto;">
+            <div class="preset-block">
+                <div class="preset-title">Deployment Presets</div>
+                <div class="preset-grid">
+                    <button type="button" class="preset-btn" data-preset="balanced-small" onclick="applyContainerPreset('balanced-small')">Balanced Small</button>
+                    <button type="button" class="preset-btn active" data-preset="balanced-medium" onclick="applyContainerPreset('balanced-medium')">Balanced Medium</button>
+                    <button type="button" class="preset-btn" data-preset="balanced-large" onclick="applyContainerPreset('balanced-large')">Balanced Large</button>
+                    <button type="button" class="preset-btn" data-preset="cpu-bound" onclick="applyContainerPreset('cpu-bound')">CPU Bound</button>
+                    <button type="button" class="preset-btn" data-preset="memory-bound" onclick="applyContainerPreset('memory-bound')">Memory Bound</button>
+                    <button type="button" class="preset-btn" data-preset="io-bound" onclick="applyContainerPreset('io-bound')">IO Bound</button>
+                    <button type="button" class="preset-btn" data-preset="minecraft-java" onclick="applyContainerPreset('minecraft-java')">Minecraft Java</button>
+                    <button type="button" class="preset-btn" data-preset="game-server-steamcmd" onclick="applyContainerPreset('game-server-steamcmd')">SteamCMD Game</button>
+                </div>
+                <div id="preset_hint" class="preset-hint">Balanced Medium applied</div>
+            </div>
+
             <div class="modal-grid">
                 <div class="modal-col">
                     <div class="input-field">
@@ -142,23 +157,107 @@
                         <label>Memory Limit (MB)</label>
                         <div class="input-wrapper">
                             <i class="bi bi-memory"></i>
-                            <input type="number" id="cont_ram_input" value="512">
+                            <input type="number" id="cont_ram_input" value="512" min="64">
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Swap Limit (MB)</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-layers-half"></i>
+                            <input type="number" id="cont_swap" value="1024" min="0">
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Writable Disk (GB)</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-device-hdd"></i>
+                            <input type="number" id="cont_disk" value="10" min="0">
                         </div>
                     </div>
                     <div class="input-field">
                         <label>Port Mapping</label>
                         <div class="input-wrapper">
                             <i class="bi bi-ethernet"></i>
-                            <input type="text" id="cont_ports" placeholder="8080:80">
+                            <input type="text" id="cont_ports" placeholder="8080:80, 8443:443, 127.0.0.1:2222:22">
                         </div>
                     </div>
                     <div class="input-field">
                         <label>CPU Weight</label>
                         <div class="input-wrapper">
                             <i class="bi bi-speedometer2"></i>
-                            <input type="number" id="cont_cpu" value="1024">
+                            <input type="number" id="cont_cpu" value="1024" min="2" max="262144">
                         </div>
                     </div>
+                    <div class="input-field">
+                        <label>CPU Limit (cores)</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-cpu"></i>
+                            <input type="number" id="cont_cpu_limit" value="1.0" min="0.1" step="0.1">
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Pin CPU Cores (cpuset)</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-diagram-3"></i>
+                            <input type="text" id="cont_cpuset" placeholder="0-1 or 0,2,4">
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="input-field">
+                            <label>CPU Quota</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-sliders2"></i>
+                                <input type="number" id="cont_cpu_quota" placeholder="100000" min="0">
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>CPU Period</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-sliders2-vertical"></i>
+                                <input type="number" id="cont_cpu_period" placeholder="100000" min="0">
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="input-field">
+                            <label>PIDs Limit</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-list-ol"></i>
+                                <input type="number" id="cont_pids_limit" placeholder="256" min="0">
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>/dev/shm (MB)</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-hdd-rack"></i>
+                                <input type="number" id="cont_shm" value="64" min="16">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 24px; display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <div class="input-field">
+                    <label>Startup Command</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-terminal"></i>
+                        <input type="text" id="cont_command" placeholder="e.g. python app.py --port 80">
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Environment Variables (KEY=VALUE)</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-braces"></i>
+                        <textarea id="cont_env" rows="4" placeholder="APP_ENV=prod&#10;LOG_LEVEL=info"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="input-field" style="margin-top: 16px;">
+                <label>Volume Mounts (/host:/container[:ro|rw])</label>
+                <div class="input-wrapper">
+                    <i class="bi bi-folder-symlink"></i>
+                    <textarea id="cont_volumes" rows="4" placeholder="/srv/app/data:/app/data:rw&#10;/srv/app/config:/app/config:ro"></textarea>
                 </div>
             </div>
 
@@ -268,7 +367,14 @@
         border: 1px solid var(--border); border-radius: 12px; color: white;
         outline: none; transition: 0.2s; font-size: 0.9rem;
     }
+    .input-wrapper textarea {
+        width: 100%; padding: 14px 16px 14px 46px; background: #050507;
+        border: 1px solid var(--border); border-radius: 12px; color: white;
+        outline: none; transition: 0.2s; font-size: 0.85rem; resize: vertical;
+        font-family: 'JetBrains Mono', monospace; line-height: 1.4;
+    }
     .input-wrapper input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
+    .input-wrapper textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
     .user-picker { display: flex; flex-direction: column; gap: 10px; }
     .users-list {
         max-height: 170px; overflow: auto; border: 1px solid var(--border); border-radius: 12px;
@@ -289,6 +395,30 @@
     .status-box {
         margin-top: 32px; padding: 20px; background: rgba(255,255,255,0.03);
         border-radius: 16px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border);
+    }
+    .preset-block {
+        margin-bottom: 24px; padding: 14px; border-radius: 14px;
+        border: 1px solid var(--border); background: #0a0a0f;
+    }
+    .preset-title {
+        font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px;
+        color: var(--text-muted); font-weight: 700; margin-bottom: 10px;
+    }
+    .preset-grid {
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+    }
+    .preset-btn {
+        border: 1px solid var(--border); background: #0f1016; color: #d7d7df;
+        padding: 8px 10px; border-radius: 10px; font-size: 0.76rem; font-weight: 600; cursor: pointer;
+    }
+    .preset-btn:hover { border-color: var(--accent); color: white; }
+    .preset-btn.active {
+        border-color: rgba(88, 101, 255, 0.7);
+        background: rgba(88, 101, 255, 0.17);
+        color: #e7e9ff;
+    }
+    .preset-hint {
+        margin-top: 8px; font-size: 0.74rem; color: var(--text-muted);
     }
     .ios-switch { position: relative; display: inline-block; width: 48px; height: 26px; }
     .ios-switch input { opacity: 0; width: 0; height: 0; }
@@ -375,6 +505,113 @@ let consoleContainerId = null;
 let consolePollInterval = null;
 let deployJobId = null;
 let deployPollInterval = null;
+let activePreset = 'balanced-medium';
+
+const containerPresets = {
+    'balanced-small': {
+        ram: 512, swap: 1024, disk: 10, cpu: 512, cpu_limit: 0.5, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 128, shm: 64, restart: true
+    },
+    'balanced-medium': {
+        ram: 1024, swap: 2048, disk: 20, cpu: 1024, cpu_limit: 1.0, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 256, shm: 128, restart: true
+    },
+    'balanced-large': {
+        ram: 4096, swap: 8192, disk: 80, cpu: 2048, cpu_limit: 2.0, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true
+    },
+    'cpu-bound': {
+        ram: 2048, swap: 4096, disk: 30, cpu: 4096, cpu_limit: 4.0, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 128, restart: true
+    },
+    'memory-bound': {
+        ram: 8192, swap: 12288, disk: 40, cpu: 1024, cpu_limit: 1.5, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 256, shm: 512, restart: true
+    },
+    'io-bound': {
+        ram: 2048, swap: 4096, disk: 120, cpu: 1024, cpu_limit: 1.0, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true
+    },
+    'minecraft-java': {
+        ram: 6144, swap: 8192, disk: 40, cpu: 2048, cpu_limit: 2.0, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true,
+        image: 'itzg/minecraft-server:latest',
+        ports: '25565:25565',
+        command: '',
+        env: 'EULA=TRUE\\nTYPE=PAPER\\nMEMORY=4G',
+        volumes: '/srv/minecraft:/data:rw'
+    },
+    'game-server-steamcmd': {
+        ram: 4096, swap: 6144, disk: 80, cpu: 2048, cpu_limit: 2.0, cpuset: '',
+        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true,
+        image: 'cm2network/steamcmd:latest',
+        ports: '27015:27015/udp, 27016:27016/udp',
+        command: '/bin/bash',
+        env: 'TZ=UTC',
+        volumes: '/srv/game-server:/server:rw'
+    }
+};
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function escapeAttr(value) {
+    return escapeHtml(value).replaceAll('`', '&#96;');
+}
+
+function jsQuote(value) {
+    return String(value ?? '')
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'")
+        .replaceAll('\n', '\\n')
+        .replaceAll('\r', '\\r');
+}
+
+function safeDomId(value) {
+    return String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function setFieldValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value === null || value === undefined ? '' : String(value);
+}
+
+function applyContainerPreset(presetName) {
+    const preset = containerPresets[presetName];
+    if (!preset) return;
+
+    activePreset = presetName;
+    setFieldValue('cont_ram_input', preset.ram);
+    setFieldValue('cont_swap', preset.swap);
+    setFieldValue('cont_disk', preset.disk);
+    setFieldValue('cont_cpu', preset.cpu);
+    setFieldValue('cont_cpu_limit', preset.cpu_limit);
+    setFieldValue('cont_cpuset', preset.cpuset);
+    setFieldValue('cont_cpu_quota', preset.cpu_quota);
+    setFieldValue('cont_cpu_period', preset.cpu_period);
+    setFieldValue('cont_pids_limit', preset.pids_limit);
+    setFieldValue('cont_shm', preset.shm);
+    const restartEl = document.getElementById('cont_restart');
+    if (restartEl) restartEl.checked = !!preset.restart;
+    if (typeof preset.image === 'string') setFieldValue('cont_image', preset.image);
+    if (typeof preset.ports === 'string') setFieldValue('cont_ports', preset.ports);
+    if (typeof preset.command === 'string') setFieldValue('cont_command', preset.command);
+    if (typeof preset.env === 'string') setFieldValue('cont_env', preset.env);
+    if (typeof preset.volumes === 'string') setFieldValue('cont_volumes', preset.volumes);
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.preset === presetName);
+    });
+    const hint = document.getElementById('preset_hint');
+    if (hint) hint.textContent = `${presetName.replace('-', ' ')} profile applied`;
+}
 
 function toggleUserSelection(username) {
     if (selectedUsers.has(username)) selectedUsers.delete(username);
@@ -418,9 +655,11 @@ function renderUserPicker(searchText) {
         const row = document.createElement('div');
         row.className = `user-option${selectedUsers.has(user.username) ? ' is-selected' : ''}`;
         row.onclick = () => toggleUserSelection(user.username);
+        const usernameHtml = escapeHtml(user.username);
+        const dbHtml = escapeHtml(user.db);
         row.innerHTML = `
-            <div>${user.username}</div>
-            <div style="font-size:0.72rem; color: var(--text-muted);">${user.db}</div>
+            <div>${usernameHtml}</div>
+            <div style="font-size:0.72rem; color: var(--text-muted);">${dbHtml}</div>
         `;
         listEl.appendChild(row);
     });
@@ -562,7 +801,7 @@ async function fetchContainers(showLoader = false) {
 
         if (!response.ok) {
             const detail = (containers && containers.detail) ? containers.detail : 'Failed to sync with Nebula Core';
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#ff4f4f;">${detail}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#ff4f4f;">${escapeHtml(detail)}</td></tr>`;
             hasContainerTableRendered = true;
             return;
         }
@@ -591,47 +830,64 @@ async function fetchContainers(showLoader = false) {
             const row = document.createElement('tr');
             row.className = "table-row-hover";
             row.style.borderBottom = '1px solid var(--border)';
-            const encodedName = encodeURIComponent(cont.name || cont.id);
-            
-            const usersHtml = (cont.users || []).map((u, i) => 
-                `<div class="user-avatar-mini" style="margin-left: ${i === 0 ? '0' : '-8px'}; background: ${stringToColor(u)}" title="${u}">${u[0].toUpperCase()}</div>`
-            ).join('');
+            row.style.cursor = 'pointer';
+            const containerId = String(cont.id ?? '');
+            const containerName = String(cont.name || containerId);
+            const containerStatus = String(cont.status || 'unknown').toLowerCase();
+            const containerImage = String(cont.image || 'unknown');
+            const containerIdPath = encodeURIComponent(containerId);
+            const encodedName = encodeURIComponent(containerName);
+            const menuId = `drop-${safeDomId(containerId)}`;
+            const containerIdJs = jsQuote(containerId);
+            const color = containerStatus === 'running' ? '#4ade80' : '#ff4f4f';
+            const usersHtml = (cont.users || []).map((u, i) => {
+                const username = String(u || '');
+                const displayLetter = escapeHtml((username[0] || '?').toUpperCase());
+                return `<div class="user-avatar-mini" style="margin-left: ${i === 0 ? '0' : '-8px'}; background: ${stringToColor(username)}" title="${escapeAttr(username)}">${displayLetter}</div>`;
+            }).join('');
+            row.onclick = (event) => {
+                if (event.target.closest('.dropdown') || event.target.closest('a') || event.target.closest('button')) return;
+                window.location.href = `/containers/view/${containerIdPath}`;
+            };
 
             row.innerHTML = `
                 <td style="padding: 18px 24px;">
                     <div style="display:flex; align-items:center; gap:16px;">
                         <div class="container-icon-bg"><i class="bi bi-box-seam" style="color:var(--accent);"></i></div>
                         <div>
-                            <div style="font-weight:700; color:white; font-size:0.9rem;">${cont.name}</div>
-                            <div style="font-size:0.75rem; color:var(--text-muted);">ID: ${cont.id}</div>
+                            <div style="font-weight:700; color:white; font-size:0.9rem;">
+                                <a href="/containers/view/${containerIdPath}" style="color:inherit; text-decoration:none;">${escapeHtml(containerName)}</a>
+                            </div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">ID: ${escapeHtml(containerId)}</div>
                         </div>
                     </div>
                 </td>
                 <td style="padding: 18px 24px;">
-                    <span class="badge badge-user">${cont.image}</span>
+                    <span class="badge badge-user">${escapeHtml(containerImage)}</span>
                 </td>
                 <td style="padding: 18px 24px;">
                     <div style="display:flex;">${usersHtml}</div>
                 </td>
                 <td style="padding: 18px 24px;">
-                    <div style="display:flex; align-items:center; gap:10px; color:${cont.status === 'running' ? '#4ade80' : '#ff4f4f'}; font-size:0.8rem; font-weight:700;">
-                        <div class="pulse-dot" style="background:${cont.status === 'running' ? '#4ade80' : '#ff4f4f'}"></div> 
-                        ${cont.status.toUpperCase()}
+                    <div style="display:flex; align-items:center; gap:10px; color:${color}; font-size:0.8rem; font-weight:700;">
+                        <div class="pulse-dot" style="background:${color}"></div> 
+                        ${escapeHtml(containerStatus.toUpperCase())}
                     </div>
                 </td>
                 <td style="padding: 18px 24px; text-align: right;">
                     <div class="dropdown">
-                        <button class="action-btn" onclick="toggleMenu(event, '${cont.id}')">
+                        <button class="action-btn" onclick="toggleMenu(event, '${menuId}')">
                             <i class="bi bi-three-dots"></i>
                         </button>
-                        <div id="drop-${cont.id}" class="dropdown-content">
-                            <a href="javascript:void(0)" onclick="openConsoleModal('${cont.id}', decodeURIComponent('${encodedName}')); return false;"><i class="bi bi-terminal"></i> Console</a>
-                            <a href="javascript:void(0)" onclick="startContainer('${cont.id}'); return false;"><i class="bi bi-play-fill"></i> Start</a>
-                            <a href="javascript:void(0)" onclick="stopContainer('${cont.id}'); return false;"><i class="bi bi-stop-fill"></i> Stop</a>
-                            <a href="javascript:void(0)" onclick="restartContainer('${cont.id}'); return false;"><i class="bi bi-arrow-clockwise"></i> Restart</a>
+                        <div id="${menuId}" class="dropdown-content">
+                            <a href="/containers/view/${containerIdPath}"><i class="bi bi-window-sidebar"></i> Container Mode</a>
+                            <a href="javascript:void(0)" onclick="openConsoleModal('${containerIdJs}', decodeURIComponent('${encodedName}')); return false;"><i class="bi bi-terminal"></i> Console</a>
+                            <a href="javascript:void(0)" onclick="startContainer('${containerIdJs}'); return false;"><i class="bi bi-play-fill"></i> Start</a>
+                            <a href="javascript:void(0)" onclick="stopContainer('${containerIdJs}'); return false;"><i class="bi bi-stop-fill"></i> Stop</a>
+                            <a href="javascript:void(0)" onclick="restartContainer('${containerIdJs}'); return false;"><i class="bi bi-arrow-clockwise"></i> Restart</a>
                             ${isStaff ? `
                             <hr style="border:0; border-top:1px solid var(--border); margin:6px 0;">
-                            <a href="javascript:void(0)" style="color:#ff6b6b;" onclick="deleteContainer('${cont.id}'); return false;"><i class="bi bi-trash3"></i> Delete</a>
+                            <a href="javascript:void(0)" style="color:#ff6b6b;" onclick="deleteContainer('${containerIdJs}'); return false;"><i class="bi bi-trash3"></i> Delete</a>
                             ` : ''}
                         </div>
                     </div>
@@ -800,9 +1056,21 @@ async function saveContainer() {
         name: document.getElementById('cont_name').value,
         image: document.getElementById('cont_image').value,
         ram: parseInt(document.getElementById('cont_ram_input').value),
+        swap: parseInt(document.getElementById('cont_swap').value),
+        disk: parseInt(document.getElementById('cont_disk').value),
         cpu: parseInt(document.getElementById('cont_cpu').value),
+        cpu_limit: parseFloat(document.getElementById('cont_cpu_limit').value),
+        cpuset: document.getElementById('cont_cpuset').value,
+        cpu_quota: parseInt(document.getElementById('cont_cpu_quota').value),
+        cpu_period: parseInt(document.getElementById('cont_cpu_period').value),
+        pids_limit: parseInt(document.getElementById('cont_pids_limit').value),
+        shm: parseInt(document.getElementById('cont_shm').value),
         ports: document.getElementById('cont_ports').value,
+        command: document.getElementById('cont_command').value,
+        env: document.getElementById('cont_env').value,
+        volumes: document.getElementById('cont_volumes').value,
         restart: document.getElementById('cont_restart').checked,
+        preset: activePreset,
         users: Array.from(selectedUsers)
     };
 
@@ -847,7 +1115,7 @@ function stringToColor(str) {
 
 function toggleMenu(e, id) {
     e.stopPropagation();
-    const menu = document.getElementById('drop-' + id);
+    const menu = document.getElementById(id);
     document.querySelectorAll('.dropdown-content').forEach(d => { if(d !== menu) d.classList.remove('show'); });
     menu.classList.toggle('show');
 }
@@ -857,6 +1125,13 @@ function openCreateModal() {
     selectedUsers = new Set();
     const search = document.getElementById('cont_user_search');
     if (search) search.value = '';
+    document.getElementById('cont_name').value = '';
+    document.getElementById('cont_image').value = 'ubuntu:latest';
+    document.getElementById('cont_ports').value = '';
+    document.getElementById('cont_command').value = '';
+    document.getElementById('cont_env').value = '';
+    document.getElementById('cont_volumes').value = '';
+    applyContainerPreset('balanced-medium');
     renderUserPicker('');
     document.getElementById('containerModal').style.display = 'flex';
 }

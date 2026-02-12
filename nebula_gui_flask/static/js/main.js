@@ -1,5 +1,18 @@
 // static/js/main.js — WORK WIDTH api_metrics
 function updateMetrics() {
+    const cpuEl = document.getElementById('cpu');
+    const ramEl = document.getElementById('ram');
+    const diskEl = document.getElementById('disk');
+    const networkEl = document.getElementById('network');
+    const containersEl = document.getElementById('containers');
+    const serversEl = document.getElementById('servers');
+    const alertsEl = document.getElementById('alerts');
+    const tasksEl = document.getElementById('tasks');
+
+    if (!cpuEl || !ramEl || !diskEl || !networkEl || !containersEl || !serversEl || !alertsEl || !tasksEl) {
+        return;
+    }
+
     fetch('/api/metrics')
         .then(r => {
             if (!r.ok) throw new Error();
@@ -13,15 +26,15 @@ function updateMetrics() {
 
             document.body.style.opacity = "1";
 
-            document.getElementById('cpu').textContent = data.cpu || "—";
-            document.getElementById('ram').textContent = data.ram || "—";
-            document.getElementById('disk').textContent = data.disk || "—";
-            document.getElementById('network').textContent = data.network || "—";
+            cpuEl.textContent = data.cpu || "—";
+            ramEl.textContent = data.ram || "—";
+            diskEl.textContent = data.disk || "—";
+            networkEl.textContent = data.network || "—";
             
-            document.getElementById('containers').textContent = data.containers || "0";
-            document.getElementById('servers').textContent = data.servers || "0";
-            document.getElementById('alerts').textContent = data.alerts || "0";
-            document.getElementById('tasks').textContent = data.tasks || "0";
+            containersEl.textContent = data.containers || "0";
+            serversEl.textContent = data.servers || "0";
+            alertsEl.textContent = data.alerts || "0";
+            tasksEl.textContent = data.tasks || "0";
         })
         .catch(() => {
             setUIOffline();
@@ -48,11 +61,17 @@ function toggleUserMenu(e) {
 }
 
 function openProfile() {
-    alert('Open Profile — placeholder');
+    window.location.href = '/userpanel';
 }
 
 function openSettings() {
-    alert('Open Settings — placeholder');
+    const userNameEl = document.querySelector('.user-nick');
+    const username = userNameEl ? userNameEl.textContent.trim() : '';
+    if (username) {
+        window.location.href = `/users/view/${encodeURIComponent(username)}`;
+        return;
+    }
+    window.location.href = '/userpanel';
 }
 
 // Close user menu on outside click

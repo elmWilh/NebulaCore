@@ -4,22 +4,30 @@ from flask import session, redirect, url_for, jsonify, abort
 from functools import wraps
 
 class NebulaBridge:
-    def __init__(self, ports=[8000, 8080, 5000]):
+    def __init__(self, ports=[8000, 8080]):
         self.core_url = self._detect_core(ports)
 
     def _detect_core(self, ports):
         for port in ports:
             try:
                 with socket.create_connection(("127.0.0.1", port), timeout=1):
-                    return f"http://127.0.0.1:{port}"
+                    candidate = f"http://127.0.0.1:{port}"
+                    # Avoid false-positive socket matches; confirm target looks like Nebula Core.
+                    probe = requests.get(f"{candidate}/system/status", timeout=1.5)
+                    if probe.status_code == 200:
+                        data = probe.json()
+                        if isinstance(data, dict) and "status" in data and "system" in data:
+                            return candidate
             except (OSError, ConnectionRefusedError):
+                continue
+            except Exception:
                 continue
         return "http://127.0.0.1:8000"
 
     def login_required(self, f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if 'user_id' not in session:
+            if 'user_id' not in session or not session.get("core_session"):
                 return redirect(url_for('admin_login'))
             return f(*args, **kwargs)
         return decorated_function
@@ -45,21 +53,32 @@ class NebulaBridge:
         except Exception:
             return None
 
-    def admin_auth(self, admin_id, secure_key):
+    def admin_auth(self, admin_id, secure_key, otp=None):
         try:
+            payload = {"admin_id": admin_id, "secure_key": secure_key}
+            if otp:
+                payload["otp"] = otp
             r = requests.post(
                 f"{self.core_url}/system/internal/core/login",
-                data={"admin_id": admin_id, "secure_key": secure_key},
+                data=payload,
                 allow_redirects=False,
                 timeout=5
             )
             if r.status_code in [200, 303]:
+                core_session = r.cookies.get("nebula_session")
+                if not core_session:
+                    return False, "Core session not established"
                 session.permanent = True
                 session['user_id'] = admin_id
                 session['is_staff'] = True
                 session['db_name'] = 'system.db'
+                session['core_session'] = core_session
                 return True, None
-            return False, "INVALID_ACCESS_KEY"
+            try:
+                detail = r.json().get("detail", "INVALID_ACCESS_KEY")
+            except Exception:
+                detail = "INVALID_ACCESS_KEY"
+            return False, detail
         except Exception as e:
             return False, str(e)
 
@@ -77,27 +96,41 @@ class NebulaBridge:
         except:
             return None, None
 
-    def user_auth(self, username, password, db_name):
+    def user_auth(self, username, password, db_name, otp=None):
         try:
+            payload = {"username": username, "password": password}
+            if otp:
+                payload["otp"] = otp
             r = requests.post(
                 f"{self.core_url}/users/login",
                 params={"db_name": db_name},
-                data={"username": username, "password": password},
+                data=payload,
                 timeout=5
             )
             if r.status_code == 200:
+                core_session = r.cookies.get("nebula_session")
+                if not core_session:
+                    return False, "Core session not established"
                 session.permanent = True
                 session['user_id'] = username
                 session['is_staff'] = False
                 session['db_name'] = db_name
+                session['core_session'] = core_session
                 return True, None
-            return False, "INVALID_CREDENTIALS"
+            try:
+                detail = r.json().get("detail", "INVALID_CREDENTIALS")
+            except Exception:
+                detail = "INVALID_CREDENTIALS"
+            return False, detail
         except Exception as e:
             return False, str(e)
 
     def proxy_request(self, method, endpoint, params=None, json_data=None, form_data=None):
         url = f"{self.core_url}{endpoint}"
-        cookies = {"nebula_session": f"{session.get('user_id')}:{session.get('db_name')}"}
+        core_session = session.get("core_session")
+        if not core_session:
+            return {"detail": "No active core session"}, 401
+        cookies = {"nebula_session": core_session}
         
         try:
             r = requests.request(

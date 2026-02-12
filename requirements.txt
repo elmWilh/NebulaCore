@@ -6,5 +6,6 @@ pydantic-settings
 PyYAML
 psutil
 bcrypt
+pyotp
 
 docker

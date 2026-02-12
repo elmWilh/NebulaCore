@@ -1,12 +1,14 @@
 # nebula_core/api/admin.py
 import os
 from typing import Annotated
-from fastapi import APIRouter, HTTPException, Header, Depends, Request, Form
+from fastapi import APIRouter, HTTPException, Header, Depends, Request, Form, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, StringConstraints, Field
 
 from ..db import get_connection, SYSTEM_DB
 from ..services.user_service import UserService
+from .security import create_session_token
+import pyotp
 
 router = APIRouter(prefix="/system/internal/core", tags=["System-Security"])
 user_service = UserService()
@@ -41,8 +43,10 @@ async def get_login_page(request: Request):
 @router.post("/login")
 async def process_login(
     request: Request,
+    response: Response,
     admin_id: str = Form(...),
-    secure_key: str = Form(...)
+    secure_key: str = Form(...),
+    otp: str = Form(default="")
 ):
     with get_connection(SYSTEM_DB) as conn:
         user = conn.execute(
@@ -53,6 +57,21 @@ async def process_login(
         if not user or not user_service.verify_password(secure_key, user["password_hash"]):
             raise HTTPException(status_code=401, detail="INVALID_ACCESS_KEY")
 
+        if bool(user["two_factor_enabled"]):
+            if not otp or len(otp.strip()) == 0:
+                raise HTTPException(status_code=401, detail="2FA_REQUIRED")
+            if not user["two_factor_secret"] or not pyotp.TOTP(user["two_factor_secret"]).verify(otp.strip(), valid_window=1):
+                raise HTTPException(status_code=401, detail="INVALID_2FA_CODE")
+
+        secure_cookie = os.getenv("NEBULA_COOKIE_SECURE", "false").strip().lower() == "true"
+        response.set_cookie(
+            key="nebula_session",
+            value=create_session_token(username=admin_id, db_name="system.db"),
+            httponly=True,
+            max_age=3600,
+            samesite="Lax",
+            secure=secure_cookie,
+        )
         return {"status": "authorized", "admin_id": admin_id}
 
 @router.post("/init-admin")

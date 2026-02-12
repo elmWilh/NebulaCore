@@ -1,0 +1,412 @@
+{% extends "layout.html" %}
+{% block page_content %}
+<div class="container-fluid" style="padding: 32px; max-width: 1400px; margin: 0 auto;">
+    <div class="profile-header-card">
+        <div style="display: flex; align-items: center; gap: 24px;">
+            <div class="avatar-circle"><span id="avatar-initial">{{ (username or 'U')[0]|upper }}</span></div>
+            <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <h1 style="margin: 0; font-weight: 800; color: white; font-size: 1.8rem;">{{ username }}</h1>
+                    <span class="badge {{ 'badge-admin' if is_staff else 'badge-user' }}">{{ 'ADMIN' if is_staff else 'USER' }}</span>
+                </div>
+                <div style="display: flex; gap: 20px; color: var(--text-muted); font-size: 0.88rem;">
+                    <span><i class="bi bi-hdd-network" style="margin-right: 6px;"></i> Sector: <span id="panel-db">{{ session.get('db_name') }}</span></span>
+                    <span><i class="bi bi-box" style="margin-right: 6px;"></i> Containers: <span id="panel-containers">0</span></span>
+                </div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <button class="btn-secondary" id="btn-2fa"><i class="bi bi-shield-lock"></i> 2FA</button>
+            <a class="add-user-btn" href="{{ url_for('view_user_page', username=username) }}?db_name={{ session.get('db_name') }}"><i class="bi bi-gear-fill"></i> Account Settings</a>
+        </div>
+    </div>
+
+    <div class="stats-row">
+        <div class="stat-box"><span>Running</span><strong id="stat-running">0</strong></div>
+        <div class="stat-box"><span>Total</span><strong id="stat-total">0</strong></div>
+        <div class="stat-box"><span>CPU</span><strong id="stat-cpu">0%</strong></div>
+        <div class="stat-box"><span>RAM</span><strong id="stat-ram">0%</strong></div>
+        <div class="stat-box"><span>Databases</span><strong id="stat-db">0</strong></div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="dashboard-col">
+            <h3 class="section-title">Active Resources</h3>
+            <div class="table-card">
+                <div class="card-header">Deployed Containers</div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr class="table-header-row">
+                            <th style="padding: 14px 20px;">Name</th>
+                            <th style="padding: 14px 20px;">Image</th>
+                            <th style="padding: 14px 20px;">Access</th>
+                            <th style="padding: 14px 20px;">State</th>
+                            <th style="padding: 14px 20px; text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="containers-tbody">
+                        <tr><td colspan="5" style="padding: 20px; color: var(--text-muted);">Loading containers...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-card" style="margin-top: 20px;">
+                <div class="card-header">Database Clusters</div>
+                <div id="db-list" style="padding: 18px; display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px;">
+                    <div class="db-node">Loading databases...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-col" style="flex: 0 0 380px;">
+            <h3 class="section-title">Security Audit</h3>
+            <div class="table-card" style="padding: 0;">
+                <div class="card-header">Recent Activity</div>
+                <div class="log-list" id="audit-list">
+                    <div class="log-item"><div style="color: var(--text-muted);">Loading activity...</div></div>
+                </div>
+                {% if is_staff %}
+                <a href="/logs" class="view-all-logs">View Full Audit Trail <i class="bi bi-arrow-right"></i></a>
+                {% else %}
+                <a href="#" class="view-all-logs" onclick="return false;">Audit trail requires staff access</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="logs-modal" class="modal-overlay" onclick="if(event.target===this){closeLogsModal();}">
+    <div class="modal-content" style="max-width: 980px; width: 92%;">
+        <div class="modal-header">
+            <h3 style="margin: 0; color: white; font-size: 1rem;">Container Logs: <span id="logs-title"></span></h3>
+            <button class="btn-secondary" onclick="closeLogsModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <pre id="logs-content" style="margin: 0; padding: 16px; max-height: 70vh; overflow: auto; font-size: 0.8rem; color: #d6d6d6; background: #050507; border-top: 1px solid var(--border);"></pre>
+    </div>
+</div>
+
+<div id="twofa-modal" class="modal-overlay" onclick="if(event.target===this){close2FAModal();}">
+    <div class="modal-content" style="max-width: 560px; width: 92%;">
+        <div class="modal-header">
+            <h3 style="margin: 0; color: white; font-size: 1rem;">Two-Factor Authentication</h3>
+            <button class="btn-secondary" onclick="close2FAModal()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div style="padding: 16px;">
+            <div id="twofa-status" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 14px;">Loading status...</div>
+            <div id="twofa-setup-box" style="display:none;">
+                <p style="margin: 0 0 12px; color: #d1d1d1; font-size: 0.86rem;">
+                    1) Scan QR in Google Authenticator, 2) enter 6-digit code to confirm.
+                </p>
+                <div id="twofa-qr" style="width:220px;height:220px;background:white;padding:8px;border-radius:10px;margin-bottom:10px;"></div>
+                <code id="twofa-secret" style="display:block; margin-bottom:12px; color:#4ade80; font-size:0.78rem;"></code>
+                <div style="display:flex; gap:8px;">
+                    <input id="twofa-code" type="text" maxlength="6" placeholder="123456" style="flex:1; background:#050507;border:1px solid var(--border);color:white;border-radius:10px;padding:10px 12px;">
+                    <button class="add-user-btn" onclick="confirm2FA()">Confirm</button>
+                </div>
+            </div>
+            <div id="twofa-disable-box" style="display:none;">
+                <p style="margin: 0 0 10px; color: #d1d1d1; font-size: 0.86rem;">2FA enabled. Enter current code to disable.</p>
+                <div style="display:flex; gap:8px;">
+                    <input id="twofa-disable-code" type="text" maxlength="6" placeholder="123456" style="flex:1; background:#050507;border:1px solid var(--border);color:white;border-radius:10px;padding:10px 12px;">
+                    <button class="btn-secondary" onclick="disable2FA()">Disable</button>
+                </div>
+            </div>
+            <div id="twofa-error" style="display:none; margin-top:10px; color:#ff6b6b; font-size:0.82rem;"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashboard-grid { display: flex; gap: 24px; margin-top: 24px; }
+    .dashboard-col { flex: 1; }
+    .profile-header-card {
+        background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+        padding: 28px; display: flex; justify-content: space-between; align-items: center;
+        background-image: radial-gradient(circle at top right, rgba(88, 101, 255, 0.08), transparent);
+    }
+    .avatar-circle {
+        width: 76px; height: 76px; border-radius: 18px; background: linear-gradient(135deg, var(--accent), #2f8eff);
+        display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 1.8rem;
+    }
+    .stats-row { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+    .stat-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+    .stat-box span { color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; }
+    .stat-box strong { display: block; color: white; font-size: 1.05rem; margin-top: 4px; }
+
+    .section-title { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin: 14px 0; }
+    .card-header { padding: 14px 18px; color: white; font-weight: 700; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+
+    .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .db-node {
+        background: #060609; border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+        display: flex; align-items: center; justify-content: space-between; gap: 10px; color: white;
+    }
+    .db-node a { color: var(--accent); text-decoration: none; font-size: 0.8rem; }
+
+    .status-pill { padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+    .status-running { color: #4ade80; background: rgba(74, 222, 128, 0.12); }
+    .status-stopped { color: #f87171; background: rgba(248, 113, 113, 0.12); }
+
+    .btn-mini {
+        border: 1px solid var(--border); background: #0f1016; color: #ddd; border-radius: 8px;
+        font-size: 0.72rem; padding: 6px 8px; cursor: pointer;
+    }
+    .btn-mini:hover { border-color: var(--accent); color: white; }
+
+    .log-list { padding: 8px 0; }
+    .log-item { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; }
+    .log-level { width: 54px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+    .view-all-logs { display: block; text-align: center; padding: 12px; color: var(--accent); text-decoration: none; font-size: 0.8rem; }
+
+    .badge { font-size: 0.66rem; font-weight: 700; border-radius: 6px; padding: 3px 8px; }
+    .badge-admin { background: rgba(88, 101, 255, 0.15); color: #8ba0ff; border: 1px solid rgba(88, 101, 255, 0.3); }
+    .badge-user { background: rgba(255,255,255,0.06); color: #d0d0d0; border: 1px solid var(--border); }
+
+    .btn-secondary {
+        background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: white;
+        border-radius: 10px; padding: 10px 14px; cursor: pointer; text-decoration: none;
+    }
+    .add-user-btn {
+        background: var(--accent); color: white; text-decoration: none; border-radius: 10px;
+        padding: 10px 14px; border: none;
+    }
+
+    .modal-overlay {
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+        align-items: center; justify-content: center; z-index: 9999;
+    }
+    .modal-content { background: #0d0d12; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; }
+
+    @media (max-width: 1100px) {
+        .dashboard-grid { flex-direction: column; }
+        .stats-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+let panelData = null;
+let twoFAEnabled = false;
+
+function statusClass(status) {
+    return String(status || '').toLowerCase() === 'running' ? 'status-running' : 'status-stopped';
+}
+
+function renderStats(stats) {
+    document.getElementById('panel-containers').textContent = `${stats.running_containers}/${stats.total_containers}`;
+    document.getElementById('stat-running').textContent = stats.running_containers;
+    document.getElementById('stat-total').textContent = stats.total_containers;
+    document.getElementById('stat-cpu').textContent = `${stats.cpu_percent}%`;
+    document.getElementById('stat-ram').textContent = `${stats.memory_percent}%`;
+    document.getElementById('stat-db').textContent = stats.databases_count;
+}
+
+function renderContainers(containers) {
+    const tbody = document.getElementById('containers-tbody');
+    if (!Array.isArray(containers) || containers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; color: var(--text-muted);">No containers available</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = '';
+    containers.forEach(cont => {
+        const users = Array.isArray(cont.users) ? cont.users.join(', ') : '-';
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td style="padding: 14px 20px;"><div style="color:white;font-weight:600;">${cont.name}</div><div style="font-size:0.72rem;color:var(--text-muted);">${cont.id}</div></td>
+            <td style="padding: 14px 20px; color:#cfcfcf;">${cont.image || '-'}</td>
+            <td style="padding: 14px 20px; color:#cfcfcf;">${users || '-'}</td>
+            <td style="padding: 14px 20px;"><span class="status-pill ${statusClass(cont.status)}">${cont.status || 'unknown'}</span></td>
+            <td style="padding: 14px 20px; text-align:right; display:flex; gap:6px; justify-content:flex-end;">
+                <button class="btn-mini" onclick="openLogs('${cont.id}','${cont.name}')">Logs</button>
+                <button class="btn-mini" onclick="containerAction('restart','${cont.id}')">Restart</button>
+                <button class="btn-mini" onclick="containerAction('${String(cont.status).toLowerCase()==='running' ? 'stop' : 'start'}','${cont.id}')">${String(cont.status).toLowerCase()==='running' ? 'Stop' : 'Start'}</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function renderDatabases(databases) {
+    const target = document.getElementById('db-list');
+    if (!Array.isArray(databases) || databases.length === 0) {
+        target.innerHTML = '<div class="db-node">No databases found</div>';
+        return;
+    }
+
+    target.innerHTML = databases.map(db => {
+        const dbClean = String(db).replace(/\.db$/,'');
+        const openHref = panelData && panelData.is_staff
+            ? '/users'
+            : `/users/view/${encodeURIComponent(panelData.username)}?db_name=${encodeURIComponent(panelData.db_name)}`;
+        return `<div class="db-node"><div><div style="font-weight:600;">${db}</div><div style="font-size:0.73rem;color:var(--text-muted);">Client sector: ${dbClean}</div></div><a href="${openHref}">Open</a></div>`;
+    }).join('');
+}
+
+function renderActivity(activity) {
+    const target = document.getElementById('audit-list');
+    if (!Array.isArray(activity) || activity.length === 0) {
+        target.innerHTML = '<div class="log-item"><div style="color:var(--text-muted);">No activity yet</div></div>';
+        return;
+    }
+
+    target.innerHTML = activity.slice(0, 8).map(item => `
+        <div class="log-item">
+            <div class="log-level">${item.level || 'INFO'}</div>
+            <div style="flex:1;">
+                <div style="color:white; font-size:0.82rem;">${item.message || '-'}</div>
+                <div style="color:var(--text-muted); font-size:0.72rem;">${item.iso || '-'}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function loadUserPanel() {
+    const res = await fetch('/api/userpanel/overview');
+    const data = await res.json();
+    if (!res.ok) {
+        throw new Error(data.detail || 'Unable to load profile overview');
+    }
+    panelData = data;
+    document.getElementById('panel-db').textContent = data.db_name || '-';
+    renderStats(data.stats || {});
+    renderContainers(data.containers || []);
+    renderDatabases(data.databases || []);
+    renderActivity(data.activity || []);
+    await refresh2FAStatus();
+}
+
+async function containerAction(action, containerId) {
+    const res = await fetch(`/api/containers/${action}/${containerId}`, { method: 'POST' });
+    const payload = await res.json();
+    if (!res.ok) {
+        alert(payload.detail || `Action ${action} failed`);
+        return;
+    }
+    await loadUserPanel();
+}
+
+async function openLogs(containerId, name) {
+    document.getElementById('logs-title').textContent = name;
+    document.getElementById('logs-content').textContent = 'Loading logs...';
+    document.getElementById('logs-modal').style.display = 'flex';
+    const res = await fetch(`/api/containers/logs/${containerId}?tail=250`);
+    const payload = await res.json();
+    if (!res.ok) {
+        document.getElementById('logs-content').textContent = payload.detail || 'Logs unavailable';
+        return;
+    }
+    document.getElementById('logs-content').textContent = payload.logs || 'No logs';
+}
+
+function closeLogsModal() {
+    document.getElementById('logs-modal').style.display = 'none';
+}
+
+async function refresh2FAStatus() {
+    const res = await fetch('/api/user/2fa/status');
+    const payload = await res.json();
+    twoFAEnabled = !!(res.ok && payload.enabled);
+    document.getElementById('btn-2fa').innerHTML = twoFAEnabled
+        ? '<i class="bi bi-shield-check"></i> 2FA Enabled'
+        : '<i class="bi bi-shield-lock"></i> Enable 2FA';
+}
+
+function show2FAError(message) {
+    const el = document.getElementById('twofa-error');
+    el.textContent = message || 'Operation failed';
+    el.style.display = 'block';
+}
+
+function clear2FAError() {
+    const el = document.getElementById('twofa-error');
+    el.textContent = '';
+    el.style.display = 'none';
+}
+
+function close2FAModal() {
+    document.getElementById('twofa-modal').style.display = 'none';
+}
+
+async function open2FAModal() {
+    clear2FAError();
+    document.getElementById('twofa-modal').style.display = 'flex';
+    await refresh2FAStatus();
+    document.getElementById('twofa-status').textContent = twoFAEnabled ? 'Status: enabled' : 'Status: disabled';
+    document.getElementById('twofa-disable-box').style.display = twoFAEnabled ? 'block' : 'none';
+    document.getElementById('twofa-setup-box').style.display = twoFAEnabled ? 'none' : 'block';
+    if (!twoFAEnabled) {
+        await setup2FA();
+    }
+}
+
+async function setup2FA() {
+    clear2FAError();
+    const res = await fetch('/api/user/2fa/setup', { method: 'POST' });
+    const payload = await res.json();
+    if (!res.ok) {
+        show2FAError(payload.detail || 'Unable to start setup');
+        return;
+    }
+    document.getElementById('twofa-secret').textContent = `Secret: ${payload.secret}`;
+    const qrTarget = document.getElementById('twofa-qr');
+    qrTarget.innerHTML = '';
+    new QRCode(qrTarget, {
+        text: payload.otpauth_uri,
+        width: 204,
+        height: 204
+    });
+}
+
+async function confirm2FA() {
+    clear2FAError();
+    const code = document.getElementById('twofa-code').value.trim();
+    const res = await fetch('/api/user/2fa/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+        show2FAError(payload.detail || 'Invalid code');
+        return;
+    }
+    await refresh2FAStatus();
+    document.getElementById('twofa-status').textContent = 'Status: enabled';
+    document.getElementById('twofa-disable-box').style.display = 'block';
+    document.getElementById('twofa-setup-box').style.display = 'none';
+}
+
+async function disable2FA() {
+    clear2FAError();
+    const code = document.getElementById('twofa-disable-code').value.trim();
+    const res = await fetch('/api/user/2fa/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+    });
+    const payload = await res.json();
+    if (!res.ok) {
+        show2FAError(payload.detail || 'Invalid code');
+        return;
+    }
+    await refresh2FAStatus();
+    document.getElementById('twofa-status').textContent = 'Status: disabled';
+    document.getElementById('twofa-disable-box').style.display = 'none';
+    document.getElementById('twofa-setup-box').style.display = 'block';
+    document.getElementById('twofa-disable-code').value = '';
+    await setup2FA();
+}
+
+document.getElementById('btn-2fa').addEventListener('click', open2FAModal);
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        await loadUserPanel();
+    } catch (e) {
+        document.getElementById('containers-tbody').innerHTML = `<tr><td colspan="5" style="padding:20px;color:#ff6b6b;">${e.message}</td></tr>`;
+    }
+});
+</script>
+{% endblock %}

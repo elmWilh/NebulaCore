@@ -34,8 +34,8 @@
               </div>
             </div>
             <div class="user-actions">
-              <a href="#" onclick="openProfile(); return false;"><i class="bi bi-person"></i> Profile</a>
-              <a href="#" onclick="openSettings(); return false;"><i class="bi bi-gear"></i> Settings</a>
+              <a href="{{ url_for('user_panel_page') }}"><i class="bi bi-person"></i> Profile</a>
+              <a href="{{ url_for('view_user_page', username=session.get('user_id')) }}?db_name={{ session.get('db_name') }}"><i class="bi bi-gear"></i> Settings</a>
               <a href="/logout" class="logout-link"><i class="bi bi-box-arrow-right"></i> Sign out</a>
             </div>
           </div>

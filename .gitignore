@@ -52,3 +52,7 @@ Thumbs.db
 .env.*
 storage/databases/clients/system.db
 nebula_core/api/__pycache__/system.cpython-313.pyc
+storage/databases/system.db
+storage/databases/clients/cluster_user.db
+storage/databases/system.db
+storage/databases/
