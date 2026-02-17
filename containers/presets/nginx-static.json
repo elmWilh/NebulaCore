@@ -1,0 +1,31 @@
+{
+  "name": "nginx-static",
+  "title": "Nginx Static Site",
+  "description": "Static site hosting with Nginx",
+  "config": {
+    "image": "nginx:stable",
+    "ram": 512,
+    "swap": 1024,
+    "disk": 10,
+    "cpu": 512,
+    "cpu_limit": 0.7,
+    "cpuset": "",
+    "cpu_quota": "",
+    "cpu_period": "",
+    "pids_limit": 128,
+    "shm": 64,
+    "ports": "8080:80",
+    "command": "",
+    "env": "TZ=UTC",
+    "volumes": "/srv/nginx-static:/usr/share/nginx/html:rw",
+    "workspace_mount": "/usr/share/nginx/html",
+    "explorer_root": "/usr/share/nginx/html",
+    "console_cwd": "/usr/share/nginx/html",
+    "profile_name": "nginx-static",
+    "restart": true
+  },
+  "permissions": {
+    "user": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": false, "allow_shell": false, "allow_settings": false, "allow_edit_files": false, "allow_edit_startup": false, "allow_edit_ports": false },
+    "developer": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": true, "allow_shell": true, "allow_settings": true, "allow_edit_files": true, "allow_edit_startup": true, "allow_edit_ports": true }
+  }
+}

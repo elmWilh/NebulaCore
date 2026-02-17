@@ -7,7 +7,7 @@
             <div>
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                     <h1 style="margin: 0; font-weight: 800; color: white; font-size: 1.8rem;">{{ username }}</h1>
-                    <span class="badge {{ 'badge-admin' if is_staff else 'badge-user' }}">{{ 'ADMIN' if is_staff else 'USER' }}</span>
+                    <span id="panel-role-badge" class="badge {{ 'badge-admin' if is_staff else 'badge-user' }}">{{ 'ADMIN' if is_staff else 'USER' }}</span>
                 </div>
                 <div style="display: flex; gap: 20px; color: var(--text-muted); font-size: 0.88rem;">
                     <span><i class="bi bi-hdd-network" style="margin-right: 6px;"></i> Sector: <span id="panel-db">{{ session.get('db_name') }}</span></span>
@@ -179,8 +179,16 @@
     .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; }
 
     @media (max-width: 1100px) {
+        .profile-header-card {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 16px;
+        }
         .dashboard-grid { flex-direction: column; }
         .stats-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 640px) {
+        .stats-row { grid-template-columns: 1fr; }
     }
 </style>
 
@@ -269,6 +277,13 @@ async function loadUserPanel() {
         throw new Error(data.detail || 'Unable to load profile overview');
     }
     panelData = data;
+    const roleBadge = document.getElementById('panel-role-badge');
+    if (roleBadge) {
+        const tag = String(data.role_tag || (data.is_staff ? 'admin' : 'user')).toUpperCase();
+        roleBadge.textContent = tag;
+        roleBadge.classList.toggle('badge-admin', !!data.is_staff);
+        roleBadge.classList.toggle('badge-user', !data.is_staff);
+    }
     document.getElementById('panel-db').textContent = data.db_name || '-';
     renderStats(data.stats || {});
     renderContainers(data.containers || []);

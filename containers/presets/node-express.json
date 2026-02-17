@@ -1,0 +1,31 @@
+{
+  "name": "node-express",
+  "title": "Node Express",
+  "description": "Node.js/Express API preset",
+  "config": {
+    "image": "node:20-alpine",
+    "ram": 1024,
+    "swap": 2048,
+    "disk": 20,
+    "cpu": 1024,
+    "cpu_limit": 1.0,
+    "cpuset": "",
+    "cpu_quota": "",
+    "cpu_period": "",
+    "pids_limit": 256,
+    "shm": 128,
+    "ports": "3000:3000",
+    "command": "npm run start",
+    "env": "NODE_ENV=production\nPORT=3000",
+    "volumes": "/srv/node-express:/app:rw",
+    "workspace_mount": "/app",
+    "explorer_root": "/app",
+    "console_cwd": "/app",
+    "profile_name": "node-express",
+    "restart": true
+  },
+  "permissions": {
+    "user": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": true, "allow_shell": false, "allow_settings": false, "allow_edit_files": false, "allow_edit_startup": false, "allow_edit_ports": false },
+    "developer": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": true, "allow_shell": true, "allow_settings": true, "allow_edit_files": true, "allow_edit_startup": true, "allow_edit_ports": true }
+  }
+}

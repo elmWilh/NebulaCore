@@ -1,0 +1,31 @@
+{
+  "name": "mysql-db",
+  "title": "MySQL",
+  "description": "MySQL database preset",
+  "config": {
+    "image": "mysql:8",
+    "ram": 2048,
+    "swap": 4096,
+    "disk": 40,
+    "cpu": 1024,
+    "cpu_limit": 1.5,
+    "cpuset": "",
+    "cpu_quota": "",
+    "cpu_period": "",
+    "pids_limit": 256,
+    "shm": 256,
+    "ports": "3306:3306",
+    "command": "",
+    "env": "MYSQL_ROOT_PASSWORD=change_me\nMYSQL_DATABASE=appdb",
+    "volumes": "/srv/mysql:/var/lib/mysql:rw",
+    "workspace_mount": "/var/lib/mysql",
+    "explorer_root": "/var/lib/mysql",
+    "console_cwd": "/var/lib/mysql",
+    "profile_name": "mysql-db",
+    "restart": true
+  },
+  "permissions": {
+    "user": { "allow_explorer": false, "allow_root_explorer": false, "allow_console": false, "allow_shell": false, "allow_settings": false, "allow_edit_files": false, "allow_edit_startup": false, "allow_edit_ports": false },
+    "developer": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": true, "allow_shell": true, "allow_settings": true, "allow_edit_files": true, "allow_edit_startup": true, "allow_edit_ports": true }
+  }
+}

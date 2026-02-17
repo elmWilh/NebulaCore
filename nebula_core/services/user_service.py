@@ -7,13 +7,14 @@ class UserService:
     def create_user(self, conn, data: UserCreate) -> User:
         password_hash = self.hash_password(data.password)
         is_staff = 1 if getattr(data, 'is_staff', False) else 0
+        email = str(getattr(data, 'email', '') or '').strip() or None
         
         cursor = conn.execute(
-            "INSERT INTO users (username, password_hash, is_staff) VALUES (?, ?, ?)",
-            (data.username, password_hash, is_staff)
+            "INSERT INTO users (username, email, password_hash, is_staff) VALUES (?, ?, ?, ?)",
+            (data.username, email, password_hash, is_staff)
         )
         user_id = cursor.lastrowid
-        return User(id=user_id, username=data.username, roles=[], is_staff=bool(is_staff))
+        return User(id=user_id, username=data.username, email=email, roles=[], is_staff=bool(is_staff))
 
     def hash_password(self, password: str) -> bytes:
         return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
@@ -33,6 +34,7 @@ class UserService:
         return User(
             id=row["id"], 
             username=row["username"], 
+            email=row["email"] if "email" in row.keys() else None,
             roles=roles, 
             is_staff=bool(row["is_staff"])
         )

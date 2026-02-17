@@ -1,47 +1,199 @@
 {% extends "layout.html" %}
 {% block page_content %}
-<div style="padding: 20px; background: var(--panel); border-radius: 12px; height: calc(100vh - 160px); display: flex; flex-direction: column;">
-  <h2 style="margin: 0 0 16px; color: var(--accent);">Nebula Core Logs</h2>
-  
-  <div id="log-container" style="flex: 1; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; background: #0a0a0d; padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-    <div style="color: #888;">Waiting for logs...</div>
+<div class="logs-page">
+  <div class="logs-header">
+    <div>
+      <h2>Nebula Core Logs</h2>
+      <p>Live runtime stream with compact severity highlighting.</p>
+    </div>
+    <div id="logs-state-pill" class="logs-state-pill">syncing...</div>
   </div>
 
-  <div style="margin-top: 12px; text-align: center;">
-    <button onclick="clearLogs()" style="padding: 8px 16px; cursor: pointer; background: var(--border); color: var(--text); border: 1px solid var(--border-accent); border-radius: 4px;">Clear Console</button>
-    <label style="margin-left: 15px; cursor: pointer;">
-      <input type="checkbox" id="autoscroll" checked> Autoscroll
+  <div id="log-container" class="logs-console">
+    <div class="logs-placeholder">Waiting for logs...</div>
+  </div>
+
+  <div class="logs-toolbar">
+    <button class="btn-clear" onclick="clearLogs()">Clear Console</button>
+    <label class="checkbox-line" for="autoscroll">
+      <input type="checkbox" id="autoscroll" class="ui-checkbox" checked>
+      <span>Autoscroll</span>
     </label>
   </div>
 </div>
+
+<style>
+  .logs-page {
+    padding: 20px;
+    height: calc(100vh - 160px);
+    display: flex;
+    flex-direction: column;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: linear-gradient(165deg, rgba(19, 20, 26, 0.96), rgba(14, 15, 20, 0.94));
+  }
+  .logs-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .logs-header h2 {
+    margin: 0;
+    color: #f4f6ff;
+    font-size: 1.2rem;
+    letter-spacing: -0.01em;
+  }
+  .logs-header p {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+  .logs-state-pill {
+    border: 1px solid rgba(88, 101, 255, 0.28);
+    background: rgba(88, 101, 255, 0.12);
+    color: #ced4ff;
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .logs-console {
+    flex: 1;
+    overflow-y: auto;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.83rem;
+    line-height: 1.45;
+    background: #0a0b10;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .logs-placeholder {
+    color: var(--text-muted);
+  }
+  .log-row {
+    margin-bottom: 6px;
+    color: #dce0ef;
+    word-break: break-word;
+  }
+  .log-row .time {
+    color: #8f94ac;
+    margin-right: 8px;
+  }
+  .log-row .level {
+    font-weight: 700;
+    margin-right: 8px;
+  }
+  .log-row.level-info .level { color: #7dd3fc; }
+  .log-row.level-warning .level { color: #facc15; }
+  .log-row.level-error .level { color: #fda4af; }
+  .log-row.level-debug .level { color: #93c5fd; }
+  .logs-toolbar {
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .btn-clear {
+    padding: 9px 14px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+  .btn-clear:hover {
+    border-color: rgba(88, 101, 255, 0.35);
+  }
+  .checkbox-line {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #d8dced;
+    font-size: 0.8rem;
+  }
+  .ui-checkbox {
+    appearance: none;
+    width: 17px;
+    height: 17px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    background: #0f1118;
+    display: inline-grid;
+    place-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .ui-checkbox::after {
+    content: "";
+    width: 8px;
+    height: 5px;
+    border-left: 2px solid #fff;
+    border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) scale(0);
+    transform-origin: center;
+    transition: transform 0.12s ease;
+    margin-top: -1px;
+  }
+  .ui-checkbox:checked {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  .ui-checkbox:checked::after {
+    transform: rotate(-45deg) scale(1);
+  }
+  .ui-checkbox:focus-visible {
+    outline: 2px solid rgba(88, 101, 255, 0.35);
+    outline-offset: 2px;
+  }
+</style>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
   const socket = io();
   const container = document.getElementById('log-container');
   const autoscroll = document.getElementById('autoscroll');
-
-  const levelColors = {
-    "INFO": "#4ade80",
-    "WARNING": "#fbbf24",
-    "ERROR": "#f87171",
-    "DEBUG": "#94a3b8"
-  };
+  const statePill = document.getElementById('logs-state-pill');
 
   function addLog(entry) {
-    // Remove initial "Waiting" message on first log
     if (container.innerText === 'Waiting for logs...') {
       container.innerHTML = '';
     }
 
     const div = document.createElement('div');
-    div.style.marginBottom = '4px';
-    div.style.color = levelColors[entry.level] || "#fff";
-    div.innerHTML = `<span style="color:#888">[${entry.iso}]</span> <strong>${entry.level}</strong> ${entry.message}`;
+    const level = String(entry.level || 'INFO').toUpperCase();
+    div.className = `log-row level-${level.toLowerCase()}`;
+
+    const time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = `[${entry.iso || '-'}]`;
+
+    const lvl = document.createElement('span');
+    lvl.className = 'level';
+    lvl.textContent = level;
+
+    const message = document.createElement('span');
+    message.textContent = String(entry.message || '');
+
+    div.appendChild(time);
+    div.appendChild(lvl);
+    div.appendChild(message);
     container.appendChild(div);
     
     if (autoscroll.checked) {
       container.scrollTop = container.scrollHeight;
+    }
+    if (statePill) {
+      statePill.textContent = `updated ${new Date().toLocaleTimeString()}`;
     }
   }
 
@@ -55,7 +207,7 @@
   });
 
   function clearLogs() {
-    container.innerHTML = '<div style="color: #888;">Console cleared</div>';
+    container.innerHTML = '<div class="logs-placeholder">Console cleared</div>';
   }
 
   // Initial history load
@@ -65,6 +217,8 @@
       logs.forEach(addLog);
       container.scrollTop = container.scrollHeight;
     }
+  }).catch(() => {
+    if (statePill) statePill.textContent = 'history unavailable';
   });
 </script>
 {% endblock %}

@@ -1,0 +1,45 @@
+{
+  "name": "web-python-dev",
+  "title": "Python Web Dev",
+  "description": "Starter preset for Python web services with moderate resources",
+  "config": {
+    "image": "python:3.12-slim",
+    "ram": 1024,
+    "swap": 2048,
+    "disk": 20,
+    "cpu": 1024,
+    "cpu_limit": 1.0,
+    "cpuset": "",
+    "cpu_quota": "",
+    "cpu_period": "",
+    "pids_limit": 256,
+    "shm": 128,
+    "ports": "8000:8000",
+    "command": "python -m http.server 8000",
+    "env": "APP_ENV=dev\nLOG_LEVEL=info",
+    "volumes": "/srv/python-app:/app:rw",
+    "restart": true
+  },
+  "permissions": {
+    "user": {
+      "allow_explorer": true,
+      "allow_root_explorer": false,
+      "allow_console": true,
+      "allow_shell": false,
+      "allow_settings": false,
+      "allow_edit_files": false,
+      "allow_edit_startup": false,
+      "allow_edit_ports": false
+    },
+    "developer": {
+      "allow_explorer": true,
+      "allow_root_explorer": false,
+      "allow_console": true,
+      "allow_shell": true,
+      "allow_settings": true,
+      "allow_edit_files": true,
+      "allow_edit_startup": true,
+      "allow_edit_ports": true
+    }
+  }
+}

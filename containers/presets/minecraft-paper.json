@@ -1,0 +1,32 @@
+{
+  "name": "minecraft-paper",
+  "title": "Minecraft Paper",
+  "description": "Preset for Java/Paper Minecraft server",
+  "config": {
+    "image": "itzg/minecraft-server:latest",
+    "ram": 6144,
+    "swap": 8192,
+    "disk": 50,
+    "cpu": 2048,
+    "cpu_limit": 2.0,
+    "cpuset": "",
+    "cpu_quota": "",
+    "cpu_period": "",
+    "pids_limit": 512,
+    "shm": 256,
+    "ports": "25565:25565",
+    "command": "",
+    "env": "EULA=TRUE\nTYPE=PAPER\nMEMORY=5G",
+    "volumes": "/srv/minecraft-paper:/data:rw",
+    "workspace_mount": "/data",
+    "explorer_root": "/data",
+    "console_cwd": "/data",
+    "profile_name": "minecraft-paper",
+    "restart": true
+  },
+  "permissions": {
+    "user": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": true, "allow_shell": false, "allow_settings": false, "allow_edit_files": false, "allow_edit_startup": false, "allow_edit_ports": false },
+    "moderator": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": true, "allow_shell": false, "allow_settings": true, "allow_edit_files": false, "allow_edit_startup": false, "allow_edit_ports": true },
+    "developer": { "allow_explorer": true, "allow_root_explorer": false, "allow_console": true, "allow_shell": true, "allow_settings": true, "allow_edit_files": true, "allow_edit_startup": true, "allow_edit_ports": true }
+  }
+}

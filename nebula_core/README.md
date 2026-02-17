@@ -1,28 +1,28 @@
 # nebula_core
 
-`nebula_core` — backend-ядро Nebula Panel на FastAPI.
+`nebula_core` is the FastAPI backend engine of Nebula Panel.
 
-## Что делает компонент
+## What This Component Does
 
-- API для пользователей, ролей, контейнеров и системных операций.
-- Интеграция с Docker для deploy/start/stop/restart/logs/delete.
-- Агрегация метрик сервера и пользовательских контейнеров.
-- Внутренние сервисы (heartbeat, file service, metrics service).
+- Provides API endpoints for users, roles, containers, and system operations.
+- Integrates with Docker for deploy/start/stop/restart/logs/delete.
+- Aggregates host metrics and user container metrics.
+- Runs internal services (heartbeat, file service, metrics service).
 
-## Точки входа
+## Entry Points
 
-- Модульный запуск: `python -m nebula_core`
+- Module launch: `python -m nebula_core`
 - ASGI entrypoint: `nebula_core.main:app`
 
-## Важные каталоги
+## Important Directories
 
-- `api/` — HTTP и WebSocket API.
-- `services/` — сервисы бизнес-логики (docker, metrics, files, users).
-- `core/` — runtime, event bus, lifecycle.
-- `db.py` и `db/` — доступ к SQLite и схемы.
+- `api/` - HTTP and WebSocket API.
+- `services/` - business-logic services (docker, metrics, files, users).
+- `core/` - runtime, event bus, lifecycle.
+- `db.py` and `db/` - SQLite access and schema handling.
 
-## Безопасность
+## Security
 
-- Для production рекомендуется запуск за reverse proxy.
-- Ограничивайте `NEBULA_CORS_ORIGINS` и внешнюю доступность порта Core.
-- Используйте `NEBULA_INSTALLER_TOKEN` и ротируйте его.
+- For production, run behind a reverse proxy.
+- Restrict `NEBULA_CORS_ORIGINS` and external Core port exposure.
+- Use and rotate `NEBULA_INSTALLER_TOKEN`.

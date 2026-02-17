@@ -30,7 +30,13 @@
               <div class="avatar-lg"><i class="bi bi-person-circle"></i></div>
               <div class="user-info">
                 <div class="user-name">{{ session.get('user_id') }}</div>
-                <div class="user-role">{{ 'Administrator' if session.get('is_staff') else 'User' }}</div>
+                <div class="user-role">
+                  {% if session.get('is_staff') %}
+                    Administrator
+                  {% else %}
+                    {{ (session.get('role_tag') or 'User')|upper }}
+                  {% endif %}
+                </div>
               </div>
             </div>
             <div class="user-actions">
@@ -141,9 +147,11 @@
         document.getElementById('userMenu').classList.toggle('show');
     }
 
-    window.onclick = function() {
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('.user-dropdown')) {
         document.getElementById('userMenu')?.classList.remove('show');
-    }
+      }
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.nav-section').forEach(section => {

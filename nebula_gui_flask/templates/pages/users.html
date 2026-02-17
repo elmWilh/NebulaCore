@@ -1,8 +1,8 @@
 {% extends "layout.html" %}
 {% block page_content %}
-<div class="container-fluid" style="padding: 24px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
-        <div style="display: flex; align-items: center; gap: 24px;">
+<div class="container-fluid user-management-page" style="padding: 24px;">
+    <div class="users-topbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+        <div class="users-topbar-left" style="display: flex; align-items: center; gap: 24px;">
             <h2 style="font-weight: 700; letter-spacing: -0.5px; margin: 0; color: white;">User Management</h2>
             <div style="position: relative;">
                 <i class="bi bi-database" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.9rem;"></i>
@@ -17,19 +17,21 @@
         </a>
     </div>
 
-    <div class="table-card">
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-            <thead>
-                <tr class="table-header-row">
-                    <th style="padding: 18px 24px;">Identity</th>
-                    <th style="padding: 18px 24px;">Privileges</th>
-                    <th style="padding: 18px 24px;">Network Status</th>
-                    <th style="padding: 18px 24px; text-align: right;">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="user_table_body">
-                </tbody>
-        </table>
+    <div class="table-shell">
+        <div class="table-card">
+            <table class="user-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead>
+                    <tr class="table-header-row">
+                        <th style="padding: 18px 24px;">Identity</th>
+                        <th style="padding: 18px 24px;">Privileges</th>
+                        <th style="padding: 18px 24px;">Network Status</th>
+                        <th style="padding: 18px 24px; text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="user_table_body">
+                    </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -71,9 +73,6 @@
                         <div class="input-wrapper">
                             <i class="bi bi-layers"></i>
                             <select id="edit_role">
-                                <option value="user">Standard User</option>
-                                <option value="moderator">System Moderator</option>
-                                <option value="staff">Root Administrator</option>
                             </select>
                         </div>
                     </div>
@@ -119,6 +118,7 @@
         cursor: pointer; font-size: 0.9rem; appearance: none; min-width: 220px; transition: 0.2s;
     }
     .premium-select:hover { border-color: var(--accent); }
+    .premium-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88, 101, 255, 0.16); }
 
     .add-user-btn {
         padding: 12px 24px; background: var(--accent); color: white;
@@ -129,7 +129,9 @@
     .add-user-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
 
     /* Table Styling */
+    .table-shell { overflow-x: auto; }
     .table-card { background: var(--card); border-radius: 16px; border: 1px solid var(--border); overflow: visible; }
+    .user-table { min-width: 760px; }
     .table-header-row { border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
     .table-header-row th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); font-weight: 700; }
 
@@ -141,7 +143,8 @@
     }
     .modal-content {
         background: #0d0d12; border: 1px solid var(--border); width: 680px;
-        border-radius: 24px; box-shadow: 0 40px 80px rgba(0,0,0,0.7); overflow: hidden;
+        max-width: calc(100vw - 24px); max-height: calc(100vh - 24px);
+        border-radius: 24px; box-shadow: 0 40px 80px rgba(0,0,0,0.7); overflow: auto;
     }
     .modal-header { padding: 24px 32px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
     .close-modal-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; transition: 0.2s; }
@@ -187,7 +190,7 @@
     .action-btn:hover { background: rgba(255,255,255,0.05); color: white; }
     .dropdown { position: relative; display: inline-block; }
     .dropdown-content {
-        display: none; position: absolute; right: 0; top: 100%; background: #111114;
+        display: none; position: fixed; background: #111114;
         min-width: 240px; border: 1px solid var(--border); border-radius: 12px;
         z-index: 9999; box-shadow: 0 20px 40px rgba(0,0,0,0.8); padding: 8px;
     }
@@ -204,6 +207,9 @@
 
 <script>
 // --- Logic Core ---
+let rolesCatalog = [];
+let lastUsersPayload = [];
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -238,6 +244,17 @@ async function initPage() {
             selector.appendChild(option);
             modalSelector.appendChild(option.cloneNode(true));
         });
+        const rolesRes = await fetch('/api/roles/list');
+        const rolesData = await rolesRes.json();
+        rolesCatalog = Array.isArray(rolesData) ? rolesData : [];
+        const roleSelect = document.getElementById('edit_role');
+        roleSelect.innerHTML = '';
+        rolesCatalog.forEach(role => {
+            const opt = document.createElement('option');
+            opt.value = role.name;
+            opt.textContent = role.is_staff ? `${role.name} (staff)` : role.name;
+            roleSelect.appendChild(opt);
+        });
         if (dbData.databases.length > 0) fetchUsers();
     } catch (e) { console.error("Nebula API Error:", e); }
 }
@@ -249,8 +266,15 @@ async function fetchUsers() {
 
     try {
         const response = await fetch(`/api/users/list?db_name=${dbName}`);
-        const users = await response.json();
+        const payload = await response.json();
+        const users = Array.isArray(payload) ? payload : [];
+        lastUsersPayload = users;
         tbody.innerHTML = '';
+
+        if (users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:56px 24px; color:var(--text-muted);">No users found in this database.</td></tr>';
+            return;
+        }
         
         users.forEach(user => {
             const row = document.createElement('tr');
@@ -277,7 +301,7 @@ async function fetchUsers() {
                 <td style="padding: 18px 24px;">
                     <span class="badge ${user.is_staff ? 'badge-admin' : 'badge-user'}">
                         <i class="bi ${user.is_staff ? 'bi-shield-check' : 'bi-person'}"></i>
-                        ${user.is_staff ? 'ADMINISTRATOR' : 'CLIENT'}
+                        ${(user.role_tag || 'user').toUpperCase()}
                     </span>
                 </td>
                 <td style="padding: 18px 24px;">
@@ -294,7 +318,7 @@ async function fetchUsers() {
                             <a href="/users/view/${encodedUsername}?db_name=${encodeURIComponent(dbName)}">
                                 <i class="bi bi-shield-shaded"></i> Intelligence Profile
                             </a>
-                            <a href="javascript:void(0)" onclick="openEditModal('${usernameJs}', '${user.is_staff}')">
+                            <a href="javascript:void(0)" onclick="openEditModal('${usernameJs}')">
                                 <i class="bi bi-gear-wide-connected"></i> Full Configuration
                             </a>
                             <a href="javascript:void(0)" onclick="pinUser('${usernameJs}')">
@@ -310,7 +334,9 @@ async function fetchUsers() {
             `;
             tbody.appendChild(row);
         });
-    } catch (e) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:#ff4f4f;">Database Connection Lost</td></tr>'; }
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:#ff4f4f;">Database Connection Lost</td></tr>';
+    }
 }
 
 // --- Interaction UI ---
@@ -318,13 +344,49 @@ function toggleMenu(e, id) {
     e.stopPropagation();
     const menu = document.getElementById(id);
     document.querySelectorAll('.dropdown-content').forEach(d => { if(d !== menu) d.classList.remove('show'); });
-    menu.classList.toggle('show');
+    const shouldOpen = !menu.classList.contains('show');
+    menu.classList.toggle('show', shouldOpen);
+    if (shouldOpen) {
+        positionMenu(menu, e.currentTarget || e.target);
+    }
 }
 
-function openEditModal(name, isStaff) {
+function positionMenu(menu, trigger) {
+    const anchor = trigger?.closest('button') || trigger;
+    if (!menu || !anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const vpW = window.innerWidth;
+    const vpH = window.innerHeight;
+
+    menu.style.left = '-9999px';
+    menu.style.top = '-9999px';
+    menu.classList.add('show');
+
+    const menuWidth = menu.offsetWidth || 240;
+    const menuHeight = menu.offsetHeight || 200;
+    const sidePad = 8;
+    const gap = 8;
+
+    let left = rect.right - menuWidth;
+    if (left < sidePad) left = sidePad;
+    if (left + menuWidth > vpW - sidePad) left = vpW - menuWidth - sidePad;
+
+    let top = rect.bottom + gap;
+    if (top + menuHeight > vpH - sidePad) {
+        top = rect.top - menuHeight - gap;
+    }
+    if (top < sidePad) top = sidePad;
+
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+}
+
+function openEditModal(name) {
     document.getElementById('edit_old_username').value = name;
     document.getElementById('edit_username').value = name;
-    document.getElementById('edit_role').value = (isStaff === 'true' || isStaff === '1') ? 'staff' : 'user';
+    const userRow = lastUsersPayload.find(u => String(u.username) === String(name));
+    const roleTag = userRow?.role_tag || (userRow?.is_staff ? 'admin' : 'user');
+    document.getElementById('edit_role').value = roleTag;
     document.getElementById('edit_target_db').value = document.getElementById('db_selector').value;
     document.getElementById('editModal').style.display = 'flex';
 }
@@ -336,7 +398,7 @@ async function saveUserEdit() {
         old_username: document.getElementById('edit_old_username').value,
         new_username: document.getElementById('edit_username').value,
         new_password: document.getElementById('edit_password').value,
-        role: document.getElementById('edit_role').value,
+        role_tag: document.getElementById('edit_role').value,
         is_active: document.getElementById('edit_is_active').checked,
         source_db: document.getElementById('db_selector').value,
         target_db: document.getElementById('edit_target_db').value
@@ -351,7 +413,38 @@ async function saveUserEdit() {
     if(res.ok) { closeModal(); fetchUsers(); } else { alert("Operational Error: DB Locked or Access Denied"); }
 }
 
-window.onclick = () => document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+function pinUser(username) {
+    localStorage.setItem('nebula-pinned-user', String(username || '').trim());
+    alert(`Pinned: ${username}`);
+}
+
+async function banUser(username) {
+    const name = String(username || '').trim();
+    if (!name) return;
+    if (!confirm(`Delete user "${name}"?`)) return;
+    const dbName = document.getElementById('db_selector').value;
+    const res = await fetch(`/api/users/delete?db_name=${encodeURIComponent(dbName)}&username=${encodeURIComponent(name)}`, {
+        method: 'POST'
+    });
+    const out = await res.json();
+    if (!res.ok) {
+        alert(out.detail || 'Failed to delete user');
+        return;
+    }
+    await fetchUsers();
+}
+
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.dropdown')) {
+        document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+    }
+});
+window.addEventListener('resize', () => {
+    document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+});
+window.addEventListener('scroll', () => {
+    document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+}, true);
 document.addEventListener('DOMContentLoaded', initPage);
 
 </script>
@@ -367,5 +460,25 @@ document.addEventListener('DOMContentLoaded', initPage);
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     
     .table-row-hover:hover { background: rgba(255,255,255,0.01) !important; }
+
+    @media (max-width: 980px) {
+        .user-management-page { padding: 14px !important; }
+        .users-topbar {
+            flex-direction: column;
+            align-items: flex-start !important;
+            gap: 14px;
+            margin-bottom: 18px !important;
+        }
+        .users-topbar-left {
+            width: 100%;
+            flex-direction: column;
+            align-items: flex-start !important;
+            gap: 10px !important;
+        }
+        .premium-select { min-width: 190px; }
+        .modal-grid { grid-template-columns: 1fr; gap: 18px; }
+        .modal-content { border-radius: 16px; }
+        .modal-header, .modal-footer { padding: 16px 18px; }
+    }
 </style>
 {% endblock %}

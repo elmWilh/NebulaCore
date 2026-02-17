@@ -109,17 +109,21 @@
         <div style="padding: 32px; max-height: 70vh; overflow-y: auto;">
             <div class="preset-block">
                 <div class="preset-title">Deployment Presets</div>
-                <div class="preset-grid">
-                    <button type="button" class="preset-btn" data-preset="balanced-small" onclick="applyContainerPreset('balanced-small')">Balanced Small</button>
-                    <button type="button" class="preset-btn active" data-preset="balanced-medium" onclick="applyContainerPreset('balanced-medium')">Balanced Medium</button>
-                    <button type="button" class="preset-btn" data-preset="balanced-large" onclick="applyContainerPreset('balanced-large')">Balanced Large</button>
-                    <button type="button" class="preset-btn" data-preset="cpu-bound" onclick="applyContainerPreset('cpu-bound')">CPU Bound</button>
-                    <button type="button" class="preset-btn" data-preset="memory-bound" onclick="applyContainerPreset('memory-bound')">Memory Bound</button>
-                    <button type="button" class="preset-btn" data-preset="io-bound" onclick="applyContainerPreset('io-bound')">IO Bound</button>
-                    <button type="button" class="preset-btn" data-preset="minecraft-java" onclick="applyContainerPreset('minecraft-java')">Minecraft Java</button>
-                    <button type="button" class="preset-btn" data-preset="game-server-steamcmd" onclick="applyContainerPreset('game-server-steamcmd')">SteamCMD Game</button>
+                <div class="preset-grid" style="grid-template-columns: 1fr auto;">
+                    <select id="cont_preset_select" class="premium-select" style="min-width:0; width:100%; padding-left:12px;">
+                    </select>
+                    <button type="button" class="btn-secondary" style="padding: 10px 14px;" onclick="applySelectedPreset()">
+                        <i class="bi bi-check2-square"></i> Apply
+                    </button>
                 </div>
-                <div id="preset_hint" class="preset-hint">Balanced Medium applied</div>
+                <div class="preset-grid" style="grid-template-columns: 1fr 1fr auto; margin-top: 8px;">
+                    <input type="text" id="preset_save_name" placeholder="my-custom-preset" style="width:100%; padding: 10px 12px; background:#050507; border:1px solid var(--border); border-radius: 10px; color:white;">
+                    <input type="text" id="preset_save_title" placeholder="Custom title (optional)" style="width:100%; padding: 10px 12px; background:#050507; border:1px solid var(--border); border-radius: 10px; color:white;">
+                    <button type="button" class="btn-primary" style="padding: 10px 14px;" onclick="saveCurrentAsPreset()">
+                        <i class="bi bi-floppy"></i> Save
+                    </button>
+                </div>
+                <div id="preset_hint" class="preset-hint">Select preset from containers/presets.</div>
             </div>
 
             <div class="modal-grid">
@@ -260,6 +264,11 @@
                     <textarea id="cont_volumes" rows="4" placeholder="/srv/app/data:/app/data:rw&#10;/srv/app/config:/app/config:ro"></textarea>
                 </div>
             </div>
+            <div class="input-field" style="margin-top: 16px;">
+                <label>Role Permissions</label>
+                <div id="role_permissions_grid" style="border:1px solid var(--border); border-radius: 12px; overflow:auto; background:#07070b;"></div>
+                <span class="input-hint" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; display: block;">Permissions apply to roles from `/roles/list` and are inherited by users via their `role_tag`.</span>
+            </div>
 
             <div class="status-box">
                 <div style="display: flex; align-items: center; gap: 16px;">
@@ -308,6 +317,32 @@
         </div>
         <div class="modal-footer">
             <button id="deployProgressCloseBtn" onclick="closeDeployProgressModal()" class="btn-secondary">Close</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if session.get('is_staff') %}
+<div id="deployErrorModal" class="modal-overlay">
+    <div class="modal-content" style="width: 760px;">
+        <div class="modal-header">
+            <div>
+                <h3 style="margin: 0; font-weight: 700; color: white;">Deployment Error</h3>
+                <p id="deployErrorSummary" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Unknown error</p>
+            </div>
+            <button onclick="closeDeployErrorModal()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div style="padding: 20px 24px;">
+            <div id="deployErrorHint" style="font-size: 0.84rem; color: #d3d6e6; margin-bottom: 12px;"></div>
+            <details style="border: 1px solid var(--border); border-radius: 12px; background: #09090d;">
+                <summary style="padding: 12px 14px; cursor: pointer; color: #d3d3db; font-weight: 600;">
+                    <i class="bi bi-chevron-down" style="margin-right:6px;"></i> Show Raw Error Log
+                </summary>
+                <pre id="deployErrorRaw" style="margin:0; max-height: 280px; overflow:auto; padding: 12px 14px; color: #bfc1d1; font-size: 0.78rem; line-height: 1.45;"></pre>
+            </details>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeDeployErrorModal()" class="btn-secondary">Close</button>
         </div>
     </div>
 </div>
@@ -376,9 +411,16 @@
     .input-wrapper input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
     .input-wrapper textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
     .user-picker { display: flex; flex-direction: column; gap: 10px; }
+    .input-hint {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-top: 8px;
+        display: block;
+    }
     .users-list {
         max-height: 170px; overflow: auto; border: 1px solid var(--border); border-radius: 12px;
         background: #07070b; padding: 6px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
     }
     .user-option {
         display: flex; justify-content: space-between; align-items: center;
@@ -420,6 +462,40 @@
     .preset-hint {
         margin-top: 8px; font-size: 0.74rem; color: var(--text-muted);
     }
+    .role-perm-check {
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        background: #0e1016;
+        display: inline-grid;
+        place-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .role-perm-check::after {
+        content: "";
+        width: 7px;
+        height: 4px;
+        border-left: 2px solid #fff;
+        border-bottom: 2px solid #fff;
+        transform: rotate(-45deg) scale(0);
+        transform-origin: center;
+        transition: transform 0.12s ease;
+        margin-top: -1px;
+    }
+    .role-perm-check:checked {
+        border-color: var(--accent);
+        background: var(--accent);
+    }
+    .role-perm-check:checked::after {
+        transform: rotate(-45deg) scale(1);
+    }
+    .role-perm-check:focus-visible {
+        outline: 2px solid rgba(88, 101, 255, 0.35);
+        outline-offset: 2px;
+    }
     .ios-switch { position: relative; display: inline-block; width: 48px; height: 26px; }
     .ios-switch input { opacity: 0; width: 0; height: 0; }
     .ios-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #2a2a2e; transition: .4s; border-radius: 34px; }
@@ -454,7 +530,29 @@
 <script>
 const isStaff = {{ 'true' if session.get('is_staff') else 'false' }};
 let assignableUsers = [];
-let selectedUsers = new Set();
+let selectedUsers = new Map();
+let rolePermissionMatrix = {};
+let roleCatalog = [];
+const rolePermissionColumns = [
+    { key: 'allow_explorer', label: 'Explorer' },
+    { key: 'allow_root_explorer', label: 'Root Explorer' },
+    { key: 'allow_console', label: 'Console' },
+    { key: 'allow_shell', label: 'Shell' },
+    { key: 'allow_settings', label: 'Settings' },
+    { key: 'allow_edit_files', label: 'Edit Files' },
+    { key: 'allow_edit_startup', label: 'Edit Startup' },
+    { key: 'allow_edit_ports', label: 'Edit Ports' }
+];
+const defaultRolePermissions = {
+    allow_explorer: true,
+    allow_root_explorer: false,
+    allow_console: true,
+    allow_shell: false,
+    allow_settings: false,
+    allow_edit_files: false,
+    allow_edit_startup: false,
+    allow_edit_ports: false
+};
 
 async function loadAssignableUsers() {
     if (!isStaff) return;
@@ -487,7 +585,8 @@ async function loadAssignableUsers() {
             .forEach(u => {
                 assignableUsers.push({
                     username: u.username,
-                    db
+                    db,
+                    role_tag: u.role_tag || 'user'
                 });
             });
     }
@@ -497,6 +596,8 @@ async function loadAssignableUsers() {
 
 let metricsInterval = null;
 let containersInterval = null;
+let metricsAbortController = null;
+let containersAbortController = null;
 let previousNetworkTotal = null;
 let hasContainerTableRendered = false;
 let lastContainersSignature = '';
@@ -505,52 +606,191 @@ let consoleContainerId = null;
 let consolePollInterval = null;
 let deployJobId = null;
 let deployPollInterval = null;
-let activePreset = 'balanced-medium';
+let activePreset = '';
+let presetPermissionTemplates = {};
+let activePresetConfig = {};
 
-const containerPresets = {
-    'balanced-small': {
-        ram: 512, swap: 1024, disk: 10, cpu: 512, cpu_limit: 0.5, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 128, shm: 64, restart: true
-    },
-    'balanced-medium': {
-        ram: 1024, swap: 2048, disk: 20, cpu: 1024, cpu_limit: 1.0, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 256, shm: 128, restart: true
-    },
-    'balanced-large': {
-        ram: 4096, swap: 8192, disk: 80, cpu: 2048, cpu_limit: 2.0, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true
-    },
-    'cpu-bound': {
-        ram: 2048, swap: 4096, disk: 30, cpu: 4096, cpu_limit: 4.0, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 128, restart: true
-    },
-    'memory-bound': {
-        ram: 8192, swap: 12288, disk: 40, cpu: 1024, cpu_limit: 1.5, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 256, shm: 512, restart: true
-    },
-    'io-bound': {
-        ram: 2048, swap: 4096, disk: 120, cpu: 1024, cpu_limit: 1.0, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true
-    },
-    'minecraft-java': {
-        ram: 6144, swap: 8192, disk: 40, cpu: 2048, cpu_limit: 2.0, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true,
-        image: 'itzg/minecraft-server:latest',
-        ports: '25565:25565',
-        command: '',
-        env: 'EULA=TRUE\\nTYPE=PAPER\\nMEMORY=4G',
-        volumes: '/srv/minecraft:/data:rw'
-    },
-    'game-server-steamcmd': {
-        ram: 4096, swap: 6144, disk: 80, cpu: 2048, cpu_limit: 2.0, cpuset: '',
-        cpu_quota: '', cpu_period: '', pids_limit: 512, shm: 256, restart: true,
-        image: 'cm2network/steamcmd:latest',
-        ports: '27015:27015/udp, 27016:27016/udp',
-        command: '/bin/bash',
-        env: 'TZ=UTC',
-        volumes: '/srv/game-server:/server:rw'
+let containerPresets = {};
+
+function getMetricsPollIntervalMs() {
+    return document.hidden ? 15000 : 4000;
+}
+
+function getContainersPollIntervalMs() {
+    return document.hidden ? 30000 : 15000;
+}
+
+function scheduleLiveTelemetry() {
+    if (metricsInterval) clearInterval(metricsInterval);
+    if (containersInterval) clearInterval(containersInterval);
+    metricsInterval = setInterval(updateStats, getMetricsPollIntervalMs());
+    containersInterval = setInterval(fetchContainers, getContainersPollIntervalMs());
+}
+
+function selectedUserKey(user) {
+    return `${String(user?.db || 'system.db')}::${String(user?.username || '')}`;
+}
+
+function cloneRoleMatrix(source) {
+    const out = {};
+    const src = source && typeof source === 'object' ? source : {};
+    const activeRoles = roleCatalog.length ? roleCatalog : ['user'];
+    activeRoles.forEach(role => {
+        out[role] = {};
+        rolePermissionColumns.forEach(col => {
+            const fallback = !!defaultRolePermissions[col.key];
+            out[role][col.key] = !!(src[role] && src[role][col.key] !== undefined ? src[role][col.key] : fallback);
+        });
+    });
+    return out;
+}
+
+async function loadRoleCatalog() {
+    try {
+        const res = await fetch('/api/roles/list');
+        const data = await res.json();
+        roleCatalog = Array.isArray(data) ? data.map(r => String(r.name || '').trim()).filter(Boolean) : [];
+    } catch (e) {
+        roleCatalog = [];
     }
-};
+    if (!roleCatalog.includes('user')) roleCatalog.unshift('user');
+}
+
+function renderRolePermissionMatrix() {
+    const host = document.getElementById('role_permissions_grid');
+    if (!host) return;
+    if (!rolePermissionMatrix || Object.keys(rolePermissionMatrix).length === 0) {
+        rolePermissionMatrix = cloneRoleMatrix({});
+    }
+    const roles = Object.keys(rolePermissionMatrix);
+    let html = '<table style="width:100%; border-collapse: collapse; font-size: 0.78rem;"><thead><tr>';
+    html += '<th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border);">Role</th>';
+    rolePermissionColumns.forEach(col => {
+        html += `<th style="text-align:center; padding:8px 10px; border-bottom:1px solid var(--border);">${escapeHtml(col.label)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    roles.forEach(role => {
+        html += `<tr><td style="padding:8px 10px; border-bottom:1px solid var(--border); color:#d6d6df; font-weight:600;">${escapeHtml(role)}</td>`;
+        rolePermissionColumns.forEach(col => {
+            const checked = rolePermissionMatrix[role][col.key] ? 'checked' : '';
+            html += `<td style="text-align:center; padding:8px 10px; border-bottom:1px solid var(--border);"><input class="role-perm-check" type="checkbox" data-role="${escapeAttr(role)}" data-key="${escapeAttr(col.key)}" ${checked} onchange="onRolePermissionToggle(this)"></td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    host.innerHTML = html;
+}
+
+function onRolePermissionToggle(el) {
+    const role = String(el?.dataset?.role || '');
+    const key = String(el?.dataset?.key || '');
+    if (!role || !key) return;
+    if (!rolePermissionMatrix[role]) rolePermissionMatrix[role] = {};
+    rolePermissionMatrix[role][key] = !!el.checked;
+}
+
+async function loadContainerPresets() {
+    const renderSelect = () => {
+        const select = document.getElementById('cont_preset_select');
+        if (!select) return;
+        select.innerHTML = '';
+        Object.keys(containerPresets).sort().forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+        });
+        if (select.options.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'No presets found';
+            select.appendChild(opt);
+            const hint = document.getElementById('preset_hint');
+            if (hint) hint.textContent = 'No presets in containers/presets. Add JSON files or save one from this form.';
+        }
+        select.value = activePreset;
+    };
+    renderSelect();
+    try {
+        const res = await fetch('/api/containers/presets');
+        if (!res.ok) return;
+        const presets = await res.json();
+        if (!Array.isArray(presets)) return;
+        const merged = {};
+        Object.entries(containerPresets || {}).forEach(([k, v]) => { merged[k] = v; });
+        presets.forEach(p => {
+            const name = String(p?.name || '').trim();
+            if (!name) return;
+            if (p?.config && typeof p.config === 'object') {
+                merged[name] = p.config;
+            }
+            if (p?.permissions && typeof p.permissions === 'object') {
+                presetPermissionTemplates[name] = cloneRoleMatrix(p.permissions);
+            }
+        });
+        containerPresets = merged;
+
+        const select = document.getElementById('cont_preset_select');
+        if (select) {
+            select.innerHTML = '';
+            presets.forEach(p => {
+                const opt = document.createElement('option');
+                const name = String(p?.name || '').trim();
+                if (!name) return;
+                opt.value = name;
+                opt.textContent = p?.title ? `${p.title} (${name})` : name;
+                select.appendChild(opt);
+            });
+            if (select.options.length === 0) renderSelect();
+        }
+    } catch (e) {
+        // keep built-in presets only
+    }
+}
+
+function applySelectedPreset() {
+    const select = document.getElementById('cont_preset_select');
+    const name = String(select?.value || '').trim() || activePreset;
+    if (!name) return;
+    applyContainerPreset(name);
+}
+
+async function saveCurrentAsPreset() {
+    if (!isStaff) return;
+    const name = String(document.getElementById('preset_save_name')?.value || '').trim();
+    if (!name) {
+        alert('Preset name is required');
+        return;
+    }
+    const title = String(document.getElementById('preset_save_title')?.value || '').trim();
+    const config = collectContainerForm();
+    const payload = {
+        name,
+        title: title || name,
+        description: 'Saved from Container Architect',
+        config,
+        permissions: rolePermissionMatrix
+    };
+    try {
+        const res = await fetch('/api/containers/presets', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const out = await res.json();
+        if (!res.ok) {
+            alert(out.detail || 'Failed to save preset');
+            return;
+        }
+        await loadContainerPresets();
+        const select = document.getElementById('cont_preset_select');
+        if (select) select.value = out.name || name;
+        const hint = document.getElementById('preset_hint');
+        if (hint) hint.textContent = `Preset '${out.name || name}' saved`;
+    } catch (e) {
+        alert('Failed to save preset');
+    }
+}
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -588,6 +828,9 @@ function applyContainerPreset(presetName) {
     if (!preset) return;
 
     activePreset = presetName;
+    activePresetConfig = preset;
+    const select = document.getElementById('cont_preset_select');
+    if (select) select.value = presetName;
     setFieldValue('cont_ram_input', preset.ram);
     setFieldValue('cont_swap', preset.swap);
     setFieldValue('cont_disk', preset.disk);
@@ -606,16 +849,18 @@ function applyContainerPreset(presetName) {
     if (typeof preset.env === 'string') setFieldValue('cont_env', preset.env);
     if (typeof preset.volumes === 'string') setFieldValue('cont_volumes', preset.volumes);
 
-    document.querySelectorAll('.preset-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.preset === presetName);
-    });
     const hint = document.getElementById('preset_hint');
     if (hint) hint.textContent = `${presetName.replace('-', ' ')} profile applied`;
+    if (presetPermissionTemplates[presetName]) {
+        rolePermissionMatrix = cloneRoleMatrix(presetPermissionTemplates[presetName]);
+        renderRolePermissionMatrix();
+    }
 }
 
-function toggleUserSelection(username) {
-    if (selectedUsers.has(username)) selectedUsers.delete(username);
-    else selectedUsers.add(username);
+function toggleUserSelection(user) {
+    const key = selectedUserKey(user);
+    if (selectedUsers.has(key)) selectedUsers.delete(key);
+    else selectedUsers.set(key, { username: user.username, db: user.db, role_tag: user.role_tag || 'user' });
     renderUserPicker(document.getElementById('cont_user_search')?.value || '');
 }
 
@@ -627,10 +872,12 @@ function renderSelectedUsers() {
         target.innerHTML = '<span style="font-size:0.75rem; color: var(--text-muted);">No users selected</span>';
         return;
     }
-    Array.from(selectedUsers).sort().forEach(u => {
+    Array.from(selectedUsers.values())
+        .sort((a, b) => `${a.username}:${a.db}`.localeCompare(`${b.username}:${b.db}`))
+        .forEach(u => {
         const chip = document.createElement('span');
         chip.className = 'user-chip';
-        chip.textContent = u;
+        chip.textContent = `${u.username} [${u.db}] (${u.role_tag || 'user'})`;
         target.appendChild(chip);
     });
 }
@@ -653,8 +900,8 @@ function renderUserPicker(searchText) {
 
     filtered.forEach(user => {
         const row = document.createElement('div');
-        row.className = `user-option${selectedUsers.has(user.username) ? ' is-selected' : ''}`;
-        row.onclick = () => toggleUserSelection(user.username);
+        row.className = `user-option${selectedUsers.has(selectedUserKey(user)) ? ' is-selected' : ''}`;
+        row.onclick = () => toggleUserSelection(user);
         const usernameHtml = escapeHtml(user.username);
         const dbHtml = escapeHtml(user.db);
         row.innerHTML = `
@@ -691,12 +938,17 @@ function applyHealthState(status, pressure) {
 }
 
 function startLiveTelemetry() {
-    if (metricsInterval) clearInterval(metricsInterval);
-    if (containersInterval) clearInterval(containersInterval);
-    updateStats();
     fetchContainers(true);
-    metricsInterval = setInterval(updateStats, 3000);
-    containersInterval = setInterval(fetchContainers, 15000);
+    updateStats();
+    scheduleLiveTelemetry();
+}
+
+function onVisibilityChanged() {
+    scheduleLiveTelemetry();
+    if (!document.hidden) {
+        updateStats();
+        fetchContainers(false);
+    }
 }
 
 function normalizeNode(raw) {
@@ -712,6 +964,8 @@ function normalizeNode(raw) {
 
 async function initPage() {
     try {
+        startLiveTelemetry();
+
         if (isStaff) {
             const nodeRes = await fetch('/api/containers/nodes');
             const nodeData = await nodeRes.json();
@@ -730,18 +984,26 @@ async function initPage() {
                     if (node.id === activeNodeId) opt.selected = true;
                     selector.appendChild(opt);
                 });
+                fetchContainers(false);
             }
         }
 
-        await loadAssignableUsers();
-
-        startLiveTelemetry();
+        Promise.allSettled([
+            loadRoleCatalog(),
+            loadContainerPresets(),
+            loadAssignableUsers()
+        ]).then(() => {
+            rolePermissionMatrix = cloneRoleMatrix({});
+            renderRolePermissionMatrix();
+        });
     } catch (e) { console.error("Nebula API Failure", e); }
 }
 
 async function updateStats() {
     try {
-        const res = await fetch('/api/metrics');
+        if (metricsAbortController) metricsAbortController.abort();
+        metricsAbortController = new AbortController();
+        const res = await fetch('/api/metrics', { signal: metricsAbortController.signal, cache: 'no-store' });
         if (!res.ok) throw new Error('metrics unavailable');
         const data = await res.json();
 
@@ -767,6 +1029,7 @@ async function updateStats() {
         const healthPressure = Math.max(cpuPercent, ramPercent, asNumber(data.disk_percent, 0));
         applyHealthState(data.health_status, healthPressure);
     } catch (e) {
+        if (e && e.name === 'AbortError') return;
         document.getElementById('stat_active_containers').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
         document.getElementById('stat_ram').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
         document.getElementById('stat_cpu').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
@@ -796,7 +1059,9 @@ async function fetchContainers(showLoader = false) {
     }
 
     try {
-        const response = await fetch(listUrl);
+        if (containersAbortController) containersAbortController.abort();
+        containersAbortController = new AbortController();
+        const response = await fetch(listUrl, { signal: containersAbortController.signal, cache: 'no-store' });
         const containers = await response.json();
 
         if (!response.ok) {
@@ -896,7 +1161,8 @@ async function fetchContainers(showLoader = false) {
             tbody.appendChild(row);
         });
         hasContainerTableRendered = true;
-    } catch (e) { 
+    } catch (e) {
+        if (e && e.name === 'AbortError') return;
         if (!hasContainerTableRendered) {
             tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#ff4f4f;">Failed to sync with Nebula Core</td></tr>';
             hasContainerTableRendered = true;
@@ -1019,6 +1285,26 @@ function closeDeployProgressModal() {
     deployJobId = null;
 }
 
+function openDeployErrorModal(errorPayload, logs) {
+    const payload = (errorPayload && typeof errorPayload === 'object') ? errorPayload : {
+        title: 'Deployment Error',
+        summary: String(errorPayload || 'Unknown deployment error'),
+        hint: '',
+        code: 'deploy_failed',
+        raw_error: String(errorPayload || ''),
+    };
+    document.getElementById('deployErrorSummary').textContent = payload.summary || payload.title || 'Deployment failed';
+    document.getElementById('deployErrorHint').textContent = payload.hint || 'Open raw log for details.';
+    const raw = payload.raw_error || '';
+    const logText = Array.isArray(logs) ? logs.join('\n') : '';
+    document.getElementById('deployErrorRaw').textContent = [raw, '', logText].filter(Boolean).join('\n');
+    document.getElementById('deployErrorModal').style.display = 'flex';
+}
+
+function closeDeployErrorModal() {
+    document.getElementById('deployErrorModal').style.display = 'none';
+}
+
 async function pollDeployStatus() {
     if (!deployJobId) return;
     try {
@@ -1042,7 +1328,12 @@ async function pollDeployStatus() {
         } else if (data.status === 'failed') {
             if (deployPollInterval) clearInterval(deployPollInterval);
             deployPollInterval = null;
-            document.getElementById('deployStage').textContent = data.error || 'Deployment failed';
+            const errorPayload = data.error || { summary: 'Deployment failed' };
+            const summary = (typeof errorPayload === 'object')
+                ? (errorPayload.summary || errorPayload.title || 'Deployment failed')
+                : String(errorPayload || 'Deployment failed');
+            document.getElementById('deployStage').textContent = summary;
+            openDeployErrorModal(errorPayload, data.logs || []);
         }
     } catch (e) {
         document.getElementById('deployStage').textContent = 'Connection error during deployment monitoring';
@@ -1052,27 +1343,14 @@ async function pollDeployStatus() {
 async function saveContainer() {
     if (!isStaff) return;
     const btn = document.getElementById('saveBtn');
-    const data = {
-        name: document.getElementById('cont_name').value,
-        image: document.getElementById('cont_image').value,
-        ram: parseInt(document.getElementById('cont_ram_input').value),
-        swap: parseInt(document.getElementById('cont_swap').value),
-        disk: parseInt(document.getElementById('cont_disk').value),
-        cpu: parseInt(document.getElementById('cont_cpu').value),
-        cpu_limit: parseFloat(document.getElementById('cont_cpu_limit').value),
-        cpuset: document.getElementById('cont_cpuset').value,
-        cpu_quota: parseInt(document.getElementById('cont_cpu_quota').value),
-        cpu_period: parseInt(document.getElementById('cont_cpu_period').value),
-        pids_limit: parseInt(document.getElementById('cont_pids_limit').value),
-        shm: parseInt(document.getElementById('cont_shm').value),
-        ports: document.getElementById('cont_ports').value,
-        command: document.getElementById('cont_command').value,
-        env: document.getElementById('cont_env').value,
-        volumes: document.getElementById('cont_volumes').value,
-        restart: document.getElementById('cont_restart').checked,
-        preset: activePreset,
-        users: Array.from(selectedUsers)
-    };
+    const data = collectContainerForm();
+    data.users = Array.from(selectedUsers.values()).map(u => u.username);
+    data.user_assignments = Array.from(selectedUsers.values()).map(u => ({
+        username: u.username,
+        db_name: u.db || 'system.db',
+        role_tag: u.role_tag || 'user'
+    }));
+    data.role_permissions = rolePermissionMatrix;
 
     if(!data.name || !data.image) { alert("Instance name and Image are required"); return; }
 
@@ -1096,15 +1374,49 @@ async function saveContainer() {
         } else {
             const err = await res.json();
             closeDeployProgressModal();
-            alert("Deployment Error: " + (err.detail || "Unknown error"));
+            const errorPayload = (err && err.detail) ? err.detail : { summary: 'Deployment failed', raw_error: JSON.stringify(err || {}) };
+            openDeployErrorModal(errorPayload, []);
         }
     } catch (e) {
         closeDeployProgressModal();
-        alert("Fatal connection error");
+        openDeployErrorModal({
+            title: 'Connection Error',
+            summary: 'Fatal connection error during deployment request.',
+            hint: 'Check GUI/Core connectivity.',
+            raw_error: String(e && e.message ? e.message : e),
+            code: 'deploy_transport_error'
+        }, []);
     } finally {
         btn.disabled = false;
         btn.innerHTML = 'Deploy Instance';
     }
+}
+
+function collectContainerForm() {
+    return {
+        name: document.getElementById('cont_name').value,
+        image: document.getElementById('cont_image').value,
+        ram: parseInt(document.getElementById('cont_ram_input').value),
+        swap: parseInt(document.getElementById('cont_swap').value),
+        disk: parseInt(document.getElementById('cont_disk').value),
+        cpu: parseInt(document.getElementById('cont_cpu').value),
+        cpu_limit: parseFloat(document.getElementById('cont_cpu_limit').value),
+        cpuset: document.getElementById('cont_cpuset').value,
+        cpu_quota: parseInt(document.getElementById('cont_cpu_quota').value),
+        cpu_period: parseInt(document.getElementById('cont_cpu_period').value),
+        pids_limit: parseInt(document.getElementById('cont_pids_limit').value),
+        shm: parseInt(document.getElementById('cont_shm').value),
+        ports: document.getElementById('cont_ports').value,
+        command: document.getElementById('cont_command').value,
+        env: document.getElementById('cont_env').value,
+        volumes: document.getElementById('cont_volumes').value,
+        workspace_mount: activePresetConfig.workspace_mount || '',
+        explorer_root: activePresetConfig.explorer_root || '',
+        console_cwd: activePresetConfig.console_cwd || '',
+        profile_name: activePresetConfig.profile_name || activePreset || '',
+        restart: document.getElementById('cont_restart').checked,
+        preset: activePreset
+    };
 }
 
 function stringToColor(str) {
@@ -1122,16 +1434,27 @@ function toggleMenu(e, id) {
 
 function openCreateModal() {
     if (!isStaff) return;
-    selectedUsers = new Set();
+    selectedUsers = new Map();
     const search = document.getElementById('cont_user_search');
     if (search) search.value = '';
+    const presetName = document.getElementById('preset_save_name');
+    const presetTitle = document.getElementById('preset_save_title');
+    if (presetName) presetName.value = '';
+    if (presetTitle) presetTitle.value = '';
     document.getElementById('cont_name').value = '';
     document.getElementById('cont_image').value = 'ubuntu:latest';
     document.getElementById('cont_ports').value = '';
     document.getElementById('cont_command').value = '';
     document.getElementById('cont_env').value = '';
     document.getElementById('cont_volumes').value = '';
-    applyContainerPreset('balanced-medium');
+    activePresetConfig = {};
+    rolePermissionMatrix = cloneRoleMatrix({});
+    renderRolePermissionMatrix();
+    const select = document.getElementById('cont_preset_select');
+    const firstPreset = select && select.options.length > 0 ? select.options[0].value : '';
+    if (firstPreset) {
+        applyContainerPreset(firstPreset);
+    }
     renderUserPicker('');
     document.getElementById('containerModal').style.display = 'flex';
 }
@@ -1143,16 +1466,22 @@ window.onclick = (e) => {
     const containerModal = document.getElementById('containerModal');
     const consoleModal = document.getElementById('consoleModal');
     const deployModal = document.getElementById('deployProgressModal');
+    const deployErrorModal = document.getElementById('deployErrorModal');
     if (containerModal && e.target === containerModal) closeModal();
     if (consoleModal && e.target === consoleModal) closeConsoleModal();
     if (deployModal && e.target === deployModal) closeDeployProgressModal();
+    if (deployErrorModal && e.target === deployErrorModal) closeDeployErrorModal();
 };
 document.addEventListener('DOMContentLoaded', initPage);
+document.addEventListener('visibilitychange', onVisibilityChanged);
 window.addEventListener('beforeunload', () => {
     if (metricsInterval) clearInterval(metricsInterval);
     if (containersInterval) clearInterval(containersInterval);
     if (consolePollInterval) clearInterval(consolePollInterval);
     if (deployPollInterval) clearInterval(deployPollInterval);
+    if (metricsAbortController) metricsAbortController.abort();
+    if (containersAbortController) containersAbortController.abort();
+    document.removeEventListener('visibilitychange', onVisibilityChanged);
 });
 </script>
 

@@ -4,26 +4,26 @@ import sys
 from pathlib import Path
 
 def setup_logger(name: str):
-    """Создаёт настроенный логгер для ядра."""
+    """Create a configured logger for the core service."""
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
-    # Избегаем дублирования хэндлеров
+    # Avoid duplicate handlers
     if logger.hasHandlers():
         logger.handlers.clear()
 
-    # Формат логов
+    # Log format
     formatter = logging.Formatter(
         fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    # Вывод в консоль
+    # Console output
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # Логи в файл
+    # File output
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     file_handler = logging.FileHandler(log_dir / f"{name}.log", encoding="utf-8")
@@ -33,5 +33,5 @@ def setup_logger(name: str):
     return logger
 
 def get_logger(name: str) -> logging.Logger:
-    """Возвращает логгер с заданным именем."""
+    """Return a logger with the given name."""
     return setup_logger(name)

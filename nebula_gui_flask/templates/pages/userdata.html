@@ -136,7 +136,7 @@ async function loadProfileData() {
     document.getElementById('profile-db').textContent = detail.db_name || profileDbName;
     document.getElementById('profile-email').textContent = detail.email || '-';
     document.getElementById('profile-root').textContent = `/home/cloud_sys/users/${detail.username}`;
-    document.getElementById('profile-role').textContent = detail.is_staff ? 'Administrator' : 'User';
+    document.getElementById('profile-role').textContent = detail.role_tag || (detail.is_staff ? 'admin' : 'user');
 
     const metricsRes = await fetch('/api/metrics');
     const metrics = await metricsRes.json();

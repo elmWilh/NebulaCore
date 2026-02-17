@@ -1,7 +1,7 @@
 # templates
 
-**Описание:** HTML-шаблоны для интерфейса
+**Description:** HTML templates for the interface
 
 ---
-Этот раздел является частью проекта **Nebula Panel**.
-Все файлы и модули внутри этой директории связаны с вышеуказанным компонентом.
+This section is part of the **Nebula Panel** project.
+All files and modules in this directory are related to this component.

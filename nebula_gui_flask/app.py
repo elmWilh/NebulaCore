@@ -96,6 +96,9 @@ if not INTERNAL_AUTH_KEY:
     )
 deploy_jobs = {}
 deploy_jobs_lock = threading.Lock()
+metrics_cache = {}
+metrics_cache_lock = threading.Lock()
+METRICS_CACHE_TTL = 2.5
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_TRUSTED_ORIGINS = set(GUI_ALLOWED_ORIGINS)
 
@@ -187,13 +190,37 @@ def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: s
 
         if code >= 400:
             detail = res.get("detail") if isinstance(res, dict) else str(res)
-            _append_deploy_log(job_id, f"[{time.strftime('%H:%M:%S')}] Deployment failed: {detail}")
+            if isinstance(detail, dict):
+                summary = detail.get("summary") or detail.get("title") or "Deployment failed"
+                hint = detail.get("hint") or ""
+                raw = detail.get("raw_error") or str(detail)
+                _append_deploy_log(job_id, f"[{time.strftime('%H:%M:%S')}] Deployment failed: {summary}")
+                if hint:
+                    _append_deploy_log(job_id, f"[{time.strftime('%H:%M:%S')}] Hint: {hint}")
+                _append_deploy_log(job_id, f"[{time.strftime('%H:%M:%S')}] Raw error: {raw}")
+                error_payload = {
+                    "title": detail.get("title") or "Deployment Error",
+                    "summary": summary,
+                    "hint": hint,
+                    "code": detail.get("code") or "deploy_failed",
+                    "raw_error": raw,
+                }
+            else:
+                error_text = str(detail or "Deployment failed")
+                _append_deploy_log(job_id, f"[{time.strftime('%H:%M:%S')}] Deployment failed: {error_text}")
+                error_payload = {
+                    "title": "Deployment Error",
+                    "summary": error_text,
+                    "hint": "",
+                    "code": "deploy_failed",
+                    "raw_error": error_text,
+                }
             _update_deploy_job(
                 job_id,
                 status="failed",
                 stage="Deployment failed",
                 progress=100,
-                error=detail or "Deployment failed",
+                error=error_payload,
                 result=None
             )
             return
@@ -214,7 +241,13 @@ def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: s
             status="failed",
             stage="Deployment failed",
             progress=100,
-            error=str(e),
+            error={
+                "title": "Fatal Deploy Error",
+                "summary": str(e),
+                "hint": "See raw error log for details.",
+                "code": "deploy_fatal",
+                "raw_error": str(e),
+            },
             result=None
         )
 
@@ -275,6 +308,38 @@ def api_list_containers():
 @bridge.staff_required
 def api_deploy_container():
     res, code = bridge.proxy_request("POST", "/containers/deploy", json_data=request.json)
+    return jsonify(res), code
+
+@app.route('/api/containers/presets')
+@bridge.login_required
+def api_container_presets():
+    res, code = bridge.proxy_request("GET", "/containers/presets")
+    return jsonify(res), code
+
+@app.route('/api/containers/presets/<preset_name>')
+@bridge.login_required
+def api_container_preset_detail(preset_name):
+    res, code = bridge.proxy_request("GET", f"/containers/presets/{preset_name}")
+    return jsonify(res), code
+
+@app.route('/api/containers/presets', methods=['POST'])
+@bridge.login_required
+@bridge.staff_required
+def api_container_preset_save():
+    res, code = bridge.proxy_request("POST", "/containers/presets", json_data=request.json)
+    return jsonify(res), code
+
+@app.route('/api/containers/permissions/<container_id>')
+@bridge.login_required
+def api_container_permissions_get(container_id):
+    res, code = bridge.proxy_request("GET", f"/containers/permissions/{container_id}")
+    return jsonify(res), code
+
+@app.route('/api/containers/permissions/<container_id>', methods=['POST'])
+@bridge.login_required
+@bridge.staff_required
+def api_container_permissions_update(container_id):
+    res, code = bridge.proxy_request("POST", f"/containers/permissions/{container_id}", json_data=request.json)
     return jsonify(res), code
 
 @app.route('/api/containers/deploy/start', methods=['POST'])
@@ -521,6 +586,36 @@ def api_proxy_user_list():
     res, code = bridge.proxy_request("GET", "/users/list", params={"db_name": request.args.get('db_name')})
     return jsonify(res), code
 
+@app.route('/api/users/identity-tag')
+@bridge.login_required
+def api_user_identity_tag_get():
+    params = {
+        "username": request.args.get("username"),
+        "db_name": request.args.get("db_name"),
+    }
+    res, code = bridge.proxy_request("GET", "/users/identity-tag", params=params)
+    return jsonify(res), code
+
+@app.route('/api/users/identity-tag', methods=['POST'])
+@bridge.login_required
+@bridge.staff_required
+def api_user_identity_tag_set():
+    res, code = bridge.proxy_request("POST", "/users/identity-tag", json_data=request.json)
+    return jsonify(res), code
+
+@app.route('/api/roles/list')
+@bridge.login_required
+def api_roles_list():
+    res, code = bridge.proxy_request("GET", "/roles/list")
+    return jsonify(res), code
+
+@app.route('/api/roles/create', methods=['POST'])
+@bridge.login_required
+@bridge.staff_required
+def api_roles_create():
+    res, code = bridge.proxy_request("POST", "/roles/create", json_data=request.json)
+    return jsonify(res), code
+
 @app.route('/api/users/create', methods=['POST'])
 @bridge.login_required
 @bridge.staff_required
@@ -562,6 +657,13 @@ def api_metrics():
         except ValueError:
             return None
 
+    cache_key = f"{session.get('core_session', '')}:{session.get('user_id', '')}:{int(bool(session.get('is_staff')))}"
+    now = time.time()
+    with metrics_cache_lock:
+        cached = metrics_cache.get(cache_key)
+        if cached and (now - cached["ts"]) <= METRICS_CACHE_TTL:
+            return jsonify(cached["payload"])
+
     is_staff = bool(session.get('is_staff'))
     summary, summary_code = bridge.proxy_request("GET", "/containers/summary")
     if summary_code >= 400:
@@ -590,7 +692,7 @@ def api_metrics():
         else:
             health_status = "optimal"
 
-        return jsonify({
+        payload = {
             "scope": "user_containers",
             "cpu": f"{cpu_percent:.1f}%",
             "ram": f"{ram_percent:.1f}%",
@@ -611,7 +713,10 @@ def api_metrics():
             "servers": 0,
             "alerts": 0,
             "tasks": 0
-        })
+        }
+        with metrics_cache_lock:
+            metrics_cache[cache_key] = {"ts": now, "payload": payload}
+        return jsonify(payload)
 
     data = bridge.fetch_metrics()
     if not data:
@@ -644,7 +749,7 @@ def api_metrics():
     else:
         health_status = "optimal"
 
-    return jsonify({
+    payload = {
         "scope": "server",
         "cpu": f"{cpu_percent:.1f}%" if cpu_percent is not None else "—",
         "ram": f"{ram_percent:.1f}%" if ram_percent is not None else "—",
@@ -665,7 +770,17 @@ def api_metrics():
         "servers": 1,
         "alerts": 0,
         "tasks": 0
-    })
+    }
+    with metrics_cache_lock:
+        metrics_cache[cache_key] = {"ts": now, "payload": payload}
+    return jsonify(payload)
+
+@app.route('/api/admin/dashboard-metrics')
+@bridge.login_required
+@bridge.staff_required
+def api_admin_dashboard_metrics():
+    res, code = bridge.proxy_request("GET", "/metrics/admin/dashboard")
+    return jsonify(res), code
 
 @app.route('/api/userpanel/overview')
 @bridge.login_required
@@ -673,6 +788,7 @@ def api_userpanel_overview():
     username = session.get('user_id', 'unknown')
     db_name = session.get('db_name', 'system.db')
     is_staff = bool(session.get('is_staff'))
+    role_tag = session.get('role_tag') or ('admin' if is_staff else 'user')
 
     summary, summary_code = bridge.proxy_request("GET", "/containers/summary")
     if summary_code >= 400 or not isinstance(summary, dict):
@@ -707,10 +823,23 @@ def api_userpanel_overview():
             {"iso": now_label, "level": "INFO", "message": f"Visible containers: {len(containers)}"},
         ]
 
+    if not is_staff:
+        role_res, role_code = bridge.proxy_request(
+            "GET",
+            "/users/identity-tag",
+            params={"username": username, "db_name": db_name},
+        )
+        if role_code < 400 and isinstance(role_res, dict):
+            fetched = str(role_res.get("role_tag") or "").strip().lower()
+            if fetched:
+                role_tag = fetched
+                session['role_tag'] = fetched
+
     return jsonify({
         "username": username,
         "db_name": db_name,
         "is_staff": is_staff,
+        "role_tag": role_tag,
         "stats": {
             "running_containers": running,
             "total_containers": total,

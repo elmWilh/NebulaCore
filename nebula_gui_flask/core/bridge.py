@@ -72,6 +72,7 @@ class NebulaBridge:
                 session['user_id'] = admin_id
                 session['is_staff'] = True
                 session['db_name'] = 'system.db'
+                session['role_tag'] = 'admin'
                 session['core_session'] = core_session
                 return True, None
             try:
@@ -111,10 +112,12 @@ class NebulaBridge:
                 core_session = r.cookies.get("nebula_session")
                 if not core_session:
                     return False, "Core session not established"
+                role_tag = self._resolve_role_tag(core_session, username, db_name) or "user"
                 session.permanent = True
                 session['user_id'] = username
                 session['is_staff'] = False
                 session['db_name'] = db_name
+                session['role_tag'] = role_tag
                 session['core_session'] = core_session
                 return True, None
             try:
@@ -124,6 +127,22 @@ class NebulaBridge:
             return False, detail
         except Exception as e:
             return False, str(e)
+
+    def _resolve_role_tag(self, core_session, username, db_name):
+        try:
+            r = requests.get(
+                f"{self.core_url}/users/identity-tag",
+                params={"username": username, "db_name": db_name},
+                cookies={"nebula_session": core_session},
+                timeout=4,
+            )
+            if r.status_code == 200:
+                tag = str((r.json() or {}).get("role_tag") or "").strip().lower()
+                if tag:
+                    return tag
+        except Exception:
+            pass
+        return None
 
     def proxy_request(self, method, endpoint, params=None, json_data=None, form_data=None):
         url = f"{self.core_url}{endpoint}"

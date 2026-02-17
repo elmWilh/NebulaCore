@@ -2,6 +2,11 @@ import docker
 import time
 import shlex
 import posixpath
+import psutil
+import os
+import re
+import shutil
+import json
 from ..db import get_connection, SYSTEM_DB
 from ..core.context import context
 
@@ -10,6 +15,9 @@ from ..core.context import context
 # and provide clear errors from methods when called.
 
 class DockerService:
+    WORKSPACES_BASE_DIR = os.path.join("storage", "container_workspaces")
+    PRESETS_BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "containers", "presets"))
+    DEFAULT_WORKSPACE_MOUNT_PATH = "/data"
     EXPLORER_ALLOWED_ROOTS = (
         "/data",
         "/workspace",
@@ -84,6 +92,59 @@ class DockerService:
         "/sys/",
         "/var/lib/",
     )
+    CONTAINER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
+    DEFAULT_ROLE_PERMISSIONS = {
+        "user": {
+            "allow_explorer": True,
+            "allow_root_explorer": False,
+            "allow_console": True,
+            "allow_shell": False,
+            "allow_settings": False,
+            "allow_edit_files": False,
+            "allow_edit_startup": False,
+            "allow_edit_ports": False,
+        },
+        "moderator": {
+            "allow_explorer": True,
+            "allow_root_explorer": False,
+            "allow_console": True,
+            "allow_shell": True,
+            "allow_settings": True,
+            "allow_edit_files": False,
+            "allow_edit_startup": True,
+            "allow_edit_ports": True,
+        },
+        "developer": {
+            "allow_explorer": True,
+            "allow_root_explorer": False,
+            "allow_console": True,
+            "allow_shell": True,
+            "allow_settings": True,
+            "allow_edit_files": True,
+            "allow_edit_startup": True,
+            "allow_edit_ports": True,
+        },
+        "tester": {
+            "allow_explorer": True,
+            "allow_root_explorer": False,
+            "allow_console": True,
+            "allow_shell": False,
+            "allow_settings": False,
+            "allow_edit_files": False,
+            "allow_edit_startup": False,
+            "allow_edit_ports": False,
+        },
+        "admin": {
+            "allow_explorer": True,
+            "allow_root_explorer": True,
+            "allow_console": True,
+            "allow_shell": True,
+            "allow_settings": True,
+            "allow_edit_files": True,
+            "allow_edit_startup": True,
+            "allow_edit_ports": True,
+        },
+    }
 
     def __init__(self):
         try:
@@ -95,7 +156,212 @@ class DockerService:
             self.available = False
         self._net_state = {}
         self._summary_cache = {}
-        self._summary_cache_ttl = 1.0
+        self._summary_cache_ttl = 4.0
+        self._workspace_usage_cache = {}
+        self._workspace_usage_cache_ttl = 2.0
+        os.makedirs(self.PRESETS_BASE_DIR, exist_ok=True)
+
+    @staticmethod
+    def _normalize_role_tag(role_tag: str) -> str:
+        raw = str(role_tag or "").strip().lower()
+        if not raw:
+            return "user"
+        cleaned = re.sub(r"[^a-z0-9_-]+", "-", raw).strip("-_")
+        return cleaned or "user"
+
+    @staticmethod
+    def _to_bool(value, default=False):
+        if value is None:
+            return bool(default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        txt = str(value).strip().lower()
+        if txt in ("1", "true", "yes", "y", "on"):
+            return True
+        if txt in ("0", "false", "no", "n", "off", ""):
+            return False
+        return bool(default)
+
+    def _default_presets(self):
+        # Presets are file-driven; keep empty defaults by product requirement.
+        return {}
+
+    def _preset_file_path(self, preset_name: str) -> str:
+        token = self._safe_workspace_token(preset_name or "preset")
+        return os.path.join(self.PRESETS_BASE_DIR, f"{token}.json")
+
+    def list_container_presets(self):
+        merged = {}
+        source_dirs = [self.PRESETS_BASE_DIR]
+        try:
+            for base_dir in source_dirs:
+                if not os.path.isdir(base_dir):
+                    continue
+                for fn in os.listdir(base_dir):
+                    if not fn.endswith(".json"):
+                        continue
+                    path = os.path.join(base_dir, fn)
+                    with open(path, "r", encoding="utf-8") as f:
+                        raw = json.load(f)
+                    if not isinstance(raw, dict):
+                        continue
+                    name = self._safe_workspace_token(raw.get("name") or fn[:-5])
+                    merged[name] = {
+                        "name": name,
+                        "title": str(raw.get("title") or name).strip() or name,
+                        "description": str(raw.get("description") or "").strip(),
+                        "config": raw.get("config") if isinstance(raw.get("config"), dict) else {},
+                        "permissions": raw.get("permissions") if isinstance(raw.get("permissions"), dict) else {},
+                        "source": "file",
+                    }
+        except Exception:
+            pass
+        presets = []
+        for item in merged.values():
+            data = dict(item)
+            data.setdefault("source", "builtin")
+            presets.append(data)
+        presets.sort(key=lambda p: str(p.get("title") or p.get("name") or "").lower())
+        return presets
+
+    def get_container_preset(self, preset_name: str):
+        token = self._safe_workspace_token(preset_name or "")
+        if not token:
+            raise RuntimeError("Preset name is required")
+        for preset in self.list_container_presets():
+            if self._safe_workspace_token(preset.get("name")) == token:
+                return preset
+        raise RuntimeError("Preset not found")
+
+    def save_container_preset(self, name: str, title: str, description: str, config: dict, permissions: dict, saved_by: str):
+        token = self._safe_workspace_token(name)
+        if not token:
+            raise RuntimeError("Invalid preset name")
+        payload = {
+            "name": token,
+            "title": str(title or token).strip() or token,
+            "description": str(description or "").strip(),
+            "config": config if isinstance(config, dict) else {},
+            "permissions": permissions if isinstance(permissions, dict) else {},
+            "saved_by": saved_by or "unknown",
+            "saved_at": int(time.time()),
+        }
+        path = self._preset_file_path(token)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=True, indent=2, sort_keys=True)
+            f.write("\n")
+        return {"status": "saved", "name": token, "path": path}
+
+    def resolve_user_role(self, username: str, db_name: str, is_staff: bool) -> str:
+        if is_staff:
+            return "admin"
+        with get_connection(SYSTEM_DB) as conn:
+            row = conn.execute(
+                "SELECT role_tag FROM user_identity_tags WHERE db_name = ? AND username = ? LIMIT 1",
+                (db_name or "system.db", username),
+            ).fetchone()
+        if row and str(row["role_tag"] or "").strip():
+            return self._normalize_role_tag(row["role_tag"])
+        return "user"
+
+    def get_container_role_policies(self, container_id: str):
+        full_id = self.resolve_container_id(container_id)
+        policies = {k: dict(v) for k, v in self.DEFAULT_ROLE_PERMISSIONS.items()}
+        with get_connection(SYSTEM_DB) as conn:
+            rows = conn.execute(
+                """
+                SELECT role_tag, allow_explorer, allow_root_explorer, allow_console, allow_shell,
+                       allow_settings, allow_edit_files, allow_edit_startup, allow_edit_ports
+                FROM container_role_permissions
+                WHERE container_id = ?
+                """,
+                (full_id,),
+            ).fetchall()
+        for row in rows:
+            role = self._normalize_role_tag(row["role_tag"])
+            base = dict(self.DEFAULT_ROLE_PERMISSIONS.get(role, self.DEFAULT_ROLE_PERMISSIONS["user"]))
+            base.update({
+                "allow_explorer": self._to_bool(row["allow_explorer"], base["allow_explorer"]),
+                "allow_root_explorer": self._to_bool(row["allow_root_explorer"], base["allow_root_explorer"]),
+                "allow_console": self._to_bool(row["allow_console"], base["allow_console"]),
+                "allow_shell": self._to_bool(row["allow_shell"], base["allow_shell"]),
+                "allow_settings": self._to_bool(row["allow_settings"], base["allow_settings"]),
+                "allow_edit_files": self._to_bool(row["allow_edit_files"], base["allow_edit_files"]),
+                "allow_edit_startup": self._to_bool(row["allow_edit_startup"], base["allow_edit_startup"]),
+                "allow_edit_ports": self._to_bool(row["allow_edit_ports"], base["allow_edit_ports"]),
+            })
+            policies[role] = base
+        return full_id, policies
+
+    def get_effective_container_permissions(self, container_id: str, username: str, db_name: str, is_staff: bool):
+        full_id, policies = self.get_container_role_policies(container_id)
+        role_tag = self.resolve_user_role(username, db_name, is_staff)
+        base = dict(self.DEFAULT_ROLE_PERMISSIONS.get(role_tag, self.DEFAULT_ROLE_PERMISSIONS["user"]))
+        policy = dict(base)
+        policy.update(policies.get(role_tag, {}))
+        if is_staff:
+            for key in list(policy.keys()):
+                policy[key] = True
+        policy["role_tag"] = role_tag
+        policy["container_id"] = full_id
+        policy["is_staff"] = bool(is_staff)
+        policy["role_policies"] = policies
+        return policy
+
+    def set_container_role_policies(self, container_id: str, role_policies: dict, updated_by: str):
+        full_id = self.resolve_container_id(container_id)
+        if not isinstance(role_policies, dict):
+            raise RuntimeError("role_policies must be an object")
+        with get_connection(SYSTEM_DB) as conn:
+            for role, values in role_policies.items():
+                role_tag = self._normalize_role_tag(role)
+                base = dict(self.DEFAULT_ROLE_PERMISSIONS.get(role_tag, self.DEFAULT_ROLE_PERMISSIONS["user"]))
+                raw = values if isinstance(values, dict) else {}
+                row = {
+                    "allow_explorer": self._to_bool(raw.get("allow_explorer"), base["allow_explorer"]),
+                    "allow_root_explorer": self._to_bool(raw.get("allow_root_explorer"), base["allow_root_explorer"]),
+                    "allow_console": self._to_bool(raw.get("allow_console"), base["allow_console"]),
+                    "allow_shell": self._to_bool(raw.get("allow_shell"), base["allow_shell"]),
+                    "allow_settings": self._to_bool(raw.get("allow_settings"), base["allow_settings"]),
+                    "allow_edit_files": self._to_bool(raw.get("allow_edit_files"), base["allow_edit_files"]),
+                    "allow_edit_startup": self._to_bool(raw.get("allow_edit_startup"), base["allow_edit_startup"]),
+                    "allow_edit_ports": self._to_bool(raw.get("allow_edit_ports"), base["allow_edit_ports"]),
+                }
+                conn.execute(
+                    """
+                    INSERT INTO container_role_permissions (
+                        container_id, role_tag, allow_explorer, allow_root_explorer, allow_console, allow_shell,
+                        allow_settings, allow_edit_files, allow_edit_startup, allow_edit_ports, updated_by, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(container_id, role_tag) DO UPDATE SET
+                        allow_explorer=excluded.allow_explorer,
+                        allow_root_explorer=excluded.allow_root_explorer,
+                        allow_console=excluded.allow_console,
+                        allow_shell=excluded.allow_shell,
+                        allow_settings=excluded.allow_settings,
+                        allow_edit_files=excluded.allow_edit_files,
+                        allow_edit_startup=excluded.allow_edit_startup,
+                        allow_edit_ports=excluded.allow_edit_ports,
+                        updated_by=excluded.updated_by,
+                        updated_at=datetime('now')
+                    """,
+                    (
+                        full_id, role_tag,
+                        1 if row["allow_explorer"] else 0,
+                        1 if row["allow_root_explorer"] else 0,
+                        1 if row["allow_console"] else 0,
+                        1 if row["allow_shell"] else 0,
+                        1 if row["allow_settings"] else 0,
+                        1 if row["allow_edit_files"] else 0,
+                        1 if row["allow_edit_startup"] else 0,
+                        1 if row["allow_edit_ports"] else 0,
+                        updated_by or "unknown",
+                    ),
+                )
+        return self.get_container_role_policies(full_id)[1]
 
     def ensure_client(self):
         """Attempt to (re)initialize docker client on demand."""
@@ -122,7 +388,7 @@ class DockerService:
         except docker.errors.NotFound:
             raise RuntimeError("Container not found")
 
-    def list_containers(self, username: str, is_staff: bool):
+    def list_containers(self, username: str, db_name: str, is_staff: bool):
         if not self.available or self.client is None:
             if not self.ensure_client():
                 raise RuntimeError("Docker daemon not available")
@@ -131,12 +397,20 @@ class DockerService:
         
         with get_connection(SYSTEM_DB) as conn:
             if is_staff:
-                permissions = conn.execute("SELECT container_id, username FROM container_permissions").fetchall()
+                permissions = conn.execute("SELECT container_id, username, role_tag FROM container_permissions").fetchall()
                 perm_map = {}
                 for p in permissions:
-                    perm_map.setdefault(p["container_id"], []).append(p["username"])
+                    role = self._normalize_role_tag(p["role_tag"])
+                    label = f"{p['username']} ({role})" if role else p["username"]
+                    perm_map.setdefault(p["container_id"], []).append(label)
             else:
-                allowed = conn.execute("SELECT container_id FROM container_permissions WHERE username=?", (username,)).fetchall()
+                allowed = conn.execute(
+                    """
+                    SELECT container_id FROM container_permissions
+                    WHERE username = ? AND (db_name = ? OR db_name IS NULL OR db_name = '')
+                    """,
+                    (username, db_name or "system.db"),
+                ).fetchall()
                 allowed_ids = {r["container_id"] for r in allowed}
 
         res = []
@@ -153,12 +427,12 @@ class DockerService:
             })
         return res
 
-    def get_usage_summary(self, username: str, is_staff: bool):
+    def get_usage_summary(self, username: str, db_name: str, is_staff: bool):
         if not self.available or self.client is None:
             if not self.ensure_client():
                 raise RuntimeError("Docker daemon not available")
 
-        cache_key = f"{username}:{'staff' if is_staff else 'user'}"
+        cache_key = f"{db_name}:{username}:{'staff' if is_staff else 'user'}"
         now = time.time()
         cached = self._summary_cache.get(cache_key)
         if cached:
@@ -171,8 +445,11 @@ class DockerService:
         if not is_staff:
             with get_connection(SYSTEM_DB) as conn:
                 allowed = conn.execute(
-                    "SELECT container_id FROM container_permissions WHERE username=?",
-                    (username,)
+                    """
+                    SELECT container_id FROM container_permissions
+                    WHERE username = ? AND (db_name = ? OR db_name IS NULL OR db_name = '')
+                    """,
+                    (username, db_name or "system.db")
                 ).fetchall()
                 allowed_ids = {r["container_id"] for r in allowed}
             containers = [c for c in containers if c.id in allowed_ids]
@@ -187,10 +464,9 @@ class DockerService:
 
         for c in containers:
             try:
-                c.reload()
-                if c.status == "running":
-                    running += 1
-
+                if c.status != "running":
+                    continue
+                running += 1
                 stats = c.stats(stream=False)
                 cpu_total += self._calc_cpu_percent(stats)
 
@@ -232,6 +508,101 @@ class DockerService:
         }
         self._summary_cache[cache_key] = (now, payload)
         return payload
+
+    def get_container_memory_breakdown(self):
+        if not self.available or self.client is None:
+            if not self.ensure_client():
+                raise RuntimeError("Docker daemon not available")
+
+        host_mem_total = float(psutil.virtual_memory().total or 0.0)
+        containers = self.client.containers.list(all=True)
+        with get_connection(SYSTEM_DB) as conn:
+            storage_rows = conn.execute(
+                "SELECT container_id, workspace_path, disk_quota_mb FROM container_storage"
+            ).fetchall()
+        storage_map = {r["container_id"]: dict(r) for r in storage_rows}
+        rows = []
+
+        for c in containers:
+            try:
+                c.reload()
+                stats = c.stats(stream=False)
+                mem = stats.get("memory_stats", {}) or {}
+                used_bytes = float(mem.get("usage") or 0.0)
+                limit_bytes = float(mem.get("limit") or 0.0)
+                disk_rw_bytes = 0.0
+                disk_rootfs_bytes = 0.0
+                try:
+                    inspected = self.client.api.inspect_container(c.id, size=True)
+                    disk_rw_bytes = float(inspected.get("SizeRw") or 0.0)
+                    disk_rootfs_bytes = float(inspected.get("SizeRootFs") or 0.0)
+                except Exception:
+                    pass
+
+                storage_meta = storage_map.get(c.id) or {}
+                workspace_path = (storage_meta.get("workspace_path") or "").strip()
+                if not workspace_path:
+                    mounts = (getattr(c, "attrs", {}) or {}).get("Mounts", []) or []
+                    preferred = ("/data", "/workspace")
+                    for dest in preferred:
+                        found = next((m for m in mounts if (m or {}).get("Destination") == dest), None)
+                        if found and (found.get("Source") or "").strip():
+                            workspace_path = (found.get("Source") or "").strip()
+                            break
+                disk_quota_mb = int(storage_meta.get("disk_quota_mb") or 0)
+                workspace_used_bytes = self._workspace_size_bytes(workspace_path) if workspace_path else 0
+                disk_used_bytes = workspace_used_bytes if workspace_used_bytes > 0 else max(0.0, disk_rw_bytes)
+                disk_used_mb = round(max(0.0, disk_used_bytes) / 1048576.0, 2)
+                disk_usage_percent = round((disk_used_mb / disk_quota_mb * 100.0), 2) if disk_quota_mb > 0 else 0.0
+
+                rows.append({
+                    "id": c.id[:12],
+                    "name": c.name,
+                    "status": c.status,
+                    "memory_used_mb": round(max(0.0, used_bytes) / 1048576.0, 2),
+                    "memory_limit_mb": round(max(0.0, limit_bytes) / 1048576.0, 2),
+                    "memory_host_percent": round((used_bytes / host_mem_total * 100.0), 2) if host_mem_total > 0 else 0.0,
+                    "disk_rw_mb": disk_used_mb,
+                    "disk_used_mb": disk_used_mb,
+                    "disk_rootfs_mb": round(max(0.0, disk_rootfs_bytes) / 1048576.0, 2),
+                    "disk_quota_mb": disk_quota_mb,
+                    "disk_usage_percent": disk_usage_percent,
+                    "workspace_path": workspace_path,
+                })
+            except Exception:
+                continue
+
+        rows.sort(key=lambda r: r["memory_used_mb"], reverse=True)
+        return rows
+
+    @staticmethod
+    def _safe_workspace_token(name: str) -> str:
+        token = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(name or "").strip()).strip("-._").lower()
+        return token[:42] or "container"
+
+    def _workspace_size_bytes(self, path: str) -> int:
+        clean = (path or "").strip()
+        if not clean or not os.path.isdir(clean):
+            return 0
+        now = time.time()
+        cached = self._workspace_usage_cache.get(clean)
+        if cached:
+            ts, size_b = cached
+            if (now - ts) <= self._workspace_usage_cache_ttl:
+                return int(size_b)
+
+        total = 0
+        for root, _, files in os.walk(clean):
+            for fn in files:
+                fp = os.path.join(root, fn)
+                try:
+                    if os.path.islink(fp):
+                        continue
+                    total += int(os.path.getsize(fp))
+                except Exception:
+                    continue
+        self._workspace_usage_cache[clean] = (now, total)
+        return total
 
     @staticmethod
     def _calc_cpu_percent(stats: dict) -> float:
@@ -348,11 +719,26 @@ class DockerService:
             if not self.ensure_client():
                 raise RuntimeError("Docker daemon not available")
 
+        clean_name = str((data or {}).get("name") or "").strip()
+        if not clean_name:
+            raise RuntimeError("INVALID_CONTAINER_NAME: Container name is required")
+        if not self.CONTAINER_NAME_RE.fullmatch(clean_name):
+            raise RuntimeError(
+                "INVALID_CONTAINER_NAME: Use only letters, numbers, ., _, - and no spaces"
+            )
+        data = dict(data or {})
+        data["name"] = clean_name
+
+        image_name = str((data or {}).get("image") or "").strip()
+        if not image_name:
+            raise RuntimeError("INVALID_IMAGE_NAME: Docker image is required")
+        data["image"] = image_name
+
         try:
-            self.client.images.get(data['image'])
+            self.client.images.get(data["image"])
         except docker.errors.ImageNotFound:
             context.logger.info(f"Image {data['image']} not found locally. Pulling...")
-            self.client.images.pull(data['image'])
+            self.client.images.pull(data["image"])
 
         mem_mb = self._to_int(data.get("ram"), 512)
         swap_mb = self._to_int(data.get("swap"), None)
@@ -364,6 +750,28 @@ class DockerService:
         cpuset = (data.get("cpuset") or "").strip() or None
         pids_limit = self._to_int(data.get("pids_limit"), None)
         shm_mb = self._to_int(data.get("shm"), None)
+        workspace_mount = (data.get("workspace_mount") or self.DEFAULT_WORKSPACE_MOUNT_PATH).strip() or self.DEFAULT_WORKSPACE_MOUNT_PATH
+        explorer_root = (data.get("explorer_root") or workspace_mount).strip() or workspace_mount
+        console_cwd = (data.get("console_cwd") or explorer_root or workspace_mount).strip() or workspace_mount
+        profile_name = self._safe_workspace_token(data.get("profile_name") or data.get("preset") or "")
+        if not profile_name:
+            profile_name = self.infer_profile(data.get("image") or "")
+        parsed_volumes = self._parse_volumes(data.get("volumes")) or {}
+        managed_workspace = False
+        workspace_path = ""
+        disk_quota_mb = max(0, int((disk_gb or 0) * 1024))
+
+        for host_path, mount_cfg in parsed_volumes.items():
+            if (mount_cfg or {}).get("bind") == workspace_mount:
+                workspace_path = host_path
+                break
+
+        if not workspace_path:
+            token = self._safe_workspace_token(data.get("name") or "container")
+            workspace_path = os.path.abspath(os.path.join(self.WORKSPACES_BASE_DIR, f"{token}-{int(time.time() * 1000)}"))
+            os.makedirs(workspace_path, exist_ok=True)
+            parsed_volumes[workspace_path] = {"bind": workspace_mount, "mode": "rw"}
+            managed_workspace = True
 
         run_kwargs = {
             "image": data["image"],
@@ -373,7 +781,7 @@ class DockerService:
             "restart_policy": {"Name": "always"} if data.get("restart") else None,
             "ports": self._parse_ports(data.get("ports")),
             "environment": self._parse_env(data.get("env")),
-            "volumes": self._parse_volumes(data.get("volumes")),
+            "volumes": parsed_volumes or None,
             "command": (data.get("command") or "").strip() or None,
             "mem_limit": f"{max(64, mem_mb)}m",
             "cpu_shares": max(2, cpu_weight),
@@ -401,35 +809,160 @@ class DockerService:
             container = self.client.containers.run(**run_kwargs)
         except docker.errors.APIError as e:
             detail = str(e)
+            if managed_workspace and workspace_path:
+                try:
+                    if os.path.isdir(workspace_path):
+                        shutil.rmtree(workspace_path, ignore_errors=True)
+                except Exception:
+                    pass
             if "storage-opt" in detail.lower() or "size" in detail.lower():
-                raise RuntimeError(
-                    "Disk limit is not supported by the current Docker storage driver on this host"
+                context.logger.warning(
+                    "storage_opt size unsupported on this host; relying on managed workspace quota tracking"
                 )
-            raise RuntimeError(detail)
+                run_kwargs.pop("storage_opt", None)
+                try:
+                    container = self.client.containers.run(**run_kwargs)
+                except docker.errors.APIError as e2:
+                    raise RuntimeError(str(e2))
+            else:
+                raise RuntimeError(detail)
 
-        with get_connection(SYSTEM_DB) as conn:
-            for u in data.get('users', []):
+        user_assignments = data.get("user_assignments")
+        if not isinstance(user_assignments, list):
+            user_assignments = []
+            for u in data.get("users", []):
+                user_assignments.append({
+                    "username": str(u or "").strip(),
+                    "db_name": "system.db",
+                    "role_tag": "user",
+                })
+
+        try:
+            with get_connection(SYSTEM_DB) as conn:
+                for item in user_assignments:
+                    username = str((item or {}).get("username") or "").strip()
+                    if not username:
+                        continue
+                    db_name = str((item or {}).get("db_name") or "system.db").strip() or "system.db"
+                    role_tag = self._normalize_role_tag((item or {}).get("role_tag") or "user")
+                    conn.execute(
+                        """
+                        INSERT INTO container_permissions (container_id, username, db_name, role_tag)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(container_id, username) DO UPDATE SET
+                            db_name=excluded.db_name,
+                            role_tag=excluded.role_tag
+                        """,
+                        (container.id, username, db_name, role_tag),
+                    )
+                role_policies = data.get("role_permissions")
+                if isinstance(role_policies, dict):
+                    for role, values in role_policies.items():
+                        role_tag = self._normalize_role_tag(role)
+                        base = dict(self.DEFAULT_ROLE_PERMISSIONS.get(role_tag, self.DEFAULT_ROLE_PERMISSIONS["user"]))
+                        raw = values if isinstance(values, dict) else {}
+                        row = {
+                            "allow_explorer": self._to_bool(raw.get("allow_explorer"), base["allow_explorer"]),
+                            "allow_root_explorer": self._to_bool(raw.get("allow_root_explorer"), base["allow_root_explorer"]),
+                            "allow_console": self._to_bool(raw.get("allow_console"), base["allow_console"]),
+                            "allow_shell": self._to_bool(raw.get("allow_shell"), base["allow_shell"]),
+                            "allow_settings": self._to_bool(raw.get("allow_settings"), base["allow_settings"]),
+                            "allow_edit_files": self._to_bool(raw.get("allow_edit_files"), base["allow_edit_files"]),
+                            "allow_edit_startup": self._to_bool(raw.get("allow_edit_startup"), base["allow_edit_startup"]),
+                            "allow_edit_ports": self._to_bool(raw.get("allow_edit_ports"), base["allow_edit_ports"]),
+                        }
+                        conn.execute(
+                            """
+                            INSERT INTO container_role_permissions (
+                                container_id, role_tag, allow_explorer, allow_root_explorer, allow_console, allow_shell,
+                                allow_settings, allow_edit_files, allow_edit_startup, allow_edit_ports, updated_by, updated_at
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                            ON CONFLICT(container_id, role_tag) DO UPDATE SET
+                                allow_explorer=excluded.allow_explorer,
+                                allow_root_explorer=excluded.allow_root_explorer,
+                                allow_console=excluded.allow_console,
+                                allow_shell=excluded.allow_shell,
+                                allow_settings=excluded.allow_settings,
+                                allow_edit_files=excluded.allow_edit_files,
+                                allow_edit_startup=excluded.allow_edit_startup,
+                                allow_edit_ports=excluded.allow_edit_ports,
+                                updated_by=excluded.updated_by,
+                                updated_at=datetime('now')
+                            """,
+                            (
+                                container.id, role_tag,
+                                1 if row["allow_explorer"] else 0,
+                                1 if row["allow_root_explorer"] else 0,
+                                1 if row["allow_console"] else 0,
+                                1 if row["allow_shell"] else 0,
+                                1 if row["allow_settings"] else 0,
+                                1 if row["allow_edit_files"] else 0,
+                                1 if row["allow_edit_startup"] else 0,
+                                1 if row["allow_edit_ports"] else 0,
+                                "system",
+                            ),
+                        )
                 conn.execute(
-                    "INSERT OR IGNORE INTO container_permissions (container_id, username) VALUES (?, ?)",
-                    (container.id, u)
+                    """
+                    INSERT INTO container_settings (container_id, startup_command, allowed_ports, updated_by, updated_at)
+                    VALUES (?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(container_id) DO UPDATE SET
+                        startup_command=excluded.startup_command,
+                        allowed_ports=excluded.allowed_ports,
+                        updated_by=excluded.updated_by,
+                        updated_at=datetime('now')
+                    """,
+                    (
+                        container.id,
+                        (data.get("command") or "").strip() or None,
+                        (data.get("ports") or "").strip() or None,
+                        "system",
+                    ),
                 )
-            conn.execute(
-                """
-                INSERT INTO container_settings (container_id, startup_command, allowed_ports, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, datetime('now'))
-                ON CONFLICT(container_id) DO UPDATE SET
-                    startup_command=excluded.startup_command,
-                    allowed_ports=excluded.allowed_ports,
-                    updated_by=excluded.updated_by,
-                    updated_at=datetime('now')
-                """,
-                (
-                    container.id,
-                    (data.get("command") or "").strip() or None,
-                    (data.get("ports") or "").strip() or None,
-                    "system",
-                ),
-            )
+                conn.execute(
+                    """
+                    INSERT INTO container_storage (
+                        container_id, workspace_path, workspace_mount, disk_quota_mb,
+                        explorer_root, console_cwd, profile_name, managed_workspace, updated_by, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(container_id) DO UPDATE SET
+                        workspace_path=excluded.workspace_path,
+                        workspace_mount=excluded.workspace_mount,
+                        disk_quota_mb=excluded.disk_quota_mb,
+                        explorer_root=excluded.explorer_root,
+                        console_cwd=excluded.console_cwd,
+                        profile_name=excluded.profile_name,
+                        managed_workspace=excluded.managed_workspace,
+                        updated_by=excluded.updated_by,
+                        updated_at=datetime('now')
+                    """,
+                    (
+                        container.id,
+                        workspace_path or None,
+                        workspace_mount,
+                        disk_quota_mb,
+                        explorer_root,
+                        console_cwd,
+                        profile_name,
+                        1 if managed_workspace else 0,
+                        "system",
+                    ),
+                )
+        except Exception as db_error:
+            # Keep DB and runtime in sync: rollback runtime object if metadata registration fails.
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
+            if managed_workspace and workspace_path:
+                try:
+                    if os.path.isdir(workspace_path):
+                        shutil.rmtree(workspace_path, ignore_errors=True)
+                except Exception:
+                    pass
+            raise RuntimeError(f"DB_REGISTRATION_FAILED: {db_error}")
         return container.id
 
     def get_container_detail(self, container_id: str):
@@ -443,7 +976,7 @@ class DockerService:
 
         with get_connection(SYSTEM_DB) as conn:
             users = conn.execute(
-                "SELECT username FROM container_permissions WHERE container_id = ?",
+                "SELECT username, role_tag FROM container_permissions WHERE container_id = ?",
                 (container.id,),
             ).fetchall()
 
@@ -453,7 +986,7 @@ class DockerService:
             "name": container.name,
             "status": container.status,
             "image": container.image.tags[0] if container.image.tags else "unknown",
-            "users": [u["username"] for u in users],
+            "users": [f"{u['username']} ({self._normalize_role_tag(u['role_tag'])})" for u in users],
         }
 
     def _exec_shell(self, container, shell_command: str):
@@ -497,6 +1030,11 @@ class DockerService:
         cmd = (command or "").strip()
         if not cmd:
             raise RuntimeError("Command cannot be empty")
+        runtime = self._container_runtime_context(container.id)
+        raw_console_cwd = str(runtime.get("console_cwd") or "").strip()
+        console_cwd = self._normalize_explorer_path(raw_console_cwd) if raw_console_cwd else ""
+        if console_cwd and console_cwd != "/":
+            cmd = f"cd {shlex.quote(console_cwd)} 2>/dev/null || true; {cmd}"
 
         rc, output = self._exec_shell(container, cmd)
         return {
@@ -522,10 +1060,15 @@ class DockerService:
 
     def get_profile_policy(self, container_id: str):
         detail = self.get_container_detail(container_id)
-        profile = self.infer_profile(detail.get("image") or "")
-        policy = dict(self.PROFILE_POLICIES.get(profile, self.PROFILE_POLICIES["generic"]))
+        runtime = self._container_runtime_context(detail.get("full_id") or container_id)
+        profile = runtime.get("profile_name") or self.infer_profile(detail.get("image") or "")
+        base_profile = profile if profile in self.PROFILE_POLICIES else self.infer_profile(detail.get("image") or "")
+        policy = dict(self.PROFILE_POLICIES.get(base_profile, self.PROFILE_POLICIES["generic"]))
         policy["profile"] = profile
+        policy["base_profile"] = base_profile
         policy["image"] = detail.get("image") or ""
+        policy["explorer_root"] = runtime.get("explorer_root")
+        policy["console_cwd"] = runtime.get("console_cwd")
         return policy
 
     def validate_user_shell_command(self, command: str, profile: str):
@@ -678,8 +1221,14 @@ class DockerService:
         except docker.errors.NotFound:
             raise RuntimeError("Container not found")
 
-        profile = self.infer_profile((container.image.tags[0] if container.image.tags else "") or "")
-        candidates = list(self.PROFILE_WORKSPACE_ROOTS.get(profile, self.EXPLORER_ALLOWED_ROOTS))
+        runtime = self._container_runtime_context(container.id)
+        profile = runtime.get("profile_name") or self.infer_profile((container.image.tags[0] if container.image.tags else "") or "")
+        base_profile = profile if profile in self.PROFILE_WORKSPACE_ROOTS else self.infer_profile((container.image.tags[0] if container.image.tags else "") or "")
+        candidates = list(self.PROFILE_WORKSPACE_ROOTS.get(base_profile, self.EXPLORER_ALLOWED_ROOTS))
+        raw_preferred_override = str(runtime.get("explorer_root") or "").strip()
+        preferred_override = self._normalize_explorer_path(raw_preferred_override) if raw_preferred_override else ""
+        if preferred_override and preferred_override not in candidates:
+            candidates.insert(0, preferred_override)
         args = " ".join(shlex.quote(c) for c in candidates)
         script = (
             "for d in " + args + "; do "
@@ -696,7 +1245,7 @@ class DockerService:
             (
                 p for p in candidates if p in existing_set
             ),
-            candidates[0]
+            preferred_override or candidates[0]
         )
 
         roots = []
@@ -708,6 +1257,7 @@ class DockerService:
         return {
             "id": container.id[:12],
             "profile": profile,
+            "base_profile": base_profile,
             "preferred_path": preferred,
             "roots": roots,
         }
@@ -767,9 +1317,35 @@ class DockerService:
         return False
 
     def _workspace_roots_for_container(self, container):
+        runtime = self._container_runtime_context(container.id)
         image = (container.image.tags[0] if container.image.tags else "") or ""
-        profile = self.infer_profile(image)
-        return tuple(self.PROFILE_WORKSPACE_ROOTS.get(profile, self.EXPLORER_ALLOWED_ROOTS))
+        profile = runtime.get("profile_name") or self.infer_profile(image)
+        base_profile = profile if profile in self.PROFILE_WORKSPACE_ROOTS else self.infer_profile(image)
+        roots = list(self.PROFILE_WORKSPACE_ROOTS.get(base_profile, self.EXPLORER_ALLOWED_ROOTS))
+        raw_preferred = str(runtime.get("explorer_root") or "").strip()
+        preferred = self._normalize_explorer_path(raw_preferred) if raw_preferred else ""
+        if preferred and preferred not in roots:
+            roots.insert(0, preferred)
+        return tuple(roots)
+
+    def _container_runtime_context(self, full_id: str):
+        with get_connection(SYSTEM_DB) as conn:
+            row = conn.execute(
+                """
+                SELECT explorer_root, console_cwd, profile_name, workspace_mount
+                FROM container_storage
+                WHERE container_id = ?
+                """,
+                (full_id,),
+            ).fetchone()
+        if not row:
+            return {}
+        payload = dict(row)
+        if payload.get("workspace_mount") and not payload.get("explorer_root"):
+            payload["explorer_root"] = payload["workspace_mount"]
+        if payload.get("explorer_root") and not payload.get("console_cwd"):
+            payload["console_cwd"] = payload["explorer_root"]
+        return payload
 
     @staticmethod
     def _normalize_host_ip(host_ip: str) -> str:
@@ -980,6 +1556,12 @@ class DockerService:
             raise RuntimeError("Container not found")
 
         full_id = container.id
+        workspace_row = None
+        with get_connection(SYSTEM_DB) as conn:
+            workspace_row = conn.execute(
+                "SELECT workspace_path, managed_workspace FROM container_storage WHERE container_id = ?",
+                (full_id,)
+            ).fetchone()
         container.remove(force=force)
 
         with get_connection(SYSTEM_DB) as conn:
@@ -991,6 +1573,26 @@ class DockerService:
                 "DELETE FROM container_settings WHERE container_id = ?",
                 (full_id,)
             )
+            conn.execute(
+                "DELETE FROM container_storage WHERE container_id = ?",
+                (full_id,)
+            )
+            conn.execute(
+                "DELETE FROM container_role_permissions WHERE container_id = ?",
+                (full_id,)
+            )
+
+        if workspace_row:
+            workspace_path = (workspace_row["workspace_path"] or "").strip()
+            managed_workspace = bool(workspace_row["managed_workspace"])
+            if managed_workspace and workspace_path:
+                abs_ws = os.path.abspath(workspace_path)
+                abs_base = os.path.abspath(self.WORKSPACES_BASE_DIR)
+                if abs_ws.startswith(abs_base + os.sep):
+                    try:
+                        shutil.rmtree(abs_ws, ignore_errors=True)
+                    except Exception:
+                        pass
 
         return {
             "id": full_id[:12],

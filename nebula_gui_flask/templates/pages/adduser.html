@@ -1,115 +1,386 @@
 {% extends "layout.html" %}
 {% block page_content %}
-<div style="max-width: 600px; margin: 20px auto; padding: 25px; background: var(--panel); border-radius: 12px; border: 1px solid var(--border);">
-  <h2 style="color: var(--accent); margin-top: 0;">Create New User</h2>
-  
-  <form id="createUserForm" style="display: flex; flex-direction: column; gap: 15px;">
-    
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-      <div style="display: flex; flex-direction: column; gap: 5px;">
-        <label style="color: var(--text-muted); font-size: 0.85rem;">Select Database</label>
-        <select id="target_db" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white; outline: none;">
-          <option value="">-- New Database --</option>
-        </select>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 5px;">
-        <label style="color: var(--text-muted); font-size: 0.85rem;">Or New Name</label>
-        <input type="text" id="new_db_name" placeholder="e.g. cluster_alpha" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white; outline: none;">
-      </div>
-    </div>
-    
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-      <input type="text" id="first_name" placeholder="First Name" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
-      <input type="text" id="last_name" placeholder="Last Name" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
-    </div>
-    
-    <input type="email" id="email" placeholder="Email (Required)" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
-    <input type="text" id="username" placeholder="Username (Required)" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
-    
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-      <input type="password" id="password" placeholder="Password" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
-      <input type="password" id="confirm_password" placeholder="Repeat Password" required style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
+<div class="user-create-shell">
+    <div class="hero">
+        <div>
+            <h2>Create New User</h2>
+            <p>Create an account, assign a role, and prepare access in a single flow.</p>
+        </div>
+        <a class="ghost-link" href="/users"><i class="bi bi-arrow-left"></i> Back</a>
     </div>
 
-    <select id="role" style="padding: 12px; background: #0a0a0d; border: 1px solid var(--border); border-radius: 6px; color: white;">
-      <option value="user">User (Basic Access)</option>
-      <option value="moderator">Moderator</option>
-      <option value="staff">Administrator</option>
-    </select>
+    <form id="createUserForm" class="form-card">
+        <div class="card-title">Identity</div>
+        <div class="grid two">
+            <div class="field">
+                <label><i class="bi bi-database"></i> Select Database</label>
+                <div class="control-wrap">
+                    <i class="bi bi-hdd-stack control-icon"></i>
+                    <select id="target_db">
+                        <option value="">-- New Database --</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label><i class="bi bi-plus-square"></i> Or New DB Name</label>
+                <div class="control-wrap">
+                    <i class="bi bi-pencil-square control-icon"></i>
+                    <input type="text" id="new_db_name" placeholder="cluster_alpha">
+                </div>
+            </div>
+        </div>
 
-    <div style="display: flex; gap: 10px; margin-top: 10px;">
-      <button type="submit" style="flex: 2; padding: 12px; background: var(--accent); color: black; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">Save User</button>
-      <a href="/users" style="flex: 1; text-align: center; padding: 12px; background: #222; color: white; border-radius: 6px; text-decoration: none;">Cancel</a>
-    </div>
-  </form>
+        <div class="grid two">
+            <div class="field">
+                <label><i class="bi bi-person"></i> Username</label>
+                <div class="control-wrap">
+                    <i class="bi bi-at control-icon"></i>
+                    <input type="text" id="username" placeholder="username" required>
+                </div>
+            </div>
+            <div class="field">
+                <label><i class="bi bi-envelope"></i> Email</label>
+                <div class="control-wrap">
+                    <i class="bi bi-envelope-at control-icon"></i>
+                    <input type="email" id="email" placeholder="user@sector.local" required>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid two">
+            <div class="field">
+                <label><i class="bi bi-shield-lock"></i> Password</label>
+                <div class="control-wrap">
+                    <i class="bi bi-key control-icon"></i>
+                    <input type="password" id="password" placeholder="********" required>
+                </div>
+            </div>
+            <div class="field">
+                <label><i class="bi bi-shield-check"></i> Repeat Password</label>
+                <div class="control-wrap">
+                    <i class="bi bi-key-fill control-icon"></i>
+                    <input type="password" id="confirm_password" placeholder="********" required>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-title">Role Assignment</div>
+        <div class="grid role-grid">
+            <div class="field">
+                <label><i class="bi bi-diagram-3"></i> Available Roles</label>
+                <div class="control-wrap">
+                    <i class="bi bi-person-badge control-icon"></i>
+                    <select id="role_select"></select>
+                </div>
+                <small id="role_desc">Select a role to see details.</small>
+            </div>
+            <div class="field inline-field">
+                <label><i class="bi bi-plus-circle"></i> Create New Role</label>
+                <div class="inline">
+                    <div class="control-wrap">
+                        <i class="bi bi-tag control-icon"></i>
+                        <input type="text" id="new_role_name" placeholder="qa-engineer">
+                    </div>
+                    <button type="button" class="btn-secondary" onclick="createRole()">Create Role</button>
+                </div>
+                <div class="inline" style="margin-top: 8px;">
+                    <div class="control-wrap">
+                        <i class="bi bi-card-text control-icon"></i>
+                        <input type="text" id="new_role_desc" placeholder="Role description (optional)">
+                    </div>
+                    <label class="staff-toggle">
+                        <input type="checkbox" id="new_role_staff" class="staff-check">
+                        <span class="staff-box"><i class="bi bi-check-lg"></i></span>
+                        <span class="staff-label"><i class="bi bi-shield-check"></i> Staff</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button type="submit" class="btn-primary">Create User</button>
+            <a class="btn-secondary" href="/users">Cancel</a>
+        </div>
+    </form>
 </div>
 
-<script>
-// Load existing databases into select on mount
-async function loadDatabases() {
-    try {
-        const res = await fetch('/api/users/databases');
-        const data = await res.json();
-        const select = document.getElementById('target_db');
-        if (data.databases) {
-            data.databases.forEach(db => {
-                const opt = document.createElement('option');
-                opt.value = db;
-                opt.textContent = db;
-                select.appendChild(opt);
-            });
-        }
-    } catch (e) {
-        console.error("Failed to load databases list");
+<style>
+    .user-create-shell {
+        max-width: 980px;
+        margin: 20px auto;
+        padding: 18px;
     }
+    .hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+    .hero h2 { margin: 0; color: #fff; font-size: 1.55rem; letter-spacing: -0.02em; }
+    .hero p { margin: 4px 0 0; color: #9aa0b5; font-size: 0.84rem; }
+    .ghost-link {
+        text-decoration: none;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: #d4d8e7;
+        background: rgba(255,255,255,0.02);
+    }
+    .form-card {
+        background: linear-gradient(170deg, #111319, #0d0f14);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 18px;
+    }
+    .card-title {
+        color: #e6ebff;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 4px 0 10px;
+    }
+    .grid { display: grid; gap: 12px; margin-bottom: 12px; }
+    .grid.two { grid-template-columns: 1fr 1fr; }
+    .role-grid { grid-template-columns: 1fr 1fr; }
+    .field label {
+        display: block;
+        color: #9098ad;
+        font-size: 0.74rem;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .field label i {
+        margin-right: 6px;
+        color: #a0a9c7;
+    }
+    .control-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+    .control-icon {
+        position: absolute;
+        left: 11px;
+        color: #8891ad;
+        font-size: 0.88rem;
+        pointer-events: none;
+    }
+    .field input, .field select {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #090b11;
+        color: #eef2ff;
+        padding: 11px 12px 11px 32px;
+        outline: none;
+        transition: border-color 0.16s ease, box-shadow 0.16s ease;
+    }
+    .field select {
+        appearance: none;
+        background-image: linear-gradient(45deg, transparent 50%, #97a0bc 50%), linear-gradient(135deg, #97a0bc 50%, transparent 50%);
+        background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+        background-size: 6px 6px, 6px 6px;
+        background-repeat: no-repeat;
+        padding-right: 34px;
+    }
+    .field input:focus, .field select:focus {
+        border-color: rgba(88, 101, 255, 0.72);
+        box-shadow: 0 0 0 3px rgba(88, 101, 255, 0.16);
+    }
+    .field small {
+        margin-top: 6px;
+        color: #9aa0b5;
+        display: block;
+        font-size: 0.74rem;
+    }
+    .inline { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+    .staff-toggle {
+        border-radius: 10px;
+        padding: 8px 10px;
+        color: #d5d9e8;
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        background: #0f1219;
+        border: 1px solid var(--border);
+        min-height: 42px;
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+    }
+    .staff-check {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .staff-box {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: #0c1018;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.16s ease;
+        color: transparent;
+        font-size: 0.72rem;
+        line-height: 1;
+    }
+    .staff-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #ccd3eb;
+    }
+    .staff-label i {
+        color: #a7b0d2;
+    }
+    .staff-check:checked + .staff-box {
+        color: #fff;
+        background: rgba(88, 101, 255, 0.92);
+        border-color: rgba(88, 101, 255, 0.75);
+    }
+    .staff-check:checked ~ .staff-label {
+        color: #e5e9ff;
+    }
+    .staff-toggle:focus-within {
+        outline: 2px solid rgba(88, 101, 255, 0.35);
+        outline-offset: 2px;
+    }
+    .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+    .btn-primary, .btn-secondary {
+        border-radius: 10px;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; border-color: transparent; }
+    .btn-secondary { background: #131722; color: #dde1ef; }
+    @media (max-width: 920px) {
+        .grid.two, .role-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+<script>
+let roleCatalog = [];
+
+function normalizeDbName(raw) {
+    const cleaned = String(raw || '').trim();
+    if (!cleaned) return '';
+    return cleaned.endsWith('.db') ? cleaned : `${cleaned}.db`;
 }
+
+async function loadDatabases() {
+    const res = await fetch('/api/users/databases');
+    const data = await res.json();
+    const select = document.getElementById('target_db');
+    select.innerHTML = '<option value="">-- New Database --</option>';
+    (data.databases || []).forEach(db => {
+        const opt = document.createElement('option');
+        opt.value = db;
+        opt.textContent = db;
+        select.appendChild(opt);
+    });
+}
+
+async function loadRoles() {
+    const res = await fetch('/api/roles/list');
+    const data = await res.json();
+    roleCatalog = Array.isArray(data) ? data : [];
+    const select = document.getElementById('role_select');
+    select.innerHTML = '';
+    roleCatalog.forEach(role => {
+        const opt = document.createElement('option');
+        opt.value = role.name;
+        opt.textContent = role.is_staff ? `${role.name} (staff)` : role.name;
+        select.appendChild(opt);
+    });
+    if (!select.value && roleCatalog.length > 0) {
+        select.value = roleCatalog[0].name;
+    }
+    updateRoleDescription();
+}
+
+function updateRoleDescription() {
+    const selected = document.getElementById('role_select').value;
+    const role = roleCatalog.find(r => r.name === selected);
+    document.getElementById('role_desc').textContent = role?.description || 'No role description.';
+}
+
+async function createRole() {
+    const name = String(document.getElementById('new_role_name').value || '').trim();
+    if (!name) {
+        alert('Role name is required');
+        return;
+    }
+    const payload = {
+        name,
+        description: String(document.getElementById('new_role_desc').value || '').trim(),
+        is_staff: !!document.getElementById('new_role_staff').checked
+    };
+    const res = await fetch('/api/roles/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const out = await res.json();
+    if (!res.ok) {
+        alert(out.detail || 'Failed to create role');
+        return;
+    }
+    document.getElementById('new_role_name').value = '';
+    document.getElementById('new_role_desc').value = '';
+    document.getElementById('new_role_staff').checked = false;
+    await loadRoles();
+    document.getElementById('role_select').value = out.name;
+    updateRoleDescription();
+}
+
+document.getElementById('role_select').addEventListener('change', updateRoleDescription);
 
 document.getElementById('createUserForm').onsubmit = async (e) => {
     e.preventDefault();
-    
     const password = document.getElementById('password').value;
-    const confirm = document.getElementById('confirm_password').value;
-    
-    if (password !== confirm) {
-        alert("Passwords do not match!");
+    const confirmPassword = document.getElementById('confirm_password').value;
+    if (password !== confirmPassword) {
+        alert('Passwords do not match');
         return;
     }
-
-    // Logic for choosing DB name
     const selectedDb = document.getElementById('target_db').value;
-    const newDbInput = document.getElementById('new_db_name').value.trim();
-    
-    let dbToUse = newDbInput ? (newDbInput.endsWith('.db') ? newDbInput : newDbInput + '.db') : selectedDb;
-
+    const newDbName = normalizeDbName(document.getElementById('new_db_name').value);
+    const dbToUse = newDbName || selectedDb;
     if (!dbToUse) {
-        alert("Please select an existing database or enter a name for a new one.");
+        alert('Select DB or enter new DB name');
         return;
     }
-
+    const roleTag = document.getElementById('role_select').value || 'user';
     const payload = {
         username: document.getElementById('username').value,
-        password: password,
-        is_staff: document.getElementById('role').value === 'staff'
+        password,
+        email: document.getElementById('email').value,
+        role_tag: roleTag
     };
-
-    try {
-        const response = await fetch(`/api/users/create?db_name=${dbToUse}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (response.ok) {
-            window.location.href = '/users';
-        } else {
-            const errorData = await response.json();
-            alert("Error: " + (errorData.detail || "Failed to create user"));
-        }
-    } catch (err) {
-        alert("Critical error: " + err.message);
+    const res = await fetch(`/api/users/create?db_name=${encodeURIComponent(dbToUse)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const out = await res.json();
+    if (!res.ok) {
+        alert(out.detail || 'Failed to create user');
+        return;
     }
+    window.location.href = '/users';
 };
 
-loadDatabases();
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadDatabases();
+    await loadRoles();
+});
 </script>
 {% endblock %}

@@ -20,9 +20,9 @@
             <div id="workspace-context" class="workspace-context">Loading container context...</div>
         </div>
         <div class="workspace-actions">
-            <button class="btn-ghost" onclick="containerAction('start')"><i class="bi bi-play-fill"></i> Start</button>
-            <button class="btn-ghost" onclick="containerAction('stop')"><i class="bi bi-stop-fill"></i> Stop</button>
-            <button class="btn-ghost" onclick="containerAction('restart')"><i class="bi bi-arrow-repeat"></i> Restart</button>
+            <button id="ws-start-btn" class="btn-ghost" onclick="containerAction('start')"><i class="bi bi-play-fill"></i> Start</button>
+            <button id="ws-stop-btn" class="btn-ghost" onclick="containerAction('stop')"><i class="bi bi-stop-fill"></i> Stop</button>
+            <button id="ws-restart-btn" class="btn-ghost" onclick="containerAction('restart')"><i class="bi bi-arrow-repeat"></i> Restart</button>
             <button class="btn-primary" onclick="refreshActiveTab()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
         </div>
     </header>
@@ -33,13 +33,13 @@
                 <button class="tab-btn active" data-tab="terminal" onclick="switchTab('terminal')">
                     <i class="bi bi-terminal"></i> <span>Terminal & Logs</span>
                 </button>
-                <button class="tab-btn" data-tab="files" onclick="switchTab('files')">
+                <button id="tab-btn-files" class="tab-btn" data-tab="files" onclick="switchTab('files')">
                     <i class="bi bi-folder2-open"></i> <span>File Explorer</span>
                 </button>
                 <button class="tab-btn" data-tab="toolbox" onclick="switchTab('toolbox')">
                     <i class="bi bi-tools"></i> <span>Toolbox</span>
                 </button>
-                <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
+                <button id="tab-btn-settings" class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
                     <i class="bi bi-sliders"></i> <span>Settings</span>
                 </button>
             </nav>
@@ -613,8 +613,18 @@
         background: #0b0d13;
         color: var(--text-main);
         font-size: 0.8rem;
-        padding: 8px 9px;
+        padding: 8px 34px 8px 9px;
         font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+        appearance: none;
+        background-image: linear-gradient(45deg, transparent 50%, #93a0c9 50%), linear-gradient(135deg, #93a0c9 50%, transparent 50%);
+        background-position: calc(100% - 16px) calc(50% - 3px), calc(100% - 10px) calc(50% - 3px);
+        background-size: 6px 6px, 6px 6px;
+        background-repeat: no-repeat;
+    }
+    .cmd-mode-select:focus {
+        outline: none;
+        border-color: rgba(88, 101, 255, 0.62);
+        box-shadow: 0 0 0 3px rgba(88, 101, 255, 0.15);
     }
 
     .prompt-wrapper {
@@ -964,6 +974,20 @@
         font-size: 0.85rem;
         font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
     }
+    .form-group select {
+        appearance: none;
+        background-image: linear-gradient(45deg, transparent 50%, #93a0c9 50%), linear-gradient(135deg, #93a0c9 50%, transparent 50%);
+        background-position: calc(100% - 16px) calc(50% - 3px), calc(100% - 10px) calc(50% - 3px);
+        background-size: 6px 6px, 6px 6px;
+        background-repeat: no-repeat;
+        padding-right: 34px;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: rgba(88, 101, 255, 0.62);
+        box-shadow: 0 0 0 3px rgba(88, 101, 255, 0.15);
+    }
 
     .form-group small {
         display: block;
@@ -998,6 +1022,11 @@
         font-size: 0.78rem;
         font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
     }
+    .ports-toolbar input:focus {
+        outline: none;
+        border-color: rgba(88, 101, 255, 0.62);
+        box-shadow: 0 0 0 3px rgba(88, 101, 255, 0.15);
+    }
 
     .ports-selection {
         border: 1px solid var(--border);
@@ -1012,20 +1041,53 @@
     }
 
     .port-toggle {
+        position: relative;
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: center;
         border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 8px 10px;
+        border-radius: 10px;
+        padding: 9px 10px;
         background: rgba(255, 255, 255, 0.02);
         font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
         font-size: 0.78rem;
         color: var(--text-main);
+        transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+        cursor: pointer;
     }
-
-    .port-toggle input {
-        accent-color: var(--accent);
+    .port-toggle:hover {
+        border-color: rgba(88, 101, 255, 0.42);
+        transform: translateY(-1px);
+    }
+    .port-toggle.is-selected {
+        border-color: rgba(88, 101, 255, 0.55);
+        background: rgba(88, 101, 255, 0.12);
+    }
+    .port-toggle .port-rule-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(88, 101, 255, 0.14);
+        border: 1px solid rgba(88, 101, 255, 0.24);
+        color: #c8d0ff;
+        position: absolute;
+        left: 10px;
+    }
+    .port-toggle .port-rule-text {
+        width: 100%;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 0 28px;
+    }
+    .port-toggle input[type="checkbox"] {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
     }
 
     .restart-card {
@@ -1131,6 +1193,7 @@ let logsAutoEnabled = true;
 let activeWorkspaceRoot = '/data';
 let currentContainerImage = '';
 let profilePolicy = null;
+let accessPolicy = null;
 let latestLogsText = '';
 let consoleEvents = [];
 let availablePorts = [];
@@ -1151,6 +1214,14 @@ function setStatus(text) {
 }
 
 function switchTab(tab) {
+    if (tab === 'files' && accessPolicy && !accessPolicy.allow_explorer) {
+        showToast('File explorer is disabled for your role.', 'warn');
+        return;
+    }
+    if (tab === 'settings' && accessPolicy && !accessPolicy.allow_settings) {
+        showToast('Settings access is disabled for your role.', 'warn');
+        return;
+    }
     activeTab = tab;
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.toggle('active', pane.id === `tab-${tab}`));
@@ -1282,8 +1353,8 @@ function configureConsoleMode(mode, profileName = 'generic') {
     const runBtn = document.getElementById('cmd-run-btn');
     const status = document.getElementById('cmd-status');
     const modeSelect = document.getElementById('cmd-mode');
-    const canUseConsole = !!(profilePolicy && profilePolicy.app_console_supported);
-    const canUseShell = !!(profilePolicy && profilePolicy.shell_allowed);
+    const canUseConsole = !!(profilePolicy && profilePolicy.console_allowed && (!accessPolicy || accessPolicy.allow_console !== false));
+    const canUseShell = !!(profilePolicy && profilePolicy.shell_allowed && (!accessPolicy || accessPolicy.allow_shell !== false));
 
     if (modeSelect) modeSelect.value = mode;
     currentConsoleMode = mode;
@@ -1372,6 +1443,10 @@ function syncPortsInputFromSelection() {
     const selected = Array.from(document.querySelectorAll('#ports-selection input[type="checkbox"]:checked'))
         .map(node => node.value);
     document.getElementById('set-ports').value = selected.join(', ');
+    document.querySelectorAll('#ports-selection .port-toggle').forEach(card => {
+        const node = card.querySelector('input[type="checkbox"]');
+        card.classList.toggle('is-selected', !!node?.checked);
+    });
     const meta = document.getElementById('ports-selection-meta');
     const total = document.querySelectorAll('#ports-selection .port-toggle').length;
     if (meta && total > 0) {
@@ -1417,6 +1492,10 @@ function renderPortsSelection(rules, selectedRules = []) {
         const label = document.createElement('label');
         label.className = 'port-toggle';
         label.dataset.rule = rule;
+        label.setAttribute('for', id);
+        label.setAttribute('tabindex', '0');
+        label.setAttribute('role', 'button');
+        label.setAttribute('aria-label', `Toggle rule ${rule}`);
 
         const check = document.createElement('input');
         check.type = 'checkbox';
@@ -1425,10 +1504,28 @@ function renderPortsSelection(rules, selectedRules = []) {
         check.checked = selectedSet.size ? selectedSet.has(rule) : true;
         check.addEventListener('change', syncPortsInputFromSelection);
 
+        const icon = document.createElement('span');
+        icon.className = 'port-rule-icon';
+        icon.innerHTML = '<i class="bi bi-plug-fill"></i>';
+
         const text = document.createElement('span');
+        text.className = 'port-rule-text';
         text.textContent = rule;
 
+        label.addEventListener('click', (event) => {
+            event.preventDefault();
+            check.checked = !check.checked;
+            syncPortsInputFromSelection();
+        });
+        label.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            check.checked = !check.checked;
+            syncPortsInputFromSelection();
+        });
+
         label.appendChild(check);
+        label.appendChild(icon);
         label.appendChild(text);
         host.appendChild(label);
     });
@@ -1471,9 +1568,10 @@ async function loadContainerMeta() {
 async function loadProfilePolicy() {
     try {
         profilePolicy = await apiJson(`/api/containers/profile/${containerId}`);
+        accessPolicy = profilePolicy.permissions || null;
         const profileLabel = profilePolicy.label || profilePolicy.profile || 'container';
         const profileName = profilePolicy.profile || 'generic';
-        const consoleAllowed = !!profilePolicy.app_console_supported;
+        const consoleAllowed = !!profilePolicy.console_allowed;
         const shellAllowed = !!profilePolicy.shell_allowed;
         const modeSelect = document.getElementById('cmd-mode');
         if (modeSelect) {
@@ -1484,6 +1582,7 @@ async function loadProfilePolicy() {
         }
         configureToolbox(profileName);
         configureStartupCommandHint(profileName);
+        applyWorkspacePermissions();
 
         if (consoleAllowed) {
             configureConsoleMode('console', profileName);
@@ -1499,6 +1598,26 @@ async function loadProfilePolicy() {
         setStatus(`Profile: ${profileLabel}. Interactive console is restricted; use logs and files.`);
     } catch (e) {
         profilePolicy = null;
+        accessPolicy = null;
+    }
+}
+
+function applyWorkspacePermissions() {
+    const policy = accessPolicy || {};
+    const filesTab = document.getElementById('tab-btn-files');
+    const settingsTab = document.getElementById('tab-btn-settings');
+    if (filesTab) filesTab.style.display = policy.allow_explorer === false ? 'none' : '';
+    if (settingsTab) settingsTab.style.display = policy.allow_settings === false ? 'none' : '';
+    const runBtn = document.getElementById('cmd-run-btn');
+    const modeSelect = document.getElementById('cmd-mode');
+    if (modeSelect) {
+        const appOpt = modeSelect.querySelector('option[value="console"]');
+        const shellOpt = modeSelect.querySelector('option[value="shell"]');
+        if (appOpt && policy.allow_console === false) appOpt.disabled = true;
+        if (shellOpt && policy.allow_shell === false) shellOpt.disabled = true;
+    }
+    if (runBtn && policy.allow_console === false && policy.allow_shell === false) {
+        runBtn.disabled = true;
     }
 }
 
@@ -1521,6 +1640,16 @@ async function containerAction(action) {
 async function runCommand() {
     const input = document.getElementById('cmd-input');
     const mode = currentConsoleMode === 'shell' ? 'shell' : 'console';
+    if (accessPolicy) {
+        if (mode === 'console' && accessPolicy.allow_console === false) {
+            showToast('Console access is disabled for your role.', 'warn');
+            return;
+        }
+        if (mode === 'shell' && accessPolicy.allow_shell === false) {
+            showToast('Shell access is disabled for your role.', 'warn');
+            return;
+        }
+    }
     const cmd = (input.value || '').trim();
     if (!cmd) {
         showToast('Enter a command first.', 'warn');
@@ -1691,6 +1820,11 @@ async function initWorkspaceRoots() {
 }
 
 async function loadFiles() {
+    if (accessPolicy && accessPolicy.allow_explorer === false) {
+        const list = document.getElementById('files-list');
+        list.innerHTML = '<div class="file-row error"><div class="file-info"><i class="bi bi-shield-lock"></i><span>Explorer access disabled for your role.</span></div></div>';
+        return;
+    }
     const pathEl = document.getElementById('files-path');
     const list = document.getElementById('files-list');
     const path = (pathEl.value || activeWorkspaceRoot || '/data').trim() || '/data';
@@ -1797,6 +1931,10 @@ function goParentDir() {
 }
 
 async function loadSettings() {
+    if (accessPolicy && accessPolicy.allow_settings === false) {
+        document.getElementById('settings-meta').textContent = 'Settings access disabled for your role.';
+        return;
+    }
     try {
         const data = await apiJson(`/api/containers/settings/${containerId}`);
         const savedRules = parsePorts(data.allowed_ports || '');
@@ -1804,6 +1942,17 @@ async function loadSettings() {
         document.getElementById('set-ports').value = savedRules.join(', ');
         renderPortsSelection(availablePorts, savedRules);
         document.getElementById('set-command').value = data.startup_command || '';
+        if (accessPolicy) {
+            const canEditStartup = accessPolicy.allow_edit_startup !== false;
+            const canEditPorts = accessPolicy.allow_edit_ports !== false;
+            const commandEl = document.getElementById('set-command');
+            const portsEl = document.getElementById('set-ports');
+            if (commandEl) commandEl.disabled = !canEditStartup;
+            if (portsEl) portsEl.disabled = !canEditPorts;
+            document.querySelectorAll('#ports-selection input[type="checkbox"]').forEach(node => {
+                node.disabled = !canEditPorts;
+            });
+        }
         if (currentContainerImage.includes('minecraft') && String(data.startup_command || '').trim()) {
             showToast('Minecraft image detected: custom startup command can break boot. Keep command empty.', 'warn', 4200);
         }
@@ -1818,6 +1967,10 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+    if (accessPolicy && accessPolicy.allow_settings === false) {
+        showToast('Settings access disabled for your role.', 'warn');
+        return false;
+    }
     const selectedRules = Array.from(document.querySelectorAll('#ports-selection input[type="checkbox"]:checked'))
         .map(node => node.value);
     const fallbackRules = parsePorts(document.getElementById('set-ports').value);
@@ -1826,6 +1979,10 @@ async function saveSettings() {
         allowed_ports: finalRules.join(', '),
         startup_command: document.getElementById('set-command').value
     };
+    if (accessPolicy) {
+        if (accessPolicy.allow_edit_startup === false) payload.startup_command = '';
+        if (accessPolicy.allow_edit_ports === false) payload.allowed_ports = '';
+    }
 
     try {
         const data = await apiJson(`/api/containers/settings/${containerId}`, {
@@ -1843,6 +2000,9 @@ async function saveSettings() {
 }
 
 async function loadRestartPolicy() {
+    if (accessPolicy && accessPolicy.allow_settings === false) {
+        return;
+    }
     try {
         const data = await apiJson(`/api/containers/restart-policy/${containerId}`);
         document.getElementById('restart-policy-select').value = data.restart_policy || 'no';
@@ -1868,6 +2028,10 @@ function updateRestartHint() {
 }
 
 async function saveRestartPolicy() {
+    if (accessPolicy && accessPolicy.allow_settings === false) {
+        showToast('Settings access disabled for your role.', 'warn');
+        return;
+    }
     const policy = document.getElementById('restart-policy-select').value;
     const retriesRaw = parseInt(document.getElementById('restart-retries').value || '0', 10);
     const retries = Number.isFinite(retriesRaw) ? Math.max(0, retriesRaw) : 0;
