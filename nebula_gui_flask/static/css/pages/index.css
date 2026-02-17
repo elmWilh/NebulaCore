@@ -1,0 +1,194 @@
+    :root {
+      --bg: #0c0c0f;
+      --panel: #111114;
+      --border: #222226;
+      --border-accent: #2a2a2e;
+      --text: #e0e0e8;
+      --text-muted: #88889a;
+      --accent: #6f6fff;
+      --accent-hover: #8080ff;
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Rigid Liquid Glass Header */
+    header {
+      height: 64px;
+      background: rgba(17,17,20,0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 32px;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+    }
+
+    .logo {
+      font-weight: 700;
+      font-size: 1.5rem;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .header-nav {
+      margin-left: auto;
+      display: flex;
+      gap: 32px;
+    }
+    .header-nav a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.95rem;
+      padding: 8px 0;
+      position: relative;
+    }
+    .header-nav a:hover { color: white; }
+    .header-nav a.active {
+      color: white;
+      font-weight: 600;
+    }
+    .header-nav a.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+    }
+
+    /* Main Grid Layout */
+    .layout {
+      display: flex;
+      flex: 1;
+      margin-top: 64px;
+      height: calc(100vh - 64px);
+    }
+
+    /* Sidebar - Monolithic with Collapsible sections */
+    aside {
+      width: 280px;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      overflow-y: auto;
+    }
+
+    .menu-group {
+      margin-bottom: 24px;
+    }
+    .menu-title {
+      padding: 0 24px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .menu-item:hover {
+      background: var(--border-accent);
+    }
+    .menu-item.active {
+      background: rgba(111,111,255,0.12);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .menu-item i:first-child { width: 20px; margin-right: 12px; }
+    .menu-item .bi-chevron-down {
+      font-size: 0.8rem;
+      transition: transform 0.25s;
+    }
+    .menu-item.open .bi-chevron-down {
+      transform: rotate(180deg);
+    }
+
+    .submenu {
+      background: rgba(0,0,0,0.15);
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease;
+    }
+    .submenu a {
+      display: block;
+      padding: 10px 24px 10px 56px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.94rem;
+      transition: all 0.2s;
+    }
+    .submenu a:hover {
+      color: white;
+      background: rgba(111,111,255,0.08);
+    }
+    .submenu a.active {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* Content Area */
+    main {
+      flex: 1;
+      padding: 32px;
+      background: var(--bg);
+      overflow-y: auto;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .card-title {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .card-value {
+      font-size: 2.2rem;
+      font-weight: 600;
+      color: white;
+    }
+
+    /* Responsiveness */
+    @media (max-width: 1200px) {
+      .layout { flex-direction: column; }
+      aside { width: 100%; height: auto; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    }
+

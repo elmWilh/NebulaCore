@@ -6,6 +6,7 @@
   <title>Nebula Panel</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block extra_css %}{% endblock %}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
 <body>
@@ -125,53 +126,8 @@
     </div>
   </div>
 
-  <script>
-    function toggleSection(el) {
-      const section = el.parentElement;
-      const sectionId = section.getAttribute('data-id');
-      const links = el.nextElementSibling;
-      
-      el.classList.toggle('collapsed');
-      
-      if (el.classList.contains('collapsed')) {
-        links.style.maxHeight = '0';
-        localStorage.setItem('nav-' + sectionId, 'collapsed');
-      } else {
-        links.style.maxHeight = links.scrollHeight + 'px';
-        localStorage.setItem('nav-' + sectionId, 'expanded');
-      }
-    }
-
-    function toggleUserMenu(e) {
-        e.stopPropagation();
-        document.getElementById('userMenu').classList.toggle('show');
-    }
-
-    document.addEventListener('click', (event) => {
-      if (!event.target.closest('.user-dropdown')) {
-        document.getElementById('userMenu')?.classList.remove('show');
-      }
-    });
-
-    document.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('.nav-section').forEach(section => {
-        const sectionId = section.getAttribute('data-id');
-        const title = section.querySelector('.nav-section-title');
-        const links = section.querySelector('.nav-links');
-        
-        const hasActiveChild = links.querySelector('.active') !== null;
-        const savedState = localStorage.getItem('nav-' + sectionId);
-
-        if (hasActiveChild || savedState === 'expanded' || (savedState === null && hasActiveChild)) {
-          title.classList.remove('collapsed');
-          links.style.maxHeight = links.scrollHeight + 'px';
-        } else {
-          title.classList.add('collapsed');
-          links.style.maxHeight = '0';
-        }
-      });
-    });
-  </script>
+  <script src="{{ url_for('static', filename='js/layout.js') }}"></script>
+  {% block extra_js %}{% endblock %}
   <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

@@ -1,0 +1,160 @@
+    .user-create-shell {
+        max-width: 980px;
+        margin: 20px auto;
+        padding: 18px;
+    }
+    .hero {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+    .hero h2 { margin: 0; color: #fff; font-size: 1.55rem; letter-spacing: -0.02em; }
+    .hero p { margin: 4px 0 0; color: #9aa0b5; font-size: 0.84rem; }
+    .ghost-link {
+        text-decoration: none;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: #d4d8e7;
+        background: rgba(255,255,255,0.02);
+    }
+    .form-card {
+        background: linear-gradient(170deg, #111319, #0d0f14);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 18px;
+    }
+    .card-title {
+        color: #e6ebff;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 4px 0 10px;
+    }
+    .grid { display: grid; gap: 12px; margin-bottom: 12px; }
+    .grid.two { grid-template-columns: 1fr 1fr; }
+    .role-grid { grid-template-columns: 1fr 1fr; }
+    .field label {
+        display: block;
+        color: #9098ad;
+        font-size: 0.74rem;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .field label i {
+        margin-right: 6px;
+        color: #a0a9c7;
+    }
+    .control-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+    .control-icon {
+        position: absolute;
+        left: 11px;
+        color: #8891ad;
+        font-size: 0.88rem;
+        pointer-events: none;
+    }
+    .field input, .field select {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #090b11;
+        color: #eef2ff;
+        padding: 11px 12px 11px 32px;
+        outline: none;
+        transition: border-color 0.16s ease, box-shadow 0.16s ease;
+    }
+    .field select {
+        appearance: none;
+        background-image: linear-gradient(45deg, transparent 50%, #97a0bc 50%), linear-gradient(135deg, #97a0bc 50%, transparent 50%);
+        background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+        background-size: 6px 6px, 6px 6px;
+        background-repeat: no-repeat;
+        padding-right: 34px;
+    }
+    .field input:focus, .field select:focus {
+        border-color: rgba(88, 101, 255, 0.72);
+        box-shadow: 0 0 0 3px rgba(88, 101, 255, 0.16);
+    }
+    .field small {
+        margin-top: 6px;
+        color: #9aa0b5;
+        display: block;
+        font-size: 0.74rem;
+    }
+    .inline { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+    .staff-toggle {
+        border-radius: 10px;
+        padding: 8px 10px;
+        color: #d5d9e8;
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        background: #0f1219;
+        border: 1px solid var(--border);
+        min-height: 42px;
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+    }
+    .staff-check {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .staff-box {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: #0c1018;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.16s ease;
+        color: transparent;
+        font-size: 0.72rem;
+        line-height: 1;
+    }
+    .staff-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #ccd3eb;
+    }
+    .staff-label i {
+        color: #a7b0d2;
+    }
+    .staff-check:checked + .staff-box {
+        color: #fff;
+        background: rgba(88, 101, 255, 0.92);
+        border-color: rgba(88, 101, 255, 0.75);
+    }
+    .staff-check:checked ~ .staff-label {
+        color: #e5e9ff;
+    }
+    .staff-toggle:focus-within {
+        outline: 2px solid rgba(88, 101, 255, 0.35);
+        outline-offset: 2px;
+    }
+    .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
+    .btn-primary, .btn-secondary {
+        border-radius: 10px;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; border-color: transparent; }
+    .btn-secondary { background: #131722; color: #dde1ef; }
+    @media (max-width: 920px) {
+        .grid.two, .role-grid { grid-template-columns: 1fr; }
+    }
+

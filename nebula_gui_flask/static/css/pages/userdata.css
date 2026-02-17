@@ -1,0 +1,44 @@
+    :root {
+        --bg-dark: #050507;
+        --card-bg: #0d0d12;
+        --accent: #5865f2;
+        --border: rgba(255, 255, 255, 0.08);
+        --text-muted: #888891;
+    }
+    .back-btn { width: 40px; height: 40px; border-radius: 12px; background: var(--card-bg); border: 1px solid var(--border); color: white; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+    .stat-card { background: var(--card-bg); border: 1px solid var(--border); padding: 16px; border-radius: 14px; display: flex; align-items: center; gap: 12px; }
+    .stat-card i { font-size: 1.2rem; color: var(--accent); }
+    .stat-card .label { font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); }
+    .stat-card .value { font-size: 1.05rem; font-weight: 700; color: white; }
+
+    .main-profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .content-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .card-header { padding: 14px 18px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); font-weight: 700; color: white; display: flex; justify-content: space-between; align-items: center; }
+    .card-body { padding: 18px; }
+    .data-row { display: flex; gap: 16px; align-items: flex-start; }
+    .avatar-large { width: 68px; height: 68px; background: #1a1a1e; border-radius: 14px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); font-size: 1.7rem; color: var(--text-muted); }
+    .info-group { margin-bottom: 16px; }
+    .info-group label { display: block; font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; }
+    .info-group span { color: white; font-size: 0.92rem; }
+    .code-block { background: #050507; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); color: #4ade80; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; display: block; }
+
+    .card-table-wrapper { padding: 0 12px 12px 12px; }
+    .sub-table { width: 100%; border-collapse: collapse; }
+    .sub-table th { padding: 12px; font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; text-align: left; border-bottom: 1px solid var(--border); }
+    .sub-table td { padding: 12px; font-size: 0.84rem; color: #ccc; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .badge-count { font-size: 0.68rem; background: var(--accent); color: white; padding: 2px 7px; border-radius: 6px; }
+    .status-pill { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; }
+    .status-pill.online { background: rgba(74, 222, 128, 0.12); color: #4ade80; }
+    .status-pill.offline { background: rgba(248, 113, 113, 0.12); color: #f87171; }
+
+    .btn-primary, .btn-secondary { border-radius: 10px; padding: 10px 14px; text-decoration: none; border: 1px solid var(--border); color: white; background: #11131a; cursor: pointer; }
+    .btn-primary { background: var(--accent); border-color: transparent; }
+
+    .mini-btn { border: 1px solid var(--border); background: #0f1016; color: #ddd; border-radius: 8px; font-size: 0.72rem; padding: 5px 8px; cursor: pointer; }
+
+    @media (max-width: 1100px) {
+        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .main-profile-grid { grid-template-columns: 1fr; }
+    }
+

@@ -1,0 +1,74 @@
+    .dashboard-grid { display: flex; gap: 24px; margin-top: 24px; }
+    .dashboard-col { flex: 1; }
+    .profile-header-card {
+        background: var(--card); border: 1px solid var(--border); border-radius: 20px;
+        padding: 28px; display: flex; justify-content: space-between; align-items: center;
+        background-image: radial-gradient(circle at top right, rgba(88, 101, 255, 0.08), transparent);
+    }
+    .avatar-circle {
+        width: 76px; height: 76px; border-radius: 18px; background: linear-gradient(135deg, var(--accent), #2f8eff);
+        display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 1.8rem;
+    }
+    .stats-row { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+    .stat-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+    .stat-box span { color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; }
+    .stat-box strong { display: block; color: white; font-size: 1.05rem; margin-top: 4px; }
+
+    .section-title { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin: 14px 0; }
+    .card-header { padding: 14px 18px; color: white; font-weight: 700; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+
+    .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .db-node {
+        background: #060609; border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+        display: flex; align-items: center; justify-content: space-between; gap: 10px; color: white;
+    }
+    .db-node a { color: var(--accent); text-decoration: none; font-size: 0.8rem; }
+
+    .status-pill { padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+    .status-running { color: #4ade80; background: rgba(74, 222, 128, 0.12); }
+    .status-stopped { color: #f87171; background: rgba(248, 113, 113, 0.12); }
+
+    .btn-mini {
+        border: 1px solid var(--border); background: #0f1016; color: #ddd; border-radius: 8px;
+        font-size: 0.72rem; padding: 6px 8px; cursor: pointer;
+    }
+    .btn-mini:hover { border-color: var(--accent); color: white; }
+
+    .log-list { padding: 8px 0; }
+    .log-item { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; }
+    .log-level { width: 54px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+    .view-all-logs { display: block; text-align: center; padding: 12px; color: var(--accent); text-decoration: none; font-size: 0.8rem; }
+
+    .badge { font-size: 0.66rem; font-weight: 700; border-radius: 6px; padding: 3px 8px; }
+    .badge-admin { background: rgba(88, 101, 255, 0.15); color: #8ba0ff; border: 1px solid rgba(88, 101, 255, 0.3); }
+    .badge-user { background: rgba(255,255,255,0.06); color: #d0d0d0; border: 1px solid var(--border); }
+
+    .btn-secondary {
+        background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: white;
+        border-radius: 10px; padding: 10px 14px; cursor: pointer; text-decoration: none;
+    }
+    .add-user-btn {
+        background: var(--accent); color: white; text-decoration: none; border-radius: 10px;
+        padding: 10px 14px; border: none;
+    }
+
+    .modal-overlay {
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+        align-items: center; justify-content: center; z-index: 9999;
+    }
+    .modal-content { background: #0d0d12; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; }
+
+    @media (max-width: 1100px) {
+        .profile-header-card {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        .dashboard-grid { flex-direction: column; }
+        .stats-row { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 640px) {
+        .stats-row { grid-template-columns: 1fr; }
+    }
+

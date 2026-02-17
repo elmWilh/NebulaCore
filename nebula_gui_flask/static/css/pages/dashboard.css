@@ -1,0 +1,195 @@
+  .grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  .grid .card {
+    min-width: 0;
+    min-height: 132px;
+    height: auto;
+  }
+  .grid .card-value {
+    font-size: clamp(1.35rem, 2.3vw, 2.2rem);
+    line-height: 1.15;
+    word-break: break-word;
+  }
+
+  .admin-observatory {
+    margin-top: 24px;
+    padding: 24px;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background:
+      radial-gradient(980px 280px at 0% -10%, rgba(88, 101, 255, 0.16), transparent 55%),
+      radial-gradient(860px 220px at 100% 0%, rgba(88, 101, 255, 0.08), transparent 55%),
+      linear-gradient(165deg, rgba(18, 19, 26, 0.96), rgba(14, 15, 20, 0.92));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 34px rgba(0, 0, 0, 0.28);
+  }
+  .observatory-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .observatory-header h2 {
+    font-size: 1.2rem;
+    color: #f0f2ff;
+    letter-spacing: 0.01em;
+  }
+  .observatory-header p {
+    margin-top: 4px;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+  }
+  .observatory-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: #c8cde5;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #6c7bff;
+    box-shadow: 0 0 0 6px rgba(88, 101, 255, 0.2);
+  }
+  .observatory-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 14px;
+    width: 100%;
+  }
+  .obs-card {
+    grid-column: span 6;
+    min-width: 0;
+    background: linear-gradient(165deg, rgba(15, 17, 24, 0.9), rgba(12, 13, 19, 0.86));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    min-height: 240px;
+    overflow: hidden;
+  }
+  .obs-card-third {
+    grid-column: span 4;
+  }
+  .obs-card-wide {
+    grid-column: span 12;
+    min-height: 250px;
+  }
+  .obs-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .obs-card-head h3 {
+    font-size: 0.95rem;
+    color: #e6e9f8;
+    letter-spacing: 0.01em;
+  }
+  .obs-card-head span {
+    font-size: 0.82rem;
+    color: #b2bbeb;
+    font-weight: 600;
+  }
+  .disks-card {
+    min-height: 240px;
+  }
+  .disks-list {
+    display: grid;
+    gap: 8px;
+    max-height: 268px;
+    overflow: auto;
+    padding-right: 4px;
+  }
+  .disk-row {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 10px;
+  }
+  .disk-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    font-size: 0.82rem;
+    color: #dce0ef;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+  .disk-main .mount {
+    color: #c7cfff;
+    font-weight: 700;
+  }
+  .disk-sub {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    font-size: 0.74rem;
+    color: #98a0bc;
+    margin-bottom: 6px;
+  }
+  .disk-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+  }
+  .disk-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #5865ff, #8793ff);
+  }
+  .disk-empty {
+    color: #98a0bc;
+    text-align: center;
+  }
+  .chart-box {
+    position: relative;
+    width: 100%;
+  }
+  .chart-box-line {
+    height: 170px;
+  }
+  .chart-box-donut {
+    height: 230px;
+  }
+  .obs-card canvas {
+    width: 100% !important;
+    max-width: 100%;
+    height: 100% !important;
+  }
+  @media (max-width: 1024px) {
+    .obs-card,
+    .obs-card-third,
+    .obs-card-wide {
+      grid-column: span 12;
+      min-height: 230px;
+    }
+  }
+  @media (max-width: 640px) {
+    .admin-observatory {
+      padding: 14px;
+    }
+    .observatory-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .chart-box-line {
+      height: 150px;
+    }
+    .chart-box-donut {
+      height: 210px;
+    }
+  }
+
