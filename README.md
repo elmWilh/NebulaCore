@@ -136,6 +136,10 @@ Open `http://127.0.0.1:5000`.
 - Core API: `http://127.0.0.1:8000`
 - Plugin API docs: `docs/PLUGIN_API.md`
 
-## License
+## About Monolink Systems
 
-See `LICENSE`.
+Monolink Systems is an independent infrastructure software initiative focused on building structured, project-oriented control platforms for modern containerized environments.
+
+Founded by GuFugu  
+GitHub: https://github.com/elmWilh
+
