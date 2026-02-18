@@ -1,4 +1,6 @@
 # nebula_core/services/user_service.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import bcrypt
 from typing import List, Optional
 from ..models.user import User, UserCreate

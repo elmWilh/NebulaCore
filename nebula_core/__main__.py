@@ -1,3 +1,7 @@
+# nebula_core/main.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
 import uvicorn
 import os
 from .utils.config import settings

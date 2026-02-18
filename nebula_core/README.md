@@ -47,3 +47,9 @@
 - For production, run behind a reverse proxy.
 - Restrict `NEBULA_CORS_ORIGINS` and external Core port exposure.
 - Use and rotate `NEBULA_INSTALLER_TOKEN`.
+
+## License & Copyright
+
+- Copyright (c) 2026 Monolink Systems
+- Nebula Open Source Edition (non-corporate)
+- Licensed under AGPLv3

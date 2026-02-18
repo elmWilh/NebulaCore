@@ -1,3 +1,6 @@
+# nebula_core/core/lifecycle.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import asyncio
 from .context import context
 

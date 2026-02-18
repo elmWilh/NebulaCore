@@ -1,3 +1,7 @@
+// nebula_gui_flask/static/js/pages/index.js
+// Copyright (c) 2026 Monolink Systems
+// Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
   function toggleMenu(el) {
     el.classList.toggle('open');
     const submenu = el.nextElementSibling;

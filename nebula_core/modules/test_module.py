@@ -1,4 +1,6 @@
 # nebula_core/modules/test_module.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import asyncio
 import logging
 from typing import Any

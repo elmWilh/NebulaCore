@@ -1,3 +1,6 @@
+# install/main.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
 import sys
 import requests

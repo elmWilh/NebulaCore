@@ -1,4 +1,6 @@
 # nebula_core/api/admin.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Header, Depends, Request, Form, Response

@@ -1,4 +1,7 @@
 # nebula_core/utils/logger.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
 import logging
 import sys
 from pathlib import Path

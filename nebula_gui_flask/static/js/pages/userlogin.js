@@ -1,3 +1,7 @@
+// nebula_gui_flask/static/js/pages/userlogin.js
+// Copyright (c) 2026 Monolink Systems
+// Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
 document.getElementById('loginForm').onsubmit = async (e) => {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');

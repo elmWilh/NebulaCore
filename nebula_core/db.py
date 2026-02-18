@@ -1,4 +1,6 @@
 # nebula_core/db.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import sqlite3
 import os
 import re

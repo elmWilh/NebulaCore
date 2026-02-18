@@ -1,3 +1,6 @@
+# nebula_core/plugins/sample_sync/plugin.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 from typing import Any, Dict, Optional
 
 PLUGIN_API_VERSION = "v1"

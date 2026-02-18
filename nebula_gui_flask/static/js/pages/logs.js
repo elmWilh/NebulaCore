@@ -1,3 +1,7 @@
+// nebula_gui_flask/static/js/pages/logs.js
+// Copyright (c) 2026 Monolink Systems
+// Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
   const socket = io();
   const container = document.getElementById('log-container');
   const autoscroll = document.getElementById('autoscroll');

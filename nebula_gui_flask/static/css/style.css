@@ -1,4 +1,7 @@
-/* static/css/style.css */
+/* static/css/style.css
+ * Copyright (c) 2026 Monolink Systems
+ * Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+ */
 :root {
   --bg: #0a0a0f;
   --sidebar: #111114;
@@ -142,18 +145,29 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 
 /* Footer */
 .footer {
-  height: 64px;
+  min-height: 64px;
   background: var(--sidebar);
   border-top: 1px solid var(--border);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 0 32px;
+  padding: 10px 32px;
   font-size: 0.9rem;
   color: var(--text-muted);
 }
 .footer-powered { display: flex; align-items: center; gap: 10px; }
 .footer-powered img { height: 20px; filter: brightness(1.6); }
+.footer-copyright { font-size: 0.78rem; white-space: nowrap; }
+.footer-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.footer-license { font-size: 0.76rem; text-align: right; }
+
+@media (max-width: 900px) {
+  .footer { flex-direction: column; gap: 8px; }
+  .footer-powered { flex-wrap: wrap; }
+  .footer-copyright { white-space: normal; }
+  .footer-meta { align-items: flex-start; }
+  .footer-license { text-align: left; }
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; }

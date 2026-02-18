@@ -1,3 +1,6 @@
+# nebula_core/main.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 from fastapi import APIRouter
 from .system import router as system_router
 from .auth import router as auth_router

@@ -1,4 +1,6 @@
 # nebula_core/api/logs.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Request
 from typing import List, Dict
 import time

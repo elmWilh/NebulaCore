@@ -1,3 +1,6 @@
+# nebula_core/core/plugin_manager.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import asyncio
 import importlib.util
 import inspect

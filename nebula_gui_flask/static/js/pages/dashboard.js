@@ -1,3 +1,7 @@
+// nebula_gui_flask/static/js/pages/dashboard.js
+// Copyright (c) 2026 Monolink Systems
+// Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
   let ramChart = null;
   let networkChart = null;
   let containersChart = null;

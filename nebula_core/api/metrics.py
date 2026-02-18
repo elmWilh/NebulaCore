@@ -1,4 +1,6 @@
 # nebula_core/api/metrics.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 from collections import deque
 from fastapi import APIRouter, HTTPException, Request
 import psutil

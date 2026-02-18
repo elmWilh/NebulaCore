@@ -1,4 +1,6 @@
 # nebula_core/api/roles.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 
 from ..db import SYSTEM_DB, get_client_db, get_connection

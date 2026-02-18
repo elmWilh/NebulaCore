@@ -1,3 +1,6 @@
+# nebula_core/api/plugins.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request

@@ -28,3 +28,9 @@ By default, GUI listens on `127.0.0.1:5000`.
 
 - Use HTTPS and a reverse proxy in production.
 - Keep secrets and tokens in `.env`, not in source files.
+
+## License & Copyright
+
+- Copyright (c) 2026 Monolink Systems
+- Nebula Open Source Edition (non-corporate)
+- Licensed under AGPLv3

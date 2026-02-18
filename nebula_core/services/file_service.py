@@ -1,4 +1,6 @@
 # nebula_core/services/file_service.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import asyncio
 import os
 from pathlib import Path

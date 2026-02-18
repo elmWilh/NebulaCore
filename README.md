@@ -140,6 +140,11 @@ Open `http://127.0.0.1:5000`.
 
 Monolink Systems is an independent infrastructure software initiative focused on building structured, project-oriented control platforms for modern containerized environments.
 
+## License & Copyright
+
+- Copyright (c) 2026 Monolink Systems
+- Nebula Open Source Edition (non-corporate)
+- Licensed under AGPLv3 (see `LICENSE`)
+
 Founded by GuFugu  
 GitHub: https://github.com/elmWilh
-

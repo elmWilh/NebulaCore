@@ -1,3 +1,7 @@
+// nebula_gui_flask/static/js/main.js
+// Copyright (c) 2026 Monolink Systems
+// Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
 // static/js/main.js — WORK WIDTH api_metrics
 function updateMetrics() {
     const cpuEl = document.getElementById('cpu');

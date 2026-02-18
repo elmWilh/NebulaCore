@@ -1,4 +1,6 @@
 # nebula_core/core/service_task.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import asyncio
 import traceback
 from typing import Optional

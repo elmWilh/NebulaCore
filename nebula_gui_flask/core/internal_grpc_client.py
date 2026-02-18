@@ -1,3 +1,7 @@
+# nebula_gui_flask/core/internal_grpc_client.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
 import json
 import logging
 import time

@@ -1,4 +1,6 @@
 # nebula_core/main.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
 import asyncio
 from fastapi import FastAPI, Request
@@ -21,6 +23,8 @@ from .db import init_system_db
 from .internal_grpc import InternalGrpcServer
 
 logger = setup_logger("nebula_core")
+COPYRIGHT_NOTICE = "Copyright (c) 2026 Monolink Systems"
+LICENSE_NOTICE = "Nebula Open Source Edition (non-corporate) • Licensed under AGPLv3"
 
 runtime = NebulaRuntime()
 grpc_server = InternalGrpcServer()
@@ -60,6 +64,8 @@ app.include_router(api_router)
 @app.on_event("startup")
 async def on_startup():
     logger.info("Nebula Core startup: initializing runtime")
+    logger.info(COPYRIGHT_NOTICE)
+    logger.info(LICENSE_NOTICE)
     
     init_system_db()
     

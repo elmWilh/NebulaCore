@@ -1,3 +1,8 @@
+/* nebula_gui_flask/static/css/pages/userpanel.css
+ * Copyright (c) 2026 Monolink Systems
+ * Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+ */
+
     .dashboard-grid { display: flex; gap: 24px; margin-top: 24px; }
     .dashboard-col { flex: 1; }
     .profile-header-card {

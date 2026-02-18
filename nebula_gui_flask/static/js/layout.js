@@ -1,3 +1,7 @@
+// nebula_gui_flask/static/js/layout.js
+// Copyright (c) 2026 Monolink Systems
+// Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+
     function toggleSection(el) {
       const section = el.parentElement;
       const sectionId = section.getAttribute('data-id');

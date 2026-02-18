@@ -1,4 +1,6 @@
 # nebula_core/api/system.py
+# Copyright (c) 2026 Monolink Systems
+# Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
 import sqlite3
 from fastapi import APIRouter, Query
