@@ -18,6 +18,11 @@ It allows teams to deploy, organize, and delegate Docker-based environments usin
 Nebula is not just a container GUI.  
 It is a structured control layer for real-world infrastructure.
 
+## Screenshots
+
+![Nebula Panel Dashboard](docs/images/demo.png)
+
+
 ## What Nebula Can Do Right Now
 
 - Run a full Core + GUI stack:
