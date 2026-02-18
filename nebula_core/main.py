@@ -18,13 +18,16 @@ from .api import api_router
 from .core.runtime import NebulaRuntime
 from .core.context import context
 from .db import init_system_db
+from .internal_grpc import InternalGrpcServer
 
 logger = setup_logger("nebula_core")
 
 runtime = NebulaRuntime()
+grpc_server = InternalGrpcServer()
 context.runtime = runtime
 context.event_bus = runtime.event_bus
 context.logger = logger
+context.plugin_manager = runtime.plugin_manager
 
 app = FastAPI(
     title=settings.APP_NAME, 
@@ -60,6 +63,9 @@ async def on_startup():
     
     init_system_db()
     
+    await grpc_server.start()
+    logger.info(f"Nebula Core gRPC server started on {grpc_server.bind_target}")
+
     await runtime.init()
     asyncio.create_task(runtime.start())
     logger.info("Nebula Core runtime launched in background")
@@ -68,3 +74,4 @@ async def on_startup():
 async def on_shutdown():
     logger.info("Nebula Core shutdown: requesting runtime shutdown")
     await runtime.request_shutdown()
+    await grpc_server.stop()

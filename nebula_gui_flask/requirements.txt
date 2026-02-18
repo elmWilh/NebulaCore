@@ -4,3 +4,5 @@ eventlet
 requests
 websocket-client
 python-multipart
+grpcio
+protobuf

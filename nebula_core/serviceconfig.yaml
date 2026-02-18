@@ -9,3 +9,11 @@ services:
     host: "127.0.0.1"
     port: 8080
     debug: true
+plugins:
+  enabled: true
+  in_process_enabled: true
+  scan_path: "plugins"
+  init_timeout_sec: 5
+  call_timeout_sec: 20
+  allow_remote_grpc: false
+  external: []

@@ -158,7 +158,7 @@ class DockerService:
         self._summary_cache = {}
         self._summary_cache_ttl = 4.0
         self._workspace_usage_cache = {}
-        self._workspace_usage_cache_ttl = 2.0
+        self._workspace_usage_cache_ttl = 15.0
         os.makedirs(self.PRESETS_BASE_DIR, exist_ok=True)
 
     @staticmethod

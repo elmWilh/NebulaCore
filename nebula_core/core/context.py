@@ -9,6 +9,7 @@ class NebulaContext:
     logger: any
     event_bus: Optional[object] = None
     runtime: Optional[object] = None
+    plugin_manager: Optional[object] = None
 
 context = NebulaContext(
     config=settings,

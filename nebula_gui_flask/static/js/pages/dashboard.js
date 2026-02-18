@@ -2,6 +2,8 @@
   let networkChart = null;
   let containersChart = null;
   let containerDiskChart = null;
+  let adminMetricsAbortController = null;
+  let adminMetricsFailures = 0;
 
   function formatTimePoint(ts) {
     const d = new Date(ts * 1000);
@@ -53,9 +55,12 @@
 
   async function updateAdminDashboardMetrics() {
     try {
-      const r = await fetch('/api/admin/dashboard-metrics');
+      if (adminMetricsAbortController) adminMetricsAbortController.abort();
+      adminMetricsAbortController = new AbortController();
+      const r = await fetch('/api/admin/dashboard-metrics', { signal: adminMetricsAbortController.signal, cache: 'no-store' });
       if (!r.ok) throw new Error('failed');
       const data = await r.json();
+      adminMetricsFailures = 0;
 
       const ram = data.ram || {};
       const network = data.network || {};
@@ -213,16 +218,33 @@
         upd.textContent = `updated ${new Date().toLocaleTimeString()}`;
       }
     } catch (_) {
+      adminMetricsFailures += 1;
       const upd = document.getElementById('admin-metrics-updated');
-      if (upd) upd.textContent = 'telemetry unavailable';
+      if (!upd) return;
+      if (adminMetricsFailures >= 3) {
+        upd.textContent = 'telemetry unavailable';
+      } else {
+        upd.textContent = 'sync delayed';
+      }
     }
+  }
+
+  function adminMetricsIntervalMs() {
+    return document.hidden ? 12000 : 3000;
+  }
+
+  function scheduleAdminMetrics() {
+    if (window.__nebulaAdminMetricsTimer) {
+      clearInterval(window.__nebulaAdminMetricsTimer);
+    }
+    window.__nebulaAdminMetricsTimer = setInterval(updateAdminDashboardMetrics, adminMetricsIntervalMs());
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     updateAdminDashboardMetrics();
-    if (window.__nebulaAdminMetricsTimer) {
-      clearInterval(window.__nebulaAdminMetricsTimer);
-    }
-    window.__nebulaAdminMetricsTimer = setInterval(updateAdminDashboardMetrics, 3000);
+    scheduleAdminMetrics();
+    document.addEventListener('visibilitychange', () => {
+      scheduleAdminMetrics();
+      if (!document.hidden) updateAdminDashboardMetrics();
+    });
   });
-

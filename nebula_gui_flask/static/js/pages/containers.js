@@ -69,6 +69,7 @@ let metricsInterval = null;
 let containersInterval = null;
 let metricsAbortController = null;
 let containersAbortController = null;
+let metricsFailures = 0;
 let previousNetworkTotal = null;
 let hasContainerTableRendered = false;
 let lastContainersSignature = '';
@@ -499,8 +500,14 @@ async function updateStats() {
 
         const healthPressure = Math.max(cpuPercent, ramPercent, asNumber(data.disk_percent, 0));
         applyHealthState(data.health_status, healthPressure);
+        metricsFailures = 0;
     } catch (e) {
         if (e && e.name === 'AbortError') return;
+        metricsFailures += 1;
+        if (metricsFailures < 3) {
+            document.getElementById('stat_active_containers').innerHTML = `— <span class="stat-sub">sync delayed</span>`;
+            return;
+        }
         document.getElementById('stat_active_containers').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
         document.getElementById('stat_ram').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;
         document.getElementById('stat_cpu').innerHTML = `— <span class="stat-sub">telemetry offline</span>`;

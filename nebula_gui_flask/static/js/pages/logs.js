@@ -36,14 +36,24 @@
     }
   }
 
-  socket.on('log_update', (data) => {
-    if (data.type === 'history') {
+  const handleLogEvent = (data) => {
+    if (Array.isArray(data)) {
       container.innerHTML = '';
-      data.data.forEach(addLog);
-    } else {
+      data.forEach(addLog);
+      return;
+    }
+    if (data && data.type === 'history') {
+      container.innerHTML = '';
+      (Array.isArray(data.data) ? data.data : []).forEach(addLog);
+      return;
+    }
+    if (data && typeof data === 'object') {
       addLog(data);
     }
-  });
+  };
+
+  socket.on('log_update', handleLogEvent);
+  socket.on('log_history', handleLogEvent);
 
   function clearLogs() {
     container.innerHTML = '<div class="logs-placeholder">Console cleared</div>';
@@ -59,4 +69,3 @@
   }).catch(() => {
     if (statePill) statePill.textContent = 'history unavailable';
   });
-

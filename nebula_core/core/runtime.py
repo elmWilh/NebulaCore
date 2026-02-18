@@ -6,6 +6,7 @@ from typing import List, Set
 
 from .events import EventBus
 from .loader import register_modules
+from .plugin_manager import PluginManager
 from .service_task import ServiceTask
 from ..utils.config import load_yaml_config
 
@@ -38,6 +39,8 @@ class NebulaRuntime:
         self.host = server_cfg.get("host", "127.0.0.1")
         self.port = server_cfg.get("port", 8080)
         self.debug = server_cfg.get("debug", False)
+        self.plugin_config = self.service_config.get("plugins", {})
+        self.plugin_manager = PluginManager(config=self.plugin_config, event_bus=self.event_bus)
 
     @staticmethod
     def _resolve_config_path(config_path: str) -> Path:
@@ -56,6 +59,8 @@ class NebulaRuntime:
         """Initializes the runtime and registers internal/external modules."""
         logger.info("Runtime init: registering modules")
         await register_modules(self.event_bus)
+        logger.info("Runtime init: loading plugin_api_v1 plugins")
+        await self.plugin_manager.initialize()
 
         # Import kernel services locally to avoid circular dependencies
         from nebula_core.services.heartbeat import HeartbeatService
@@ -147,6 +152,11 @@ class NebulaRuntime:
             logger.info("Stopping registered services...")
             stop_tasks = [s.stop() for s in self._services]
             await asyncio.gather(*stop_tasks, return_exceptions=True)
+
+        try:
+            await self.plugin_manager.shutdown()
+        except Exception:
+            logger.exception("Plugin manager shutdown failed")
 
         # Handle remaining background tasks
         if self._tasks:

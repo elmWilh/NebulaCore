@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package nebula.internal.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/wrappers.proto";
+
+service Observability {
+  rpc GetCurrentMetrics(google.protobuf.Empty) returns (google.protobuf.Struct);
+  rpc GetLogHistory(google.protobuf.Int32Value) returns (google.protobuf.ListValue);
+}

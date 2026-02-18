@@ -1,44 +1,74 @@
 # Nebula Panel
 
-Nebula Panel is an infrastructure and container management platform with role-based access for administrators and regular users.
+Nebula Panel is a project-oriented infrastructure management platform for small and medium-sized companies.
 
-## Architecture
+It allows teams to deploy, organize, and delegate Docker-based environments using a secure, role-based access model, without the complexity of enterprise orchestration systems.
 
-- `nebula_core` (FastAPI): API layer, user and role management, Docker orchestration, system and container metrics.
-- `nebula_gui_flask` (Flask): web interface for authentication, user and container management, and monitoring.
+Nebula is not just a container GUI.  
+It is a structured control layer for real-world infrastructure.
 
-## Key Features
+## What Nebula Can Do Right Now
 
-- Administrator and user authentication.
-- Container access split:
-  - admins can view the full server and all containers;
-  - users can only view containers assigned to them.
-- Container lifecycle management:
-  - deploy with progress and deployment logs;
-  - start/stop/restart;
-  - container log viewing;
-  - container deletion with confirmation.
-- User and role system (SQLite).
-- Metrics:
-  - admins see host-wide metrics;
-  - users see aggregated metrics for their own containers.
-- Baseline security restrictions on critical APIs (`users/roles/files/logs`).
+- Run a full Core + GUI stack:
+  - `nebula_core` (FastAPI): infrastructure API, Docker operations, RBAC/session security, metrics, plugins.
+  - `nebula_gui_flask` (Flask): web panel for admins and users.
+- Manage container lifecycle:
+  - deploy, start, stop, restart, delete;
+  - view container logs;
+  - read/edit selected runtime settings (with permission checks);
+  - configure restart policy.
+- Work with container presets:
+  - built-in preset catalog (`containers/presets/*.json`);
+  - create/update presets from API.
+- Delegate access per container with role-aware policies:
+  - shell access;
+  - app console access;
+  - file explorer access;
+  - settings access and granular edit rights.
+- Use in-container workspace tools:
+  - list files;
+  - read file content;
+  - detect workspace roots.
+- Operate user and identity management:
+  - login/logout via signed session cookie;
+  - per-user role tags (`identity_roles`, `user_identity_tags`);
+  - user create/update/move/delete across client databases;
+  - TOTP 2FA setup/confirm/disable.
+- Observe system state:
+  - host metrics (`/metrics/current`);
+  - admin dashboard metrics with RAM/network/disks/container memory breakdown;
+  - buffered logs and live log stream via WebSocket.
+- Extend behavior with Plugin API v1:
+  - list/rescan plugin modules;
+  - plugin health checks;
+  - trigger `sync-users`;
+  - support in-process and gRPC plugin contract (`nebula_core/grpc/plugin_api_v1.proto`).
 
-## Data Storage
+> [!IMPORTANT]
+> Nebula Core (`:8000`) should not be exposed directly to the public Internet. Put it behind a reverse proxy, HTTPS, and firewall rules.
 
-- `storage/databases/system.db` - system database (administrators, system permissions).
-- `storage/databases/clients/*.db` - client user databases.
+> [!IMPORTANT]
+> Set strong secrets before production: `NEBULA_SESSION_SECRET`, `NEBULA_INSTALLER_TOKEN`, and secure cookie mode (`NEBULA_COOKIE_SECURE=true`).
+
+> [!IMPORTANT]
+> Nebula currently targets single-host Docker management. It is not a Kubernetes replacement and does not provide multi-node orchestration out of the box.
+
+## Data Layout
+
+- `storage/databases/system.db`: system users, admin accounts, identity roles, global mappings.
+- `storage/databases/clients/*.db`: tenant/project user databases.
+- `containers/presets/*.json`: container deployment templates.
 
 ## Quick Start (Ubuntu)
 
-### 1. Dependencies
+### 1. Install dependencies
 
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip curl
 ```
 
-### 2. Project Setup
+### 2. Prepare project env
 
 ```bash
 export PROJECT_DIR=/opt/NebulaCore
@@ -50,9 +80,9 @@ pip install -r requirements.txt
 pip install -r nebula_gui_flask/requirements.txt
 ```
 
-### 3. Docker
+### 3. Install Docker
 
-Option A (project installer):
+Option A:
 
 ```bash
 cd "$PROJECT_DIR"
@@ -60,7 +90,7 @@ source .venv/bin/activate
 python install/main.py
 ```
 
-Option B (manual):
+Option B:
 
 ```bash
 curl -fsSL https://get.docker.com -o get-docker.sh
@@ -80,7 +110,7 @@ source .venv/bin/activate
 python -m nebula_core
 ```
 
-### 5. Initial Admin Setup
+### 5. Run initial admin setup
 
 ```bash
 cd "$PROJECT_DIR"
@@ -88,13 +118,9 @@ source .venv/bin/activate
 python install/main.py
 ```
 
-In the installer menu, choose:
+Then select `Run First-Time Setup / Create Admin`.
 
-- `Run First-Time Setup / Create Admin`
-
-### 6. Start GUI
-
-In a separate terminal:
+### 6. Start GUI (second terminal)
 
 ```bash
 cd "$PROJECT_DIR/nebula_gui_flask"
@@ -102,53 +128,13 @@ source ../.venv/bin/activate
 python app.py
 ```
 
-Open in browser:
-
-- `http://127.0.0.1:5000`
+Open `http://127.0.0.1:5000`.
 
 ## Main URLs
 
 - GUI: `http://127.0.0.1:5000`
 - Core API: `http://127.0.0.1:8000`
-
-## Security (Production Recommendations)
-
-- Do not expose Core directly to the public internet without a reverse proxy and firewall.
-- Configure environment variables and secrets in `.env`:
-  - `NEBULA_INSTALLER_TOKEN`
-  - `NEBULA_CORS_ORIGINS`
-  - `NEBULA_CORE_HOST`
-  - `NEBULA_CORE_PORT`
-  - `NEBULA_CORE_RELOAD=false`
-- Use HTTPS at the external edge.
-- Rotate administrator tokens and passwords regularly.
-
-## Role Capabilities
-
-### Administrator
-
-- Manage users, roles, and container assignments.
-- Full access to container operations.
-- View host-wide system metrics.
-- Access administrative logs.
-
-### User
-
-- View only assigned containers.
-- Operate assigned containers (within granted interface permissions).
-- View only their own aggregated metrics.
-
-## Project Roadmap
-
-Planned directions:
-
-- Full authorization model with signed server-side sessions/JWT.
-- Extended RBAC/ABAC model with fine-grained container operation permissions.
-- Action audit trail (who/when/what changed).
-- Built-in quota and policy controls for CPU/RAM/Storage per user and group.
-- Multi-node/cluster support with real-time status.
-- Improved observability layer (alerts, charts, retention, Prometheus export).
-- Migration to a more fault-tolerant configuration backend.
+- Plugin API docs: `docs/PLUGIN_API.md`
 
 ## License
 

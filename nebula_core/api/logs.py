@@ -35,7 +35,12 @@ async def get_log_history(request: Request, limit: int = 200):
     token = request.headers.get("x-nebula-token")
     if not is_staff_session(session_cookie) and not (INTERNAL_AUTH_KEY and token == INTERNAL_AUTH_KEY):
         raise HTTPException(status_code=403, detail="Forbidden")
-    return LOG_BUFFER[-limit:]
+    return get_log_history_snapshot(limit)
+
+
+def get_log_history_snapshot(limit: int = 200):
+    safe_limit = max(1, min(int(limit), MAX_LOGS))
+    return LOG_BUFFER[-safe_limit:]
 
 @router.websocket("/stream")
 async def websocket_logs(websocket: WebSocket):
@@ -47,12 +52,24 @@ async def websocket_logs(websocket: WebSocket):
 
     await websocket.accept()
     history_sent = False
+    cursor = 0
 
     try:
         while True:
             if not history_sent:
-                await websocket.send_json(LOG_BUFFER[-100:])
+                snapshot = LOG_BUFFER[-100:]
+                await websocket.send_json({"type": "history", "data": snapshot})
                 history_sent = True
+                cursor = len(LOG_BUFFER)
+            else:
+                current_len = len(LOG_BUFFER)
+                if current_len < cursor:
+                    cursor = 0
+                if current_len > cursor:
+                    updates = LOG_BUFFER[cursor:current_len]
+                    cursor = current_len
+                    for item in updates:
+                        await websocket.send_json(item)
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         pass

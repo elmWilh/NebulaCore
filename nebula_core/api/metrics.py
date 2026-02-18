@@ -3,6 +3,7 @@ from collections import deque
 from fastapi import APIRouter, HTTPException, Request
 import psutil
 import time
+import threading
 
 from .security import require_session
 from ..services.docker_service import DockerService
@@ -30,6 +31,13 @@ IGNORED_FS_TYPES = {
 latest_metrics = {"uptime": 0.0, "timestamp": 0}
 from nebula_core.core.context import context
 _metrics_listener_bound = False
+admin_heavy_cache = {
+    "ts": 0.0,
+    "containers_memory": [],
+    "disks": [],
+}
+admin_heavy_cache_lock = threading.Lock()
+ADMIN_HEAVY_CACHE_TTL = 12.0
 
 def on_metrics_update(data: dict):
     latest_metrics.update(data)
@@ -45,6 +53,10 @@ async def _ensure_metrics_listener():
 
 @router.get("/current")
 async def get_current_metrics():
+    return await collect_current_metrics()
+
+
+async def collect_current_metrics():
     global net_io_state
     await _ensure_metrics_listener()
     
@@ -107,36 +119,46 @@ async def get_admin_dashboard_metrics(request: Request):
     admin_history["network_tx_mbps"].append({"t": point_ts, "v": round(sent_speed, 3)})
     admin_history["network_rx_mbps"].append({"t": point_ts, "v": round(recv_speed, 3)})
 
-    container_memory = []
-    try:
-        container_memory = docker_service.get_container_memory_breakdown()
-    except Exception:
+    with admin_heavy_cache_lock:
+        cached = dict(admin_heavy_cache)
+    if (now - float(cached.get("ts") or 0.0)) <= ADMIN_HEAVY_CACHE_TTL:
+        container_memory = list(cached.get("containers_memory") or [])
+        disks = list(cached.get("disks") or [])
+    else:
         container_memory = []
-
-    disks = []
-    seen_mounts = set()
-    for part in psutil.disk_partitions(all=False):
-        mount = (part.mountpoint or "").strip()
-        if not mount or mount in seen_mounts:
-            continue
-        seen_mounts.add(mount)
-        if (part.fstype or "").lower() in IGNORED_FS_TYPES:
-            continue
         try:
-            usage = psutil.disk_usage(mount)
+            container_memory = docker_service.get_container_memory_breakdown()
         except Exception:
-            continue
-        disks.append({
-            "device": part.device or "unknown",
-            "mountpoint": mount,
-            "fstype": part.fstype or "unknown",
-            "total_gb": round(usage.total / 1024**3, 2),
-            "used_gb": round(usage.used / 1024**3, 2),
-            "free_gb": round(usage.free / 1024**3, 2),
-            "percent": round(float(usage.percent), 2),
-        })
+            container_memory = []
 
-    disks.sort(key=lambda d: d["percent"], reverse=True)
+        disks = []
+        seen_mounts = set()
+        for part in psutil.disk_partitions(all=False):
+            mount = (part.mountpoint or "").strip()
+            if not mount or mount in seen_mounts:
+                continue
+            seen_mounts.add(mount)
+            if (part.fstype or "").lower() in IGNORED_FS_TYPES:
+                continue
+            try:
+                usage = psutil.disk_usage(mount)
+            except Exception:
+                continue
+            disks.append({
+                "device": part.device or "unknown",
+                "mountpoint": mount,
+                "fstype": part.fstype or "unknown",
+                "total_gb": round(usage.total / 1024**3, 2),
+                "used_gb": round(usage.used / 1024**3, 2),
+                "free_gb": round(usage.free / 1024**3, 2),
+                "percent": round(float(usage.percent), 2),
+            })
+
+        disks.sort(key=lambda d: d["percent"], reverse=True)
+        with admin_heavy_cache_lock:
+            admin_heavy_cache["ts"] = now
+            admin_heavy_cache["containers_memory"] = container_memory
+            admin_heavy_cache["disks"] = disks
     return {
         "scope": "admin_server",
         "generated_by": username,

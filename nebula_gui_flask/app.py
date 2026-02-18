@@ -895,8 +895,10 @@ def core_log_listener():
                     data = json.loads(message)
                 except Exception:
                     return
-                if isinstance(data, list):
-                    socketio.emit("log_history", data, to="staff")
+                if isinstance(data, dict) and data.get("type") == "history":
+                    socketio.emit("log_update", data, to="staff")
+                elif isinstance(data, list):
+                    socketio.emit("log_update", {"type": "history", "data": data}, to="staff")
                 else:
                     socketio.emit("log_update", data, to="staff")
 

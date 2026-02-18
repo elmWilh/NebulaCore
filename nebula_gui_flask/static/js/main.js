@@ -48,8 +48,25 @@ function setUIOffline() {
     if (cpuEl) cpuEl.textContent = "Core offline";
 }
 
-document.addEventListener('DOMContentLoaded', updateMetrics);
-setInterval(updateMetrics, 3000);
+function metricsIntervalMs() {
+    return document.hidden ? 15000 : 3000;
+}
+
+function scheduleMetricsLoop() {
+    if (window.__nebulaMainMetricsTimer) {
+        clearInterval(window.__nebulaMainMetricsTimer);
+    }
+    window.__nebulaMainMetricsTimer = setInterval(updateMetrics, metricsIntervalMs());
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    updateMetrics();
+    scheduleMetricsLoop();
+});
+document.addEventListener('visibilitychange', () => {
+    scheduleMetricsLoop();
+    if (!document.hidden) updateMetrics();
+});
 
 // User menu interactions
 function toggleUserMenu(e) {

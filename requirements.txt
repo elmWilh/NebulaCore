@@ -9,3 +9,6 @@ bcrypt
 pyotp
 
 docker
+
+grpcio
+protobuf

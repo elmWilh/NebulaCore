@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package nebula.plugin.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+
+service PluginService {
+  rpc Health(google.protobuf.Empty) returns (google.protobuf.Struct);
+  rpc SyncUsers(google.protobuf.Struct) returns (google.protobuf.Struct);
+}
