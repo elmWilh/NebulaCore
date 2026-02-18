@@ -11,12 +11,12 @@
 
 # Nebula Panel
 
-Nebula Panel is a project-oriented infrastructure management platform for small and medium-sized companies.
+Nebula Panel is an experimental infrastructure management platform currently in pre-alpha stage.
 
-It allows teams to deploy, organize, and delegate Docker-based environments using a secure, role-based access model, without the complexity of enterprise orchestration systems.
+The project explores a structured control layer over Docker-based environments, focusing on secure delegation, role-based access control, and modular core architecture.
 
-Nebula is not just a container GUI.  
-It is a structured control layer for real-world infrastructure.
+Nebula is not intended for production use at this time.
+It is an actively evolving foundation aimed at building a secure and extensible infrastructure management system for small and medium-sized teams.
 
 ## Screenshots
 
