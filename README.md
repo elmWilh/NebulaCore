@@ -1,3 +1,14 @@
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Core%20API-009688?logo=fastapi&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-GUI-000000?logo=flask&logoColor=white)
+![gRPC](https://img.shields.io/badge/gRPC-Plugin%20Bridge-244C5A?logo=grpc&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Containers-2496ED?logo=docker&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-Storage-003B57?logo=sqlite&logoColor=white)
+![WebSocket](https://img.shields.io/badge/WebSocket-Live%20Logs-FF6A00?logo=socketdotio&logoColor=white)
+![RBAC](https://img.shields.io/badge/Auth-RBAC-5B4B8A)
+![2FA](https://img.shields.io/badge/Security-TOTP%202FA-2E8B57)
+![License: AGPLv3](https://img.shields.io/badge/License-AGPLv3-A42E2B)
+
 # Nebula Panel
 
 Nebula Panel is a project-oriented infrastructure management platform for small and medium-sized companies.
