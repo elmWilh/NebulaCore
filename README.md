@@ -162,5 +162,5 @@ Monolink Systems is an independent infrastructure software initiative focused on
 - Nebula Open Source Edition (non-corporate)
 - Licensed under AGPLv3 (see `LICENSE`)
 
-Founded by GuFugu  
+Founded by elmWilh  
 GitHub: https://github.com/elmWilh
