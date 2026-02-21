@@ -4,7 +4,7 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, abort, g
 from flask_socketio import SocketIO, join_room
 import socketio as socketio_client 
 from websocket import WebSocketApp
@@ -13,57 +13,31 @@ import time
 import logging
 import psutil
 import threading
-import uuid
 import requests
 import os
 import secrets
+import re
+import glob
+import hashlib
+import base64
 from urllib.parse import urlparse
 from datetime import timedelta
 
 from core.bridge import NebulaBridge
+from routes.api_containers import register_container_api_routes
+from routes.api_users import register_user_api_routes
+from routes.pages import register_pages_routes
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(name)s | %(message)s')
 
 app = Flask(__name__)
-def _resolve_gui_secret_key():
-    env_key = os.getenv("NEBULA_GUI_SECRET_KEY")
-    if env_key:
-        return env_key
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    for candidate in [
-        os.path.join(project_root, ".env"),
-        os.path.join(project_root, "install", ".env"),
-    ]:
-        try:
-            with open(candidate, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    if k.strip() == "NEBULA_GUI_SECRET_KEY":
-                        return v.strip().strip('"').strip("'")
-        except Exception:
-            continue
-    return secrets.token_urlsafe(32)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ENV_FILE_CANDIDATES = (
+    os.path.join(PROJECT_ROOT, ".env"),
+    os.path.join(PROJECT_ROOT, "install", ".env"),
+)
 
 
-def _resolve_gui_allowed_origins():
-    raw = os.getenv("NEBULA_GUI_CORS_ORIGINS", "http://127.0.0.1:5000,http://localhost:5000")
-    return [o.strip() for o in raw.split(",") if o.strip()]
-
-
-GUI_COOKIE_SECURE = os.getenv("NEBULA_GUI_COOKIE_SECURE", "false").strip().lower() == "true"
-GUI_ALLOWED_ORIGINS = _resolve_gui_allowed_origins()
-
-app.config['SECRET_KEY'] = _resolve_gui_secret_key()
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = "Lax"
-app.config['SESSION_COOKIE_SECURE'] = GUI_COOKIE_SECURE
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
-socketio = SocketIO(app, cors_allowed_origins=GUI_ALLOWED_ORIGINS, async_mode="eventlet")
-
-bridge = NebulaBridge()
 def _read_env_value(file_path: str, key: str):
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -78,19 +52,94 @@ def _read_env_value(file_path: str, key: str):
         return None
     return None
 
-def _resolve_internal_auth_key():
-    env_key = os.getenv("NEBULA_INSTALLER_TOKEN")
+
+def _resolve_env_value(key: str, default: str | None = None) -> str | None:
+    env_key = os.getenv(key)
+    if env_key not in (None, ""):
+        return env_key
+    for candidate in ENV_FILE_CANDIDATES:
+        value = _read_env_value(candidate, key)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def _resolve_bool_env(key: str, default: bool = False) -> bool:
+    default_str = "true" if default else "false"
+    value = (_resolve_env_value(key, default_str) or default_str).strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _resolve_int_env(key: str, default: int, min_value: int = 1) -> int:
+    raw_value = _resolve_env_value(key, str(default))
+    try:
+        resolved = int(raw_value)
+    except (TypeError, ValueError):
+        logging.getLogger("nebula_gui_flask").warning(
+            "%s has invalid value %r; using default %s", key, raw_value, default
+        )
+        return default
+    if resolved < min_value:
+        logging.getLogger("nebula_gui_flask").warning(
+            "%s must be >= %s; got %s. Using default %s", key, min_value, resolved, default
+        )
+        return default
+    return resolved
+
+
+def _resolve_gui_secret_key():
+    env_key = _resolve_env_value("NEBULA_GUI_SECRET_KEY")
     if env_key:
         return env_key
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    for candidate in [
-        os.path.join(project_root, ".env"),
-        os.path.join(project_root, "install", ".env"),
-    ]:
-        val = _read_env_value(candidate, "NEBULA_INSTALLER_TOKEN")
-        if val:
-            return val
-    return ""
+    return secrets.token_urlsafe(32)
+
+
+def _resolve_gui_allowed_origins():
+    raw = _resolve_env_value(
+        "NEBULA_GUI_CORS_ORIGINS",
+        "http://127.0.0.1:5000,http://localhost:5000",
+    )
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+GUI_COOKIE_SECURE = _resolve_bool_env("NEBULA_GUI_COOKIE_SECURE", default=False)
+GUI_ALLOWED_ORIGINS = _resolve_gui_allowed_origins()
+
+
+def _resolve_template_inline_handler_hashes() -> list[str]:
+    template_root = os.path.join(os.path.dirname(__file__), "templates")
+    inline_handler_pattern = re.compile(r"\son[a-zA-Z0-9_-]*\s*=\s*(\"([^\"]*)\"|'([^']*)')")
+    handlers = set()
+    for template_path in glob.glob(os.path.join(template_root, "**", "*.html"), recursive=True):
+        try:
+            with open(template_path, "r", encoding="utf-8") as template_file:
+                content = template_file.read()
+        except OSError:
+            continue
+        for match in inline_handler_pattern.finditer(content):
+            value = match.group(2) if match.group(2) is not None else match.group(3)
+            if value:
+                handlers.add(value.strip())
+
+    hashes = []
+    for handler in sorted(handlers):
+        digest = hashlib.sha256(handler.encode("utf-8")).digest()
+        hashes.append(f"'sha256-{base64.b64encode(digest).decode('ascii')}'")
+    return hashes
+
+
+INLINE_HANDLER_HASHES = _resolve_template_inline_handler_hashes()
+
+app.config['SECRET_KEY'] = _resolve_gui_secret_key()
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = "Lax"
+app.config['SESSION_COOKIE_SECURE'] = GUI_COOKIE_SECURE
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
+socketio = SocketIO(app, cors_allowed_origins=GUI_ALLOWED_ORIGINS, async_mode="eventlet")
+
+bridge = NebulaBridge()
+def _resolve_internal_auth_key():
+    return _resolve_env_value("NEBULA_INSTALLER_TOKEN", "") or ""
 
 INTERNAL_AUTH_KEY = _resolve_internal_auth_key()
 if not INTERNAL_AUTH_KEY:
@@ -104,6 +153,62 @@ metrics_cache_lock = threading.Lock()
 METRICS_CACHE_TTL = 2.5
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_TRUSTED_ORIGINS = set(GUI_ALLOWED_ORIGINS)
+LOGIN_ATTEMPT_WINDOW_SECONDS = _resolve_int_env("NEBULA_LOGIN_ATTEMPT_WINDOW_SECONDS", default=300)
+LOGIN_MAX_ATTEMPTS = _resolve_int_env("NEBULA_LOGIN_MAX_ATTEMPTS", default=5)
+LOGIN_LOCKOUT_SECONDS = _resolve_int_env("NEBULA_LOGIN_LOCKOUT_SECONDS", default=900)
+login_rate_limiter = {}
+login_rate_limiter_lock = threading.Lock()
+
+
+def _resolve_client_ip() -> str:
+    forwarded_for = (request.headers.get("X-Forwarded-For") or "").split(",", 1)[0].strip()
+    if forwarded_for:
+        return forwarded_for
+    real_ip = (request.headers.get("X-Real-IP") or "").strip()
+    if real_ip:
+        return real_ip
+    return request.remote_addr or "unknown"
+
+
+def _check_login_block(ip_addr: str) -> int:
+    now = time.time()
+    window_start = now - LOGIN_ATTEMPT_WINDOW_SECONDS
+    with login_rate_limiter_lock:
+        state = login_rate_limiter.get(ip_addr)
+        if not state:
+            return 0
+        failures = [ts for ts in state.get("failures", []) if ts >= window_start]
+        state["failures"] = failures
+        lock_until = float(state.get("lock_until", 0) or 0)
+        if lock_until > now:
+            state["lock_until"] = lock_until
+            login_rate_limiter[ip_addr] = state
+            return int(lock_until - now)
+        state["lock_until"] = 0
+        if not failures:
+            login_rate_limiter.pop(ip_addr, None)
+        else:
+            login_rate_limiter[ip_addr] = state
+        return 0
+
+
+def _register_failed_login_attempt(ip_addr: str):
+    now = time.time()
+    window_start = now - LOGIN_ATTEMPT_WINDOW_SECONDS
+    with login_rate_limiter_lock:
+        state = login_rate_limiter.get(ip_addr, {"failures": [], "lock_until": 0})
+        failures = [ts for ts in state.get("failures", []) if ts >= window_start]
+        failures.append(now)
+        lock_until = float(state.get("lock_until", 0) or 0)
+        if len(failures) >= LOGIN_MAX_ATTEMPTS:
+            lock_until = now + LOGIN_LOCKOUT_SECONDS
+            failures = []
+        login_rate_limiter[ip_addr] = {"failures": failures, "lock_until": lock_until}
+
+
+def _clear_login_attempts(ip_addr: str):
+    with login_rate_limiter_lock:
+        login_rate_limiter.pop(ip_addr, None)
 
 
 def _origin_is_trusted(origin_value: str) -> bool:
@@ -134,6 +239,57 @@ def csrf_guard():
     if referer and _origin_is_trusted(referer):
         return None
     return jsonify({"detail": "CSRF validation failed"}), 403
+
+
+@app.before_request
+def prepare_csp_nonce():
+    g.csp_nonce = secrets.token_urlsafe(16)
+
+
+@app.context_processor
+def inject_csp_nonce():
+    return {"csp_nonce": getattr(g, "csp_nonce", "")}
+
+
+def _build_csp_header() -> str:
+    nonce = getattr(g, "csp_nonce", "")
+    trusted_connect = sorted({origin.rstrip("/") for origin in GUI_ALLOWED_ORIGINS if origin})
+    connect_src = ["'self'", "ws:", "wss:"] + trusted_connect
+
+    script_src = [
+        "'self'",
+        f"'nonce-{nonce}'",
+        "'strict-dynamic'",
+        "'unsafe-hashes'",
+        "https://cdn.jsdelivr.net",
+        "https://cdn.socket.io",
+    ] + INLINE_HANDLER_HASHES
+
+    directives = {
+        "default-src": ["'self'"],
+        "base-uri": ["'self'"],
+        "object-src": ["'none'"],
+        "frame-ancestors": ["'none'"],
+        "frame-src": ["'none'"],
+        "form-action": ["'self'"],
+        "script-src": script_src,
+        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
+        "font-src": ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "data:"],
+        "img-src": ["'self'", "data:"],
+        "connect-src": connect_src,
+    }
+    return "; ".join(f"{directive} {' '.join(values)}" for directive, values in directives.items())
+
+
+@app.after_request
+def apply_security_headers(response):
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    if response.mimetype == "text/html":
+        response.headers["Content-Security-Policy"] = _build_csp_header()
+    return response
 
 
 def _append_deploy_log(job_id: str, message: str):
@@ -254,263 +410,26 @@ def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: s
             result=None
         )
 
-@app.route('/')
-@bridge.login_required
-def dashboard():
-    return render_template('pages/dashboard.html')
-
-@app.route('/users')
-@bridge.login_required
-@bridge.staff_required
-def users_page():
-    return render_template('pages/users.html')
-
-@app.route('/users/add')
-@bridge.login_required
-@bridge.staff_required
-def add_user_page():
-    return render_template('pages/adduser.html')
-
-@app.route('/containers')
-@bridge.login_required
-def containers_page():
-    return render_template('pages/containers.html')
-
-@app.route('/containers/view/<container_id>')
-@bridge.login_required
-def container_workspace_page(container_id):
-    return render_template('pages/container_workspace.html', container_id=container_id)
-
-@app.route('/userpanel')
-@bridge.login_required
-def user_panel_page():
-    return render_template(
-        'pages/userpanel.html',
-        username=session.get('user_id'),
-        is_staff=bool(session.get('is_staff'))
-    )
-
-@app.route('/logs')
-@bridge.login_required
-@bridge.staff_required
-def logs_page():
-    return render_template('pages/logs.html')
-
-@app.route('/api/containers/list')
-@bridge.login_required
-def api_list_containers():
-    params = {}
-    node = request.args.get("node")
-    if node:
-        params["node"] = node
-    res, code = bridge.proxy_request("GET", "/containers/list", params=params or None)
-    return jsonify(res), code
-
-@app.route('/api/containers/deploy', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_deploy_container():
-    res, code = bridge.proxy_request("POST", "/containers/deploy", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/containers/presets')
-@bridge.login_required
-def api_container_presets():
-    res, code = bridge.proxy_request("GET", "/containers/presets")
-    return jsonify(res), code
-
-@app.route('/api/containers/presets/<preset_name>')
-@bridge.login_required
-def api_container_preset_detail(preset_name):
-    res, code = bridge.proxy_request("GET", f"/containers/presets/{preset_name}")
-    return jsonify(res), code
-
-@app.route('/api/containers/presets', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_container_preset_save():
-    res, code = bridge.proxy_request("POST", "/containers/presets", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/containers/permissions/<container_id>')
-@bridge.login_required
-def api_container_permissions_get(container_id):
-    res, code = bridge.proxy_request("GET", f"/containers/permissions/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/permissions/<container_id>', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_container_permissions_update(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/permissions/{container_id}", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/containers/deploy/start', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_deploy_container_start():
-    payload = request.json or {}
-    job_id = uuid.uuid4().hex
-    started_by = session.get('user_id', 'unknown')
-    core_session = session.get("core_session")
-    if not core_session:
-        return jsonify({"detail": "No active core session"}), 401
-    now = time.time()
-
-    with deploy_jobs_lock:
-        deploy_jobs[job_id] = {
-            "job_id": job_id,
-            "status": "queued",
-            "stage": "Queued",
-            "progress": 3,
-            "logs": [f"[{time.strftime('%H:%M:%S')}] Deployment job queued"],
-            "error": None,
-            "result": None,
-            "created_by": started_by,
-            "created_at": now,
-            "updated_at": now,
-        }
-
-    worker = threading.Thread(
-        target=_run_deploy_job,
-        args=(job_id, payload, started_by, core_session),
-        daemon=True
-    )
-    worker.start()
-    return jsonify({"job_id": job_id, "status": "queued"}), 202
-
-@app.route('/api/containers/deploy/status/<job_id>')
-@bridge.login_required
-@bridge.staff_required
-def api_deploy_container_status(job_id):
-    with deploy_jobs_lock:
-        job = deploy_jobs.get(job_id)
-        if not job:
-            return jsonify({"detail": "Deploy job not found"}), 404
-        if job.get("created_by") != session.get("user_id"):
-            return jsonify({"detail": "Access denied for this deploy job"}), 403
-        return jsonify(job), 200
-
-@app.route('/api/containers/nodes')
-@bridge.login_required
-@bridge.staff_required
-def api_get_nodes():
-    return jsonify({
-        "nodes": [
-            {
-                "id": "nebula-core-local",
-                "label": f"Nebula Core ({bridge.core_url.replace('http://', '')})",
-                "status": "active"
-            }
-        ],
-        "active_node": "nebula-core-local"
-    })
-
-@app.route('/api/containers/restart/<container_id>', methods=['POST'])
-@bridge.login_required
-def api_restart_container(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/restart/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/start/<container_id>', methods=['POST'])
-@bridge.login_required
-def api_start_container(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/start/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/stop/<container_id>', methods=['POST'])
-@bridge.login_required
-def api_stop_container(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/stop/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/logs/<container_id>')
-@bridge.login_required
-def api_container_logs(container_id):
-    tail = request.args.get("tail", "200")
-    res, code = bridge.proxy_request("GET", f"/containers/logs/{container_id}", params={"tail": tail})
-    return jsonify(res), code
-
-@app.route('/api/containers/detail/<container_id>')
-@bridge.login_required
-def api_container_detail(container_id):
-    res, code = bridge.proxy_request("GET", f"/containers/detail/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/profile/<container_id>')
-@bridge.login_required
-def api_container_profile(container_id):
-    res, code = bridge.proxy_request("GET", f"/containers/profile/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/exec/<container_id>', methods=['POST'])
-@bridge.login_required
-def api_container_exec(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/exec/{container_id}", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/containers/console-send/<container_id>', methods=['POST'])
-@bridge.login_required
-def api_container_console_send(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/console-send/{container_id}", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/containers/files/<container_id>')
-@bridge.login_required
-def api_container_files(container_id):
-    path = request.args.get("path", "/")
-    res, code = bridge.proxy_request("GET", f"/containers/files/{container_id}", params={"path": path})
-    return jsonify(res), code
-
-@app.route('/api/containers/workspace-roots/<container_id>')
-@bridge.login_required
-def api_container_workspace_roots(container_id):
-    res, code = bridge.proxy_request("GET", f"/containers/workspace-roots/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/file-content/<container_id>')
-@bridge.login_required
-def api_container_file_content(container_id):
-    path = request.args.get("path", "")
-    max_bytes = request.args.get("max_bytes", "200000")
-    params = {"path": path, "max_bytes": max_bytes}
-    res, code = bridge.proxy_request("GET", f"/containers/file-content/{container_id}", params=params)
-    return jsonify(res), code
-
-@app.route('/api/containers/settings/<container_id>')
-@bridge.login_required
-def api_container_settings_get(container_id):
-    res, code = bridge.proxy_request("GET", f"/containers/settings/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/settings/<container_id>', methods=['POST'])
-@bridge.login_required
-def api_container_settings_update(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/settings/{container_id}", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/containers/restart-policy/<container_id>')
-@bridge.login_required
-def api_container_restart_policy_get(container_id):
-    res, code = bridge.proxy_request("GET", f"/containers/restart-policy/{container_id}")
-    return jsonify(res), code
-
-@app.route('/api/containers/restart-policy/<container_id>', methods=['POST'])
-@bridge.login_required
-def api_container_restart_policy_update(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/restart-policy/{container_id}", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/containers/delete/<container_id>', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_delete_container(container_id):
-    res, code = bridge.proxy_request("POST", f"/containers/delete/{container_id}")
-    return jsonify(res), code
+register_pages_routes(app, bridge)
+register_container_api_routes(
+    app,
+    bridge,
+    deploy_jobs=deploy_jobs,
+    deploy_jobs_lock=deploy_jobs_lock,
+    run_deploy_job=_run_deploy_job,
+)
+register_user_api_routes(app, bridge)
 
 @app.route('/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
+        client_ip = _resolve_client_ip()
+        retry_after = _check_login_block(client_ip)
+        if retry_after > 0:
+            response = jsonify({"detail": f"Too many login attempts. Try again in {retry_after}s"})
+            response.headers["Retry-After"] = str(retry_after)
+            return response, 429
+
         username = request.form.get('username')
         password = request.form.get('password')
         otp = (request.form.get('otp') or '').strip()
@@ -519,13 +438,16 @@ def admin_login():
         session.clear()
         db_name, user_type = bridge.resolve_user_sector(username)
         if not db_name:
+            _register_failed_login_attempt(client_ip)
             return jsonify({"detail": "User not found"}), 401
         if user_type == 'staff':
             success, error = bridge.admin_auth(username, password, otp=otp)
         else:
             success, error = bridge.user_auth(username, password, db_name, otp=otp)
         if success:
+            _clear_login_attempts(client_ip)
             return jsonify({"status": "success", "redirect": url_for('dashboard')})
+        _register_failed_login_attempt(client_ip)
         return jsonify({"detail": error}), 401
     return render_template('userlogin.html')
 
@@ -536,13 +458,22 @@ def logout():
 
 @app.route('/api/auth/login', methods=['POST'])
 def user_login_api():
+    client_ip = _resolve_client_ip()
+    retry_after = _check_login_block(client_ip)
+    if retry_after > 0:
+        response = jsonify({"detail": f"Too many login attempts. Try again in {retry_after}s"})
+        response.headers["Retry-After"] = str(retry_after)
+        return response, 429
+
     username = request.form.get('username')
     password = request.form.get('password')
     otp = (request.form.get('otp') or '').strip()
     db_name = request.form.get('db_name', 'system.db')
     success, error = bridge.user_auth(username, password, db_name, otp=otp)
     if success:
+        _clear_login_attempts(client_ip)
         return jsonify({"status": "success", "redirect": url_for('dashboard')}), 200
+    _register_failed_login_attempt(client_ip)
     return jsonify({"detail": error or "INVALID_CREDENTIALS"}), 401
 
 
@@ -575,37 +506,6 @@ def api_user_2fa_disable():
     res, code = bridge.proxy_request("POST", "/users/2fa/disable", form_data={"code": code_val})
     return jsonify(res), code
 
-@app.route('/api/users/databases')
-@bridge.login_required
-@bridge.staff_required
-def api_proxy_databases():
-    res, code = bridge.proxy_request("GET", "/users/databases")
-    return jsonify(res), code
-
-@app.route('/api/users/list')
-@bridge.login_required
-@bridge.staff_required
-def api_proxy_user_list():
-    res, code = bridge.proxy_request("GET", "/users/list", params={"db_name": request.args.get('db_name')})
-    return jsonify(res), code
-
-@app.route('/api/users/identity-tag')
-@bridge.login_required
-def api_user_identity_tag_get():
-    params = {
-        "username": request.args.get("username"),
-        "db_name": request.args.get("db_name"),
-    }
-    res, code = bridge.proxy_request("GET", "/users/identity-tag", params=params)
-    return jsonify(res), code
-
-@app.route('/api/users/identity-tag', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_user_identity_tag_set():
-    res, code = bridge.proxy_request("POST", "/users/identity-tag", json_data=request.json)
-    return jsonify(res), code
-
 @app.route('/api/roles/list')
 @bridge.login_required
 def api_roles_list():
@@ -617,33 +517,6 @@ def api_roles_list():
 @bridge.staff_required
 def api_roles_create():
     res, code = bridge.proxy_request("POST", "/roles/create", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/users/create', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_proxy_create_user():
-    res, code = bridge.proxy_request("POST", "/users/create", 
-                                   params={"db_name": request.args.get('db_name')}, 
-                                   json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/users/update', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_proxy_update_user():
-    res, code = bridge.proxy_request("POST", "/users/update", json_data=request.json)
-    return jsonify(res), code
-
-@app.route('/api/users/delete', methods=['POST'])
-@bridge.login_required
-@bridge.staff_required
-def api_proxy_delete_user():
-    params = {
-        "db_name": request.args.get('db_name'),
-        "username": request.args.get('username')
-    }
-    res, code = bridge.proxy_request("POST", "/users/delete", params=params)
     return jsonify(res), code
 
 @app.route('/api/metrics')
@@ -865,16 +738,6 @@ def view_user_page(username):
         db_name = session.get('db_name') or db_name
     user_data = {'username': username, 'db_name': db_name}
     return render_template('pages/userdata.html', user=user_data)
-
-@app.route('/api/users/detail/<username>')
-@bridge.login_required
-def api_user_detail(username):
-    if not session.get('is_staff') and session.get('user_id') != username:
-        return jsonify({"detail": "Access Denied"}), 403
-    db_name = request.args.get('db_name')
-    params = {"db_name": db_name} if db_name else None
-    res, code = bridge.proxy_request("GET", f"/users/detail/{username}", params=params)
-    return jsonify(res), code
 
 @app.route('/api/logs/history')
 @bridge.login_required

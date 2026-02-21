@@ -17,6 +17,6 @@
 <body>
   {% block content %}{% endblock %}
   {% block extra_js %}{% endblock %}
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

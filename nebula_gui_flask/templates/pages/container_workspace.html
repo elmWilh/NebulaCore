@@ -8,12 +8,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/container_workspace.css') }}">
 {% endblock %}
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 window.NebulaWorkspace = {
     containerId: {{ container_id|tojson }}
 };
 </script>
-<script src="{{ url_for('static', filename='js/pages/container_workspace.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/container_workspace.js') }}"></script>
 {% endblock %}
 {% block page_content %}
 <div class="container-fluid ws-shell">

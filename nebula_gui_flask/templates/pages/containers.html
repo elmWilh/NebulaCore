@@ -8,12 +8,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/containers.css') }}">
 {% endblock %}
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 window.NebulaContainers = {
     isStaff: {{ 'true' if session.get('is_staff') else 'false' }}
 };
 </script>
-<script src="{{ url_for('static', filename='js/pages/containers.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/containers.js') }}"></script>
 {% endblock %}
 {% block page_content %}
 

@@ -110,6 +110,6 @@
     </div>
   </main>
 </div>
-<script src="{{ url_for('static', filename='js/pages/index.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/index.js') }}"></script>
 </body>
 </html>

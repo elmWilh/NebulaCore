@@ -8,8 +8,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/dashboard.css') }}">
 {% endblock %}
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
 {% endblock %}
 
 {% block page_content %}

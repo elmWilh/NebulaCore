@@ -8,13 +8,13 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/userdata.css') }}">
 {% endblock %}
 {% block extra_js %}
-<script>
+<script nonce="{{ csp_nonce }}">
 window.NebulaUserdata = {
     profileUsername: {{ user.username|tojson }},
     profileDbName: {{ user.db_name|tojson }}
 };
 </script>
-<script src="{{ url_for('static', filename='js/pages/userdata.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/userdata.js') }}"></script>
 {% endblock %}
 {% block page_content %}
 <div class="container-fluid" style="padding: 24px;">
