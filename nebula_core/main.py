@@ -23,7 +23,6 @@ from .utils.logger import (
 from .api import api_router
 from .core.runtime import NebulaRuntime
 from .core.context import context
-from .db import init_system_db
 from .internal_grpc import InternalGrpcServer
 
 logger = setup_logger("nebula_core")
@@ -82,8 +81,6 @@ async def on_startup():
     logger.info("Nebula Core startup: initializing runtime")
     logger.info(COPYRIGHT_NOTICE)
     logger.info(LICENSE_NOTICE)
-    
-    init_system_db()
     
     await grpc_server.start()
     logger.info(f"Nebula Core gRPC server started on {grpc_server.bind_target}")
