@@ -141,10 +141,6 @@ function buildProjectsByContainerMap(projects) {
 }
 
 async function refreshContainerProjectsMap(force = false) {
-    if (!isStaff) {
-        projectsByContainerId = {};
-        return;
-    }
     const now = Date.now();
     if (!force && projectsMapCacheTs && (now - projectsMapCacheTs) < 15000) {
         return;

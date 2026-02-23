@@ -81,6 +81,7 @@
             </div>
           </div>
 
+          {% if session.get('is_staff') %}
           <div class="nav-section" data-id="ops">
             <div class="nav-section-title" onclick="toggleSection(this)">
               <i class="bi bi-hammer"></i>
@@ -99,6 +100,7 @@
               </a>
             </div>
           </div>
+          {% endif %}
 
           {% if session.get('is_staff') %}
           <div class="nav-section" data-id="sec">
@@ -119,6 +121,7 @@
           </div>
           {% endif %}
 
+          {% if session.get('is_staff') %}
           <div class="nav-section" data-id="sys">
             <div class="nav-section-title" onclick="toggleSection(this)">
               <i class="bi bi-gear"></i>
@@ -126,17 +129,16 @@
               <i class="bi bi-chevron-down arrow"></i>
             </div>
             <div class="nav-links">
-              {% if session.get('is_staff') %}
               <a href="/logs" class="nav-link {{ 'active' if request.path == '/logs' else '' }}">
                 <i class="bi bi-journal-text"></i> Logs
               </a>
-              {% endif %}
               <a href="/fault-sentinel" class="nav-link {{ 'active' if request.path == '/fault-sentinel' else '' }}">
                 <i class="bi bi-activity"></i> Fault Sentinel
               </a>
               <a href="#" class="nav-link"><i class="bi bi-sliders"></i> Settings</a>
             </div>
           </div>
+          {% endif %}
 
         </nav>
       </aside>

@@ -15,14 +15,6 @@ function escapeHtml(value) {
         .replaceAll("'", '&#39;');
 }
 
-function jsQuote(value) {
-    return String(value ?? '')
-        .replaceAll('\\', '\\\\')
-        .replaceAll("'", "\\'")
-        .replaceAll('\n', '\\n')
-        .replaceAll('\r', '\\r');
-}
-
 function safeDomId(value) {
     return String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
@@ -63,6 +55,10 @@ async function fetchUsers() {
     try {
         const response = await fetch(`/api/users/list?db_name=${dbName}`);
         const payload = await response.json();
+        if (!response.ok) {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:40px; color:#ff4f4f;">${escapeHtml(payload.detail || 'Failed to load users')}</td></tr>`;
+            return;
+        }
         const users = Array.isArray(payload) ? payload : [];
         lastUsersPayload = users;
         tbody.innerHTML = '';
@@ -78,7 +74,6 @@ async function fetchUsers() {
             row.style.borderBottom = '1px solid var(--border)';
             const username = String(user.username ?? '');
             const usernameHtml = escapeHtml(username);
-            const usernameJs = jsQuote(username);
             const menuSuffix = safeDomId(username);
             const menuId = `drop-${menuSuffix}`;
             const encodedUsername = encodeURIComponent(username);
@@ -107,21 +102,21 @@ async function fetchUsers() {
                 </td>
                 <td style="padding: 18px 24px; text-align: right;">
                     <div class="dropdown">
-                        <button class="action-btn" onclick="toggleMenu(event, '${menuId}')">
+                        <button class="action-btn" type="button" data-user-menu-toggle="1" data-menu-id="${menuId}">
                             <i class="bi bi-three-dots"></i>
                         </button>
                         <div id="${menuId}" class="dropdown-content">
                             <a href="/users/view/${encodedUsername}?db_name=${encodeURIComponent(dbName)}">
                                 <i class="bi bi-shield-shaded"></i> Intelligence Profile
                             </a>
-                            <a href="javascript:void(0)" onclick="openEditModal('${usernameJs}')">
+                            <a href="#" data-action="edit-user" data-username="${usernameHtml}">
                                 <i class="bi bi-gear-wide-connected"></i> Full Configuration
                             </a>
-                            <a href="javascript:void(0)" onclick="pinUser('${usernameJs}')">
+                            <a href="#" data-action="pin-user" data-username="${usernameHtml}">
                                 <i class="bi bi-pin-angle"></i> Pin to Dashboard
                             </a>
                             <hr style="border: 0; border-top: 1px solid var(--border); margin: 6px 0;">
-                            <a href="javascript:void(0)" style="color:#ff6b6b;" onclick="banUser('${usernameJs}')">
+                            <a href="#" style="color:#ff6b6b;" data-action="delete-user" data-username="${usernameHtml}">
                                 <i class="bi bi-trash3"></i> Delete Member
                             </a>
                         </div>
@@ -136,14 +131,15 @@ async function fetchUsers() {
 }
 
 // --- Interaction UI ---
-function toggleMenu(e, id) {
+function toggleMenu(e, id, triggerEl = null) {
     e.stopPropagation();
     const menu = document.getElementById(id);
+    if (!menu) return;
     document.querySelectorAll('.dropdown-content').forEach(d => { if(d !== menu) d.classList.remove('show'); });
     const shouldOpen = !menu.classList.contains('show');
     menu.classList.toggle('show', shouldOpen);
     if (shouldOpen) {
-        positionMenu(menu, e.currentTarget || e.target);
+        positionMenu(menu, triggerEl || e.target);
     }
 }
 
@@ -231,6 +227,32 @@ async function banUser(username) {
 }
 
 document.addEventListener('click', (event) => {
+    const toggleBtn = event.target.closest('[data-user-menu-toggle][data-menu-id]');
+    if (toggleBtn) {
+        toggleMenu(event, toggleBtn.dataset.menuId, toggleBtn);
+        return;
+    }
+
+    const actionLink = event.target.closest('[data-action][data-username]');
+    if (actionLink) {
+        event.preventDefault();
+        const action = String(actionLink.dataset.action || '').trim();
+        const username = String(actionLink.dataset.username || '').trim();
+        document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+        if (action === 'edit-user') {
+            openEditModal(username);
+            return;
+        }
+        if (action === 'pin-user') {
+            pinUser(username);
+            return;
+        }
+        if (action === 'delete-user') {
+            banUser(username);
+            return;
+        }
+    }
+
     if (!event.target.closest('.dropdown')) {
         document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
     }
@@ -242,5 +264,3 @@ window.addEventListener('scroll', () => {
     document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
 }, true);
 document.addEventListener('DOMContentLoaded', initPage);
-
-

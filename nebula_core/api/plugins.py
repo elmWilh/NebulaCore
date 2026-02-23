@@ -18,6 +18,10 @@ class PluginSyncRequest(BaseModel):
     limit: int = Field(default=0, ge=0, le=10000)
 
 
+class PluginActionRequest(BaseModel):
+    action: str = Field(default="restart")
+
+
 def _authorize(request: Request, token: Optional[str]):
     verify_staff_or_internal(request, token)
 
@@ -75,3 +79,46 @@ async def plugin_sync_users(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"plugin": plugin_name, "result": result}
+
+
+@router.post("/{plugin_name}/action")
+async def plugin_action(
+    plugin_name: str,
+    request: Request,
+    payload: PluginActionRequest,
+    x_nebula_token: Optional[str] = Header(default=None),
+):
+    _authorize(request, x_nebula_token)
+    manager = _get_manager()
+    try:
+        result = await manager.plugin_action(plugin_name, payload.action)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"plugin": plugin_name, "result": result}
+
+
+@router.get("/{plugin_name}/stats")
+async def plugin_stats(plugin_name: str, request: Request, x_nebula_token: Optional[str] = Header(default=None)):
+    _authorize(request, x_nebula_token)
+    manager = _get_manager()
+    try:
+        result = manager.plugin_stats(plugin_name)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result
+
+
+@router.get("/{plugin_name}/logs")
+async def plugin_logs(
+    plugin_name: str,
+    request: Request,
+    tail: int = 200,
+    x_nebula_token: Optional[str] = Header(default=None),
+):
+    _authorize(request, x_nebula_token)
+    manager = _get_manager()
+    try:
+        result = manager.plugin_logs(plugin_name, tail=tail)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result

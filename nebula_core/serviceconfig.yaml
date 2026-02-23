@@ -9,6 +9,18 @@ services:
     host: "127.0.0.1"
     port: 8080
     debug: true
+mail:
+  # Recommended: keep real credentials in environment variables, not in git.
+  # Env override keys used by Core:
+  # NEBULA_MAIL_SERVER, NEBULA_MAIL_PORT, NEBULA_MAIL_USERNAME, NEBULA_MAIL_PASSWORD,
+  # NEBULA_MAIL_USE_TLS, NEBULA_MAIL_USE_SSL, NEBULA_MAIL_FROM
+  server: ""
+  port: 0
+  username: ""
+  password: ""
+  use_tls: true
+  use_ssl: false
+  from: "no-reply@nebula.local"
 plugins:
   enabled: true
   environment: "development"

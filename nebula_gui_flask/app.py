@@ -27,6 +27,7 @@ from werkzeug.exceptions import HTTPException
 
 from core.bridge import NebulaBridge
 from routes.api_containers import register_container_api_routes
+from routes.api_plugins import register_plugins_api_routes
 from routes.api_projects import register_projects_api_routes, link_container_to_projects
 from routes.api_users import register_user_api_routes
 from routes.pages import register_pages_routes
@@ -640,6 +641,7 @@ register_container_api_routes(
 )
 register_user_api_routes(app, bridge)
 register_projects_api_routes(app, bridge)
+register_plugins_api_routes(app, bridge)
 
 @app.route('/login', methods=['GET', 'POST'])
 def admin_login():
@@ -696,6 +698,33 @@ def user_login_api():
         return jsonify({"status": "success", "redirect": url_for('dashboard')}), 200
     _register_failed_login_attempt(client_ip)
     return jsonify({"detail": error or "INVALID_CREDENTIALS"}), 401
+
+
+@app.route('/api/auth/password-reset/request', methods=['POST'])
+def auth_password_reset_request():
+    username = (request.form.get('username') or '').strip()
+    db_name = (request.form.get('db_name') or '').strip()
+    if not username:
+        return jsonify({"detail": "username is required"}), 400
+    data, code = bridge.request_password_reset(username=username, db_name=db_name)
+    return jsonify(data), code
+
+
+@app.route('/api/auth/password-reset/confirm', methods=['POST'])
+def auth_password_reset_confirm():
+    username = (request.form.get('username') or '').strip()
+    code_val = (request.form.get('code') or '').strip()
+    new_password = request.form.get('new_password') or ''
+    db_name = (request.form.get('db_name') or '').strip()
+    if not username or not code_val or not new_password:
+        return jsonify({"detail": "username, code and new_password are required"}), 400
+    data, code = bridge.confirm_password_reset(
+        username=username,
+        code=code_val,
+        new_password=new_password,
+        db_name=db_name,
+    )
+    return jsonify(data), code
 
 
 @app.route('/api/user/2fa/status')

@@ -126,13 +126,12 @@ class PluginContext:
             raise PluginError("username is required")
 
         clean_db = str(db_name or "system.db").strip() or "system.db"
+        if clean_db == "system.db":
+            raise PluginPermissionError("Plugins cannot create or modify users in system.db")
         clean_role = str(role_tag or "user").strip().lower() or "user"
         clean_email = str(email or "").strip() or None
 
-        if clean_db == "system.db":
-            db_ctx = get_connection(SYSTEM_DB)
-        else:
-            db_ctx = get_client_db(clean_db, create_if_missing=True)
+        db_ctx = get_client_db(clean_db, create_if_missing=True)
 
         with db_ctx as conn:
             row = conn.execute(
@@ -150,7 +149,7 @@ class PluginContext:
                 random_password = secrets.token_urlsafe(24)
                 password_hash = self._user_service.hash_password(random_password)
                 cursor = conn.execute(
-                    "INSERT INTO users (username, email, password_hash, is_active, is_staff) VALUES (?, ?, ?, ?, 0)",
+                    "INSERT INTO users (username, email, password_hash, is_active, is_staff, password_set_required) VALUES (?, ?, ?, ?, 0, 1)",
                     (clean_username, clean_email, password_hash, 1 if is_active else 0),
                 )
                 user_id = int(cursor.lastrowid)
@@ -445,7 +444,11 @@ class PluginManager:
             await self._shutdown_record(rec)
 
     def list_plugins(self) -> List[dict]:
-        items = [rec.as_public() for rec in self._plugins.values()]
+        items = []
+        for rec in self._plugins.values():
+            payload = rec.as_public()
+            payload["runtime"] = self._runtime_public(rec)
+            items.append(payload)
         return sorted(items, key=lambda x: (x.get("source", ""), x.get("name", "")))
 
     async def rescan(self):
@@ -483,6 +486,61 @@ class PluginManager:
             raise PluginError("Plugin not found")
         data = await self._safe_call(rec, "sync_users", payload or {})
         return data if isinstance(data, dict) else {"status": "ok", "raw": data}
+
+    async def plugin_action(self, name: str, action: str) -> dict:
+        rec = self._plugins.get(name)
+        if not rec:
+            raise PluginError("Plugin not found")
+
+        op = str(action or "").strip().lower()
+        if op not in {"start", "stop", "restart"}:
+            raise PluginError("Unsupported action")
+
+        if op == "stop":
+            await self._shutdown_record(rec)
+            rec.status = PLUGIN_STATE_DISABLED
+            rec.message = "manually stopped"
+            rec.updated_at = time.time()
+            return {"status": "stopped", "plugin": name}
+
+        if op in {"start", "restart"}:
+            if rec.source == "process":
+                if not rec.runtime.plugin_dir:
+                    raise PluginError("Plugin runtime path is unknown")
+                await self._start_process_plugin(rec, Path(rec.runtime.plugin_dir))
+                await self._initialize_plugin(rec)
+                return {"status": "started" if op == "start" else "restarted", "plugin": name}
+
+            if rec.source in {"in_process", "grpc"}:
+                await self._initialize_plugin(rec)
+                rec.status = PLUGIN_STATE_INITIALIZED
+                rec.message = f"manually {op}ed"
+                rec.updated_at = time.time()
+                return {"status": "started" if op == "start" else "restarted", "plugin": name}
+
+        raise PluginError("Action is not available for this plugin")
+
+    def plugin_logs(self, name: str, tail: int = 200) -> dict:
+        rec = self._plugins.get(name)
+        if not rec:
+            raise PluginError("Plugin not found")
+        tail_n = max(10, min(int(tail or 200), 2000))
+        log_path = self.runtime_log_dir / f"{rec.name}.log"
+        if rec.source != "process":
+            return {"plugin": name, "source": rec.source, "path": str(log_path), "lines": []}
+        if not log_path.exists():
+            return {"plugin": name, "source": rec.source, "path": str(log_path), "lines": []}
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception as exc:
+            raise PluginError(str(exc))
+        return {"plugin": name, "source": rec.source, "path": str(log_path), "lines": lines[-tail_n:]}
+
+    def plugin_stats(self, name: str) -> dict:
+        rec = self._plugins.get(name)
+        if not rec:
+            raise PluginError("Plugin not found")
+        return {"plugin": name, "runtime": self._runtime_public(rec)}
 
     async def _scan_external_grpc_plugins(self) -> Dict[str, PluginRecord]:
         out: Dict[str, PluginRecord] = {}
@@ -946,6 +1004,38 @@ class PluginManager:
     def _is_process_alive(self, rec: PluginRecord) -> bool:
         proc = rec.runtime.process
         return proc is not None and proc.poll() is None
+
+    def _runtime_public(self, rec: PluginRecord) -> dict:
+        proc = rec.runtime.process
+        pid = int(proc.pid) if proc is not None and proc.poll() is None else None
+        runtime = {
+            "pid": pid,
+            "alive": bool(pid),
+            "socket_path": rec.runtime.socket_path,
+            "cgroup_path": rec.runtime.cgroup_path,
+            "log_path": str(self.runtime_log_dir / f"{rec.name}.log"),
+        }
+        if pid:
+            runtime.update(self._proc_usage(pid))
+        if rec.runtime.cgroup_path:
+            runtime["memory_events"] = self.cgroup_manager.memory_events(rec.runtime.cgroup_path)
+        return runtime
+
+    @staticmethod
+    def _proc_usage(pid: int) -> dict:
+        status_file = Path(f"/proc/{pid}/status")
+        out = {"rss_kb": None, "vm_kb": None}
+        try:
+            if not status_file.exists():
+                return out
+            for line in status_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("VmRSS:"):
+                    out["rss_kb"] = int((line.split() or ["0", "0"])[1])
+                elif line.startswith("VmSize:"):
+                    out["vm_kb"] = int((line.split() or ["0", "0"])[1])
+            return out
+        except Exception:
+            return out
 
     def _cleanup_cgroup(self, rec: PluginRecord):
         path = rec.runtime.cgroup_path

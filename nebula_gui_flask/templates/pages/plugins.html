@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+{#
+  nebula_gui_flask/templates/pages/plugins.html
+  Copyright (c) 2026 Monolink Systems
+  Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+#}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/plugins.css') }}">
+{% endblock %}
+
+{% block page_content %}
+<div class="plugins-page">
+    <div class="plugins-head">
+        <div>
+            <h2>Plugin Control Center</h2>
+            <p>Runtime status, resource telemetry, actions, logs and permissions overview.</p>
+        </div>
+        <div class="plugins-head-actions">
+            <button id="plugins-refresh" class="plugins-btn plugins-btn-secondary" type="button"><i class="bi bi-arrow-repeat"></i> Refresh</button>
+            <button id="plugins-rescan" class="plugins-btn plugins-btn-primary" type="button"><i class="bi bi-search"></i> Rescan</button>
+        </div>
+    </div>
+
+    <div id="plugins-alert" class="plugins-alert" style="display:none;"></div>
+
+    <div class="plugins-summary" id="plugins-summary"></div>
+
+    <div id="plugins-grid" class="plugins-grid">
+        <div class="plugins-empty">Loading plugins...</div>
+    </div>
+</div>
+
+<div id="plugin-logs-modal" class="plugins-modal" style="display:none;">
+    <div class="plugins-modal-content">
+        <div class="plugins-modal-head">
+            <h3 id="plugin-logs-title">Plugin Logs</h3>
+            <button id="plugin-logs-close" class="plugins-btn plugins-btn-secondary" type="button">Close</button>
+        </div>
+        <pre id="plugin-logs-body" class="plugins-logs">Loading...</pre>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/plugins.js') }}"></script>
+{% endblock %}

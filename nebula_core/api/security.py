@@ -7,12 +7,18 @@ import hmac
 import json
 import os
 import secrets
+import sqlite3
 import time
 from typing import Optional, Tuple
 
 from fastapi import Header, HTTPException, Request
 
-from ..db import SYSTEM_DB, get_client_db, get_connection
+from ..db import (
+    SYSTEM_DB,
+    get_connection,
+    list_client_databases,
+    resolve_client_db_path,
+)
 
 def _read_env_value(file_path: str, key: str) -> Optional[str]:
     try:
@@ -135,14 +141,22 @@ def get_session_context(raw_cookie: Optional[str]) -> Optional[Tuple[str, str, b
                 return None
             return username, db_name, bool(row["is_staff"])
 
-        with get_client_db(db_name, create_if_missing=False) as conn:
+        db_path, resolved_name = resolve_client_db_path(db_name)
+        available = {name.lower() for name in list_client_databases()}
+        if resolved_name.lower() not in available:
+            return None
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
             row = conn.execute(
                 "SELECT is_active FROM users WHERE username = ? LIMIT 1",
                 (username,),
             ).fetchone()
+        finally:
+            conn.close()
         if not row or not bool(row["is_active"]):
             return None
-        return username, db_name, False
+        return username, resolved_name, False
     except Exception:
         return None
 

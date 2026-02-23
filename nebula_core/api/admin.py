@@ -10,6 +10,7 @@ from pydantic import BaseModel, StringConstraints, Field
 from ..db import get_connection, SYSTEM_DB
 from ..services.user_service import UserService
 from .security import create_session_token
+from ..utils.mailer import send_test_email
 import pyotp
 
 router = APIRouter(prefix="/system/internal/core", tags=["System-Security"])
@@ -33,6 +34,10 @@ class AdminCreate(BaseModel):
 class AdminUpdate(BaseModel):
     new_password: AdminPassword | None = None
     is_active: bool | None = None
+
+
+class MailTestRequest(BaseModel):
+    email: str
 
 def verify_internal_access(x_nebula_token: str = Header(None)):
     if not x_nebula_token or x_nebula_token != INTERNAL_AUTH_KEY:
@@ -138,3 +143,14 @@ def get_system_health(_=Depends(verify_internal_access)):
             "database": "system.db",
             "active_admins": admin_count["count"]
         }
+
+
+@router.post("/mail/test")
+def test_mail_delivery(data: MailTestRequest, _=Depends(verify_internal_access)):
+    target = str(data.email or "").strip()
+    if not target or "@" not in target:
+        raise HTTPException(status_code=400, detail="Valid email is required")
+    ok = send_test_email(target)
+    if not ok:
+        raise HTTPException(status_code=503, detail="Mail delivery failed. Check SMTP config and logs.")
+    return {"status": "sent", "email": target}

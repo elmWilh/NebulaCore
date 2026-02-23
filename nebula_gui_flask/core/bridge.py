@@ -183,6 +183,46 @@ class NebulaBridge:
         except Exception as e:
             return False, str(e)
 
+    def request_password_reset(self, username, db_name=""):
+        try:
+            payload = {"username": username}
+            if db_name:
+                payload["db_name"] = db_name
+            r = requests.post(
+                f"{self.core_url}/users/password-reset/request",
+                data=payload,
+                timeout=6,
+            )
+            try:
+                data = r.json()
+            except Exception:
+                data = {"detail": r.text}
+            return data, r.status_code
+        except Exception as e:
+            return {"detail": str(e)}, 500
+
+    def confirm_password_reset(self, username, code, new_password, db_name=""):
+        try:
+            payload = {
+                "username": username,
+                "code": code,
+                "new_password": new_password,
+            }
+            if db_name:
+                payload["db_name"] = db_name
+            r = requests.post(
+                f"{self.core_url}/users/password-reset/confirm",
+                data=payload,
+                timeout=6,
+            )
+            try:
+                data = r.json()
+            except Exception:
+                data = {"detail": r.text}
+            return data, r.status_code
+        except Exception as e:
+            return {"detail": str(e)}, 500
+
     def _resolve_role_tag(self, core_session, username, db_name):
         try:
             r = requests.get(

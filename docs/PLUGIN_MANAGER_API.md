@@ -100,6 +100,29 @@ Request model:
 Validation:
 - `limit` range: `0..10000`.
 
+### 2.5 POST `/system/plugins/{plugin_name}/action`
+
+Manual runtime action:
+
+```json
+{
+  "action": "restart"
+}
+```
+
+Supported actions:
+- `start`
+- `stop`
+- `restart`
+
+### 2.6 GET `/system/plugins/{plugin_name}/stats`
+
+Returns runtime stats (pid, alive state, rss/vm memory if available, cgroup events, log path).
+
+### 2.7 GET `/system/plugins/{plugin_name}/logs?tail=300`
+
+Returns plugin log lines from runtime log file.
+
 ## 3. State Machine
 
 States used by manager:

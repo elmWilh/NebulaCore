@@ -9,7 +9,7 @@ from contextlib import contextmanager
 BASE_DIR = "storage/databases"
 CLIENTS_DIR = os.path.join(BASE_DIR, "clients")
 SYSTEM_DB = os.path.join(BASE_DIR, "system.db")
-CLIENT_DB_RE = re.compile(r"^[A-Za-z0-9._-]+\.db$")
+CLIENT_DB_RE = re.compile(r"^[A-Za-z0-9._-]+\.db$", re.IGNORECASE)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     is_active BOOLEAN DEFAULT 1,
     is_staff BOOLEAN DEFAULT 0,
+    password_set_required BOOLEAN DEFAULT 0,
     two_factor_secret TEXT,
     two_factor_enabled BOOLEAN DEFAULT 0
 );
@@ -86,6 +87,18 @@ CREATE TABLE IF NOT EXISTS user_identity_tags (
     updated_at TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (db_name, username)
 );
+CREATE TABLE IF NOT EXISTS password_reset_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    db_name TEXT NOT NULL,
+    username TEXT NOT NULL,
+    email TEXT,
+    code_hash TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    consumed_at TEXT,
+    attempts INTEGER DEFAULT 0,
+    requester_ip TEXT
+);
 CREATE TABLE IF NOT EXISTS container_role_permissions (
     container_id TEXT NOT NULL,
     role_tag TEXT NOT NULL,
@@ -122,6 +135,25 @@ def ensure_user_security_columns(conn):
         conn.execute("ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN DEFAULT 0")
     if "email" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if "password_set_required" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN password_set_required BOOLEAN DEFAULT 0")
+
+
+def ensure_password_reset_codes_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            db_name TEXT NOT NULL,
+            username TEXT NOT NULL,
+            email TEXT,
+            code_hash TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            expires_at TEXT NOT NULL,
+            consumed_at TEXT,
+            attempts INTEGER DEFAULT 0,
+            requester_ip TEXT
+        )
+    """)
 
 
 def ensure_container_settings_table(conn):
@@ -252,6 +284,7 @@ def get_connection(db_path: str = SYSTEM_DB):
     ensure_user_identity_tags_table(conn)
     ensure_container_role_permissions_table(conn)
     ensure_identity_roles_table(conn)
+    ensure_password_reset_codes_table(conn)
     try:
         yield conn
         conn.commit()
@@ -273,8 +306,10 @@ def normalize_client_db_name(db_name: str) -> str:
     if os.path.basename(candidate) != candidate:
         raise ValueError("Invalid database name")
 
-    if not candidate.endswith(".db"):
+    if not candidate.lower().endswith(".db"):
         candidate += ".db"
+    else:
+        candidate = candidate[:-3] + ".db"
     if not CLIENT_DB_RE.fullmatch(candidate):
         raise ValueError("Invalid database name format")
     return candidate
@@ -282,8 +317,7 @@ def normalize_client_db_name(db_name: str) -> str:
 @contextmanager
 def get_client_db(db_name: str, create_if_missing: bool = True):
     ensure_dirs()
-    db_name = normalize_client_db_name(db_name)
-    db_path = os.path.join(CLIENTS_DIR, db_name)
+    db_path, _ = resolve_client_db_path(db_name)
     
     is_new = not os.path.exists(db_path)
     if is_new and not create_if_missing:
@@ -293,6 +327,19 @@ def get_client_db(db_name: str, create_if_missing: bool = True):
         if is_new:
             conn.executescript(SCHEMA)
         yield conn
+
+
+def resolve_client_db_path(db_name: str):
+    ensure_dirs()
+    normalized = normalize_client_db_name(db_name)
+    db_path = os.path.join(CLIENTS_DIR, normalized)
+
+    if not os.path.exists(db_path):
+        target_lower = normalized.lower()
+        for entry in os.listdir(CLIENTS_DIR):
+            if entry.lower() == target_lower and entry.lower().endswith(".db"):
+                return os.path.join(CLIENTS_DIR, entry), entry
+    return db_path, normalized
 
 def init_secure_system():
     ensure_dirs()

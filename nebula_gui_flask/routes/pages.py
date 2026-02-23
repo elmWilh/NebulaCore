@@ -71,6 +71,7 @@ def register_pages_routes(app, bridge):
 
     @app.route('/task-scheduler')
     @bridge.login_required
+    @bridge.staff_required
     def task_scheduler_page():
         return _render_module_page(
             title='Task Scheduler',
@@ -80,6 +81,7 @@ def register_pages_routes(app, bridge):
 
     @app.route('/backups')
     @bridge.login_required
+    @bridge.staff_required
     def backups_page():
         return _render_module_page(
             title='Backups',
@@ -89,12 +91,9 @@ def register_pages_routes(app, bridge):
 
     @app.route('/plugins')
     @bridge.login_required
+    @bridge.staff_required
     def plugins_page():
-        return _render_module_page(
-            title='Plugins',
-            description='Install, update, and control extension modules.',
-            icon='bi-puzzle',
-        )
+        return render_template('pages/plugins.html')
 
     @app.route('/audit-log')
     @bridge.login_required
@@ -108,6 +107,7 @@ def register_pages_routes(app, bridge):
 
     @app.route('/fault-sentinel')
     @bridge.login_required
+    @bridge.staff_required
     def fault_sentinel_page():
         return _render_module_page(
             title='Fault Sentinel',

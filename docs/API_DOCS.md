@@ -8,6 +8,7 @@ This document indexes API-related documentation in `docs/`.
   - core bootstrap and installer-facing API
   - systemd service automation CLI/API
   - operational lifecycle commands
+  - SMTP test endpoint and password-reset API
 - `docs/PLUGIN_MANAGER_API.md`:
   - plugin manager HTTP API
   - runtime model (`plugin_api_v1`, `plugin_runtime_v2`)

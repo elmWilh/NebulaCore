@@ -10,6 +10,15 @@ const alertMsg = document.getElementById('alert-message');
 const btnText = document.getElementById('btn-text');
 const otpGroup = document.getElementById('otp-group');
 const otpInput = document.getElementById('otp-input');
+const recoveryForm = document.getElementById('recoveryForm');
+const toggleRecovery = document.getElementById('toggle-recovery');
+const recoveryUsername = document.getElementById('recovery-username');
+const recoveryCode = document.getElementById('recovery-code');
+const recoveryNewPassword = document.getElementById('recovery-new-password');
+const requestCodeBtn = document.getElementById('requestCodeBtn');
+const applyResetBtn = document.getElementById('applyResetBtn');
+const requestCodeText = document.getElementById('request-code-text');
+const applyResetText = document.getElementById('apply-reset-text');
 let lockTimer = null;
 
 function setLockUntil(untilMs) {
@@ -129,6 +138,12 @@ form.onsubmit = async (e) => {
             otpGroup.style.display = 'block';
             otpInput.required = true;
             otpInput.focus();
+        } else if (result.detail === 'PASSWORD_RESET_REQUIRED') {
+            alertMsg.innerText = 'Password setup required. Open Recovery Mode to receive a reset code.';
+            if (recoveryForm) recoveryForm.style.display = 'block';
+            if (recoveryUsername && !recoveryUsername.value) {
+                recoveryUsername.value = (form.querySelector('input[name="username"]') || {}).value || '';
+            }
         } else {
             if (otpGroup.style.display !== 'none') {
                 otpInput.value = '';
@@ -143,3 +158,91 @@ form.onsubmit = async (e) => {
         setDefaultButtonState();
     }
 };
+
+if (toggleRecovery && recoveryForm) {
+    toggleRecovery.addEventListener('click', (e) => {
+        e.preventDefault();
+        const open = recoveryForm.style.display !== 'none';
+        recoveryForm.style.display = open ? 'none' : 'block';
+    });
+}
+
+if (requestCodeBtn) {
+    requestCodeBtn.addEventListener('click', async () => {
+        const username = (recoveryUsername?.value || '').trim();
+        if (!username) {
+            alertMsg.innerText = 'Enter username first.';
+            alertBox.style.display = 'block';
+            return;
+        }
+        requestCodeBtn.disabled = true;
+        requestCodeText.innerText = 'Sending...';
+        alertBox.style.display = 'none';
+        try {
+            const payload = new FormData();
+            payload.set('username', username);
+            const response = await fetch('/api/auth/password-reset/request', {
+                method: 'POST',
+                body: payload,
+            });
+            const result = await response.json();
+            if (response.ok) {
+                alertMsg.innerText = 'If account exists, a recovery code was sent to email. Code expires in 2 minutes.';
+            } else {
+                alertMsg.innerText = result.detail || 'Failed to send recovery code';
+            }
+            alertBox.style.display = 'block';
+        } catch (err) {
+            alertMsg.innerText = 'Recovery request failed.';
+            alertBox.style.display = 'block';
+        } finally {
+            requestCodeBtn.disabled = false;
+            requestCodeText.innerText = 'Send Code';
+        }
+    });
+}
+
+if (applyResetBtn) {
+    applyResetBtn.addEventListener('click', async () => {
+        const username = (recoveryUsername?.value || '').trim();
+        const code = (recoveryCode?.value || '').trim();
+        const newPassword = recoveryNewPassword?.value || '';
+        if (!username || !code || !newPassword) {
+            alertMsg.innerText = 'Provide username, code and new password.';
+            alertBox.style.display = 'block';
+            return;
+        }
+        applyResetBtn.disabled = true;
+        applyResetText.innerText = 'Applying...';
+        alertBox.style.display = 'none';
+        try {
+            const payload = new FormData();
+            payload.set('username', username);
+            payload.set('code', code);
+            payload.set('new_password', newPassword);
+            const response = await fetch('/api/auth/password-reset/confirm', {
+                method: 'POST',
+                body: payload,
+            });
+            const result = await response.json();
+            if (response.ok && result.status === 'password_updated') {
+                alertMsg.innerText = 'Password updated. You can log in now.';
+                if (recoveryNewPassword) recoveryNewPassword.value = '';
+                if (recoveryCode) recoveryCode.value = '';
+                const loginUsername = form.querySelector('input[name="username"]');
+                if (loginUsername && !loginUsername.value) {
+                    loginUsername.value = username;
+                }
+            } else {
+                alertMsg.innerText = result.detail || 'Failed to update password';
+            }
+            alertBox.style.display = 'block';
+        } catch (err) {
+            alertMsg.innerText = 'Password reset failed.';
+            alertBox.style.display = 'block';
+        } finally {
+            applyResetBtn.disabled = false;
+            applyResetText.innerText = 'Set Password';
+        }
+    });
+}

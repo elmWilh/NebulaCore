@@ -123,6 +123,31 @@ Request body:
 }
 ```
 
+### 2.4 POST `/system/internal/core/mail/test`
+
+Purpose:
+- verify SMTP configuration by sending a test email.
+
+Auth:
+- `X-Nebula-Token` internal token required.
+
+Request:
+
+```json
+{
+  "email": "operator@example.com"
+}
+```
+
+Response:
+
+```json
+{
+  "status": "sent",
+  "email": "operator@example.com"
+}
+```
+
 ## 3. Production install profile (recommended)
 
 1. Create venv and install dependencies.
@@ -150,3 +175,47 @@ plugins:
 ```
 
 For detailed systemd behavior, see `docs/CORE_SERVICE.md`.
+
+## 5. User password reset API (email code)
+
+Base prefix:
+
+- `/users`
+
+### 5.1 POST `/users/password-reset/request`
+
+Purpose:
+- request password reset code by username.
+- code is sent by email and expires in 2 minutes.
+
+Request form fields:
+- `username` (required)
+- `db_name` (optional)
+
+Response:
+
+```json
+{
+  "status": "sent_if_exists",
+  "ttl_sec": 120
+}
+```
+
+### 5.2 POST `/users/password-reset/confirm`
+
+Purpose:
+- confirm code and set a new password.
+
+Request form fields:
+- `username` (required)
+- `code` (required)
+- `new_password` (required, min length 10)
+- `db_name` (optional)
+
+Response:
+
+```json
+{
+  "status": "password_updated"
+}
+```

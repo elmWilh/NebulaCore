@@ -15,7 +15,11 @@ if os.path.exists(installer_env):
     load_dotenv(installer_env, override=True)
 
 from .utils.config import settings
-from .utils.logger import setup_logger
+from .utils.logger import (
+    setup_logger,
+    register_lifecycle_start,
+    register_lifecycle_shutdown,
+)
 from .api import api_router
 from .core.runtime import NebulaRuntime
 from .core.context import context
@@ -23,6 +27,7 @@ from .db import init_system_db
 from .internal_grpc import InternalGrpcServer
 
 logger = setup_logger("nebula_core")
+lifecycle_logger = setup_logger("nebula_core.lifecycle", with_console=False)
 COPYRIGHT_NOTICE = "Copyright (c) 2026 Monolink Systems"
 LICENSE_NOTICE = "Nebula Open Source Edition (non-corporate) • Licensed under AGPLv3"
 
@@ -63,6 +68,17 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 async def on_startup():
+    lifecycle = register_lifecycle_start("nebula_core")
+    lifecycle_event = lifecycle.get("event", "startup").upper()
+    lifecycle_starts = lifecycle.get("starts", 1)
+    lifecycle_pid = lifecycle.get("pid")
+    lifecycle_at = lifecycle.get("at_utc")
+    lifecycle_line = (
+        f"[LIFECYCLE] {lifecycle_event} | starts={lifecycle_starts} "
+        f"| pid={lifecycle_pid} | at={lifecycle_at}"
+    )
+    logger.info(lifecycle_line)
+    lifecycle_logger.info(lifecycle_line)
     logger.info("Nebula Core startup: initializing runtime")
     logger.info(COPYRIGHT_NOTICE)
     logger.info(LICENSE_NOTICE)
@@ -78,6 +94,12 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    lifecycle = register_lifecycle_shutdown("nebula_core")
+    lifecycle_line = (
+        f"[LIFECYCLE] SHUTDOWN | pid={lifecycle.get('pid')} | at={lifecycle.get('at_utc')}"
+    )
+    logger.info(lifecycle_line)
+    lifecycle_logger.info(lifecycle_line)
     logger.info("Nebula Core shutdown: requesting runtime shutdown")
     await runtime.request_shutdown()
     await grpc_server.stop()
