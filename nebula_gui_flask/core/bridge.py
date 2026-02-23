@@ -92,16 +92,16 @@ class NebulaBridge:
             return f(*args, **kwargs)
         return decorated_function
 
-    def fetch_metrics(self):
-        grpc_data = self.grpc_client.get_current_metrics(timeout=1.0)
+    def fetch_metrics(self, grpc_timeout: float = 1.0, http_timeout: float = 5.0):
+        grpc_data = self.grpc_client.get_current_metrics(timeout=grpc_timeout)
         if grpc_data:
             return grpc_data
         try:
-            r = requests.get(f"{self.core_url}/metrics/current", timeout=5)
+            r = requests.get(f"{self.core_url}/metrics/current", timeout=http_timeout)
             if r.status_code == 200:
                 return r.json()
 
-            fallback = requests.get(f"{self.core_url}/system/status", timeout=5)
+            fallback = requests.get(f"{self.core_url}/system/status", timeout=http_timeout)
             if fallback.status_code == 200:
                 return fallback.json().get('system')
             return None
@@ -199,7 +199,7 @@ class NebulaBridge:
             pass
         return None
 
-    def proxy_request(self, method, endpoint, params=None, json_data=None, form_data=None):
+    def proxy_request(self, method, endpoint, params=None, json_data=None, form_data=None, timeout=10):
         if method == "GET" and endpoint == "/logs/history":
             limit = 200
             try:
@@ -230,7 +230,7 @@ class NebulaBridge:
                 json=json_data,
                 data=form_data,
                 cookies=cookies,
-                timeout=10
+                timeout=timeout
             )
             try:
                 return r.json(), r.status_code

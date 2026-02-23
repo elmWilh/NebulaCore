@@ -11,9 +11,32 @@ services:
     debug: true
 plugins:
   enabled: true
+  environment: "development"
   in_process_enabled: true
+  process_runtime_enabled: false
   scan_path: "plugins"
   init_timeout_sec: 5
-  call_timeout_sec: 20
+  default_timeout_sec: 10
+  max_timeout_sec: 30
+  call_timeout_sec: 10
+  memory_limit_mb: 128
+  cpu_time_limit_sec: 30
+  health_interval_sec: 30
+  max_restarts: 3
+  max_crashes: 3
+  timeout_restart_threshold: 3
+  health_restart_threshold: 2
+  runtime_socket_dir: "/tmp/nebula/plugins"
+  runtime_log_dir: "/tmp/nebula/plugin-logs"
+  cgroup_enabled: false
+  cgroup_required: false
+  cgroup_root: "auto"
+  cgroup_cpu_quota_us: 50000
+  cgroup_cpu_period_us: 100000
+  cgroup_pids_max: 128
+  runner_command:
+    - "python3"
+    - "-m"
+    - "nebula_core.core.plugin_runner"
   allow_remote_grpc: false
   external: []

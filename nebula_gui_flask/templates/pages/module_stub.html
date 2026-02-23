@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{#
+  nebula_gui_flask/templates/pages/module_stub.html
+  Copyright (c) 2026 Monolink Systems
+  Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+#}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/module_stub.css') }}">
+{% endblock %}
+
+{% block page_content %}
+<section class="module-stub">
+  <div class="module-stub__header">
+    <div class="module-stub__icon"><i class="bi {{ module_icon }}"></i></div>
+    <div>
+      <h2>{{ module_title }}</h2>
+      <p>{{ module_description }}</p>
+    </div>
+  </div>
+
+  <div class="module-stub__body">
+    <h3>Section in progress</h3>
+    <p>This page is prepared in the dashboard and ready for upcoming implementation.</p>
+  </div>
+</section>
+{% endblock %}

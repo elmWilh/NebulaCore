@@ -11,6 +11,7 @@ from .roles import router as roles_router
 from .admin import router as admin_router
 from .containers import router as containers_router
 from .plugins import router as plugins_router
+from .projects import router as projects_router
 
 api_router = APIRouter()
 
@@ -23,6 +24,7 @@ api_router.include_router(metrics_router)
 api_router.include_router(logs_router)
 api_router.include_router(containers_router)
 api_router.include_router(plugins_router)
+api_router.include_router(projects_router)
 
 # System-Security router for admin operations (hidden from public docs)
 api_router.include_router(admin_router)

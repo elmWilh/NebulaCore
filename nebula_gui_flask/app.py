@@ -9,6 +9,7 @@ from flask_socketio import SocketIO, join_room
 import socketio as socketio_client 
 from websocket import WebSocketApp
 import json
+import random
 import time
 import logging
 import psutil
@@ -22,9 +23,11 @@ import hashlib
 import base64
 from urllib.parse import urlparse
 from datetime import timedelta
+from werkzeug.exceptions import HTTPException
 
 from core.bridge import NebulaBridge
 from routes.api_containers import register_container_api_routes
+from routes.api_projects import register_projects_api_routes, link_container_to_projects
 from routes.api_users import register_user_api_routes
 from routes.pages import register_pages_routes
 
@@ -36,6 +39,7 @@ ENV_FILE_CANDIDATES = (
     os.path.join(PROJECT_ROOT, ".env"),
     os.path.join(PROJECT_ROOT, "install", ".env"),
 )
+ERROR_QUOTES_PATH = os.path.join(os.path.dirname(__file__), "data", "error_quotes.json")
 
 
 def _read_env_value(file_path: str, key: str):
@@ -151,6 +155,9 @@ deploy_jobs_lock = threading.Lock()
 metrics_cache = {}
 metrics_cache_lock = threading.Lock()
 METRICS_CACHE_TTL = 2.5
+error_quotes_lock = threading.Lock()
+error_quotes_cache = []
+error_quotes_mtime = None
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_TRUSTED_ORIGINS = set(GUI_ALLOWED_ORIGINS)
 LOGIN_ATTEMPT_WINDOW_SECONDS = _resolve_int_env("NEBULA_LOGIN_ATTEMPT_WINDOW_SECONDS", default=300)
@@ -158,6 +165,108 @@ LOGIN_MAX_ATTEMPTS = _resolve_int_env("NEBULA_LOGIN_MAX_ATTEMPTS", default=5)
 LOGIN_LOCKOUT_SECONDS = _resolve_int_env("NEBULA_LOGIN_LOCKOUT_SECONDS", default=900)
 login_rate_limiter = {}
 login_rate_limiter_lock = threading.Lock()
+
+ERROR_PAGE_META = {
+    303: {
+        "title": "See Other",
+        "subtitle": "The destination changed orbit. Follow the updated trajectory.",
+        "hint": "Use the link below to continue to a new location.",
+    },
+    400: {
+        "title": "Bad Request",
+        "subtitle": "The request payload broke protocol alignment.",
+        "hint": "Check fields, formats, and required values.",
+    },
+    401: {
+        "title": "Unauthorized",
+        "subtitle": "Authentication token was not accepted by this gate.",
+        "hint": "Sign in again and verify your credentials.",
+    },
+    403: {
+        "title": "Forbidden",
+        "subtitle": "Access policy denied this operation.",
+        "hint": "Request elevated permissions or switch account context.",
+    },
+    404: {
+        "title": "Not Found",
+        "subtitle": "This route dissolved into cosmic dust.",
+        "hint": "Double-check the URL or return to dashboard.",
+    },
+    405: {
+        "title": "Method Not Allowed",
+        "subtitle": "This endpoint rejects the selected HTTP method.",
+        "hint": "Use the method declared by API documentation.",
+    },
+    408: {
+        "title": "Request Timeout",
+        "subtitle": "The request took too long and the channel closed.",
+        "hint": "Retry and check network latency.",
+    },
+    409: {
+        "title": "Conflict",
+        "subtitle": "Operation collided with existing system state.",
+        "hint": "Refresh data and repeat after conflict resolution.",
+    },
+    410: {
+        "title": "Gone",
+        "subtitle": "This resource was decommissioned and removed.",
+        "hint": "Find the replacement endpoint or recreate resource.",
+    },
+    418: {
+        "title": "Teapot Mode",
+        "subtitle": "Control plane is brewing instead of serving.",
+        "hint": "Try a different endpoint while tea cools down.",
+    },
+    422: {
+        "title": "Unprocessable Entity",
+        "subtitle": "Request syntax is valid but business rules failed.",
+        "hint": "Validate domain constraints before retry.",
+    },
+    429: {
+        "title": "Too Many Requests",
+        "subtitle": "Rate limiter engaged to protect the control core.",
+        "hint": "Pause requests and retry after cooldown.",
+    },
+    500: {
+        "title": "Internal Server Error",
+        "subtitle": "Unexpected failure inside the Nebula control stack.",
+        "hint": "Review server logs and retry the operation.",
+    },
+    501: {
+        "title": "Not Implemented",
+        "subtitle": "This feature is charted but not shipped yet.",
+        "hint": "Use available routes or wait for next update.",
+    },
+    502: {
+        "title": "Bad Gateway",
+        "subtitle": "Upstream node returned an invalid response.",
+        "hint": "Check bridge and upstream service health.",
+    },
+    503: {
+        "title": "Service Unavailable",
+        "subtitle": "Control services are temporarily offline.",
+        "hint": "Retry later after service recovery.",
+    },
+    504: {
+        "title": "Gateway Timeout",
+        "subtitle": "Upstream service did not answer in time.",
+        "hint": "Inspect upstream performance and timeouts.",
+    },
+}
+
+FALLBACK_ERROR_QUOTES = [
+    {"text": "The obstacle is the way.", "author": "Marcus Aurelius"},
+    {"text": "Simplicity is the ultimate sophistication.", "author": "Leonardo da Vinci"},
+    {"text": "A smooth sea never made a skilled sailor.", "author": "English proverb"},
+    {"text": "In the middle of difficulty lies opportunity.", "author": "Albert Einstein"},
+    {"text": "Do not fear mistakes. You will know failure. Continue to reach out.", "author": "Benjamin Franklin"},
+    {"text": "The best systems are built by iteration, not illusion.", "author": "Nebula Notes"},
+]
+
+
+class SeeOtherDisplayException(HTTPException):
+    code = 303
+    description = "See Other"
 
 
 def _resolve_client_ip() -> str:
@@ -292,6 +401,92 @@ def apply_security_headers(response):
     return response
 
 
+def _load_error_quotes() -> list[dict]:
+    global error_quotes_mtime, error_quotes_cache
+    try:
+        current_mtime = os.path.getmtime(ERROR_QUOTES_PATH)
+    except OSError:
+        return FALLBACK_ERROR_QUOTES
+
+    with error_quotes_lock:
+        if error_quotes_cache and error_quotes_mtime == current_mtime:
+            return error_quotes_cache
+        try:
+            with open(ERROR_QUOTES_PATH, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            error_quotes_cache = FALLBACK_ERROR_QUOTES
+            error_quotes_mtime = current_mtime
+            return error_quotes_cache
+
+        loaded_quotes = []
+        raw_quotes = payload.get("quotes") if isinstance(payload, dict) else payload
+        if isinstance(raw_quotes, list):
+            for item in raw_quotes:
+                if not isinstance(item, dict):
+                    continue
+                text = str(item.get("text") or "").strip()
+                if not text:
+                    continue
+                author = str(item.get("author") or "Unknown").strip()
+                loaded_quotes.append({"text": text, "author": author})
+
+        error_quotes_cache = loaded_quotes or FALLBACK_ERROR_QUOTES
+        error_quotes_mtime = current_mtime
+        return error_quotes_cache
+
+
+def _pick_error_quote() -> dict:
+    quotes = _load_error_quotes()
+    if not quotes:
+        return {"text": "System error channel is active.", "author": "Nebula Core"}
+    return random.choice(quotes)
+
+
+def _wants_json_error() -> bool:
+    if request.path.startswith("/api/"):
+        return True
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    if best == "application/json":
+        return request.accept_mimetypes[best] >= request.accept_mimetypes["text/html"]
+    return False
+
+
+def _error_meta(code: int) -> dict:
+    base = ERROR_PAGE_META.get(code)
+    if base:
+        return base
+    return {
+        "title": "Unexpected Error",
+        "subtitle": "The request entered an unclassified failure state.",
+        "hint": "Return to dashboard and retry.",
+    }
+
+
+def _render_error_page(status_code: int, description: str | None = None):
+    meta = _error_meta(status_code)
+    detail = (description or "").strip() or meta["subtitle"]
+    if _wants_json_error():
+        return jsonify({
+            "detail": detail,
+            "code": f"http_{status_code}",
+            "status": status_code,
+        }), status_code
+
+    quote = _pick_error_quote()
+    return render_template(
+        "error.html",
+        error_status=status_code,
+        error_title=meta["title"],
+        error_subtitle=meta["subtitle"],
+        error_hint=meta["hint"],
+        error_detail=detail,
+        error_quote=quote.get("text", ""),
+        error_quote_author=quote.get("author", "Unknown"),
+        request_path=request.path,
+    ), status_code
+
+
 def _append_deploy_log(job_id: str, message: str):
     with deploy_jobs_lock:
         job = deploy_jobs.get(job_id)
@@ -330,6 +525,11 @@ def _core_request_with_session(method: str, endpoint: str, core_session: str, pa
 
 def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: str):
     try:
+        deploy_payload = dict(payload or {})
+        requested_project_ids = deploy_payload.pop("project_ids", [])
+        if not isinstance(requested_project_ids, list):
+            requested_project_ids = []
+
         _update_deploy_job(job_id, status="running", stage="Validating configuration", progress=12)
         _append_deploy_log(job_id, f"[{time.strftime('%H:%M:%S')}] Payload validation started by {started_by}")
         time.sleep(0.35)
@@ -344,7 +544,7 @@ def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: s
             "POST",
             "/containers/deploy",
             core_session,
-            json_data=payload
+            json_data=deploy_payload
         )
 
         if code >= 400:
@@ -385,6 +585,26 @@ def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: s
             return
 
         deployed_id = res.get("id") if isinstance(res, dict) else None
+        if deployed_id and requested_project_ids:
+            try:
+                link_result = link_container_to_projects(
+                    container_id=str(deployed_id),
+                    project_ids=requested_project_ids,
+                    actor=started_by,
+                )
+                linked = len(link_result.get("linked") or [])
+                skipped = len(link_result.get("skipped") or [])
+                missing = len(link_result.get("missing") or [])
+                archived = len(link_result.get("archived") or [])
+                _append_deploy_log(
+                    job_id,
+                    f"[{time.strftime('%H:%M:%S')}] Project linking: linked={linked}, skipped={skipped}, missing={missing}, archived={archived}",
+                )
+            except Exception as link_exc:
+                _append_deploy_log(
+                    job_id,
+                    f"[{time.strftime('%H:%M:%S')}] Warning: project linking failed: {str(link_exc)}",
+                )
         _append_deploy_log(job_id, f"[{time.strftime('%H:%M:%S')}] Container deployed successfully: {deployed_id or 'unknown id'}")
         _update_deploy_job(
             job_id,
@@ -419,6 +639,7 @@ register_container_api_routes(
     run_deploy_job=_run_deploy_job,
 )
 register_user_api_routes(app, bridge)
+register_projects_api_routes(app, bridge)
 
 @app.route('/login', methods=['GET', 'POST'])
 def admin_login():
@@ -541,7 +762,7 @@ def api_metrics():
             return jsonify(cached["payload"])
 
     is_staff = bool(session.get('is_staff'))
-    summary, summary_code = bridge.proxy_request("GET", "/containers/summary")
+    summary, summary_code = bridge.proxy_request("GET", "/containers/summary", timeout=2.5)
     if summary_code >= 400:
         summary = {}
 
@@ -594,7 +815,14 @@ def api_metrics():
             metrics_cache[cache_key] = {"ts": now, "payload": payload}
         return jsonify(payload)
 
-    data = bridge.fetch_metrics()
+    data = None
+    core_metrics, core_metrics_code = bridge.proxy_request("GET", "/metrics/current", timeout=2.5)
+    if core_metrics_code < 400 and isinstance(core_metrics, dict):
+        data = core_metrics
+    if not isinstance(data, dict) or not data:
+        data = bridge.fetch_metrics(grpc_timeout=0.6, http_timeout=2.5)
+    if isinstance(data, dict) and isinstance(data.get("system"), dict):
+        data = data.get("system")
     if not data:
         return jsonify({"error": "Core offline", "status": "offline"}), 503
 
@@ -655,7 +883,7 @@ def api_metrics():
 @bridge.login_required
 @bridge.staff_required
 def api_admin_dashboard_metrics():
-    res, code = bridge.proxy_request("GET", "/metrics/admin/dashboard")
+    res, code = bridge.proxy_request("GET", "/metrics/admin/dashboard", timeout=3.5)
     return jsonify(res), code
 
 @app.route('/api/userpanel/overview')
@@ -791,6 +1019,23 @@ eventlet.spawn(core_log_listener)
 def handle_socket_connect():
     if session.get('is_staff'):
         join_room("staff")
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(exc):
+    return _render_error_page(exc.code or 500, getattr(exc, "description", None))
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_exception(exc):
+    logging.getLogger("nebula_gui_flask").exception("Unhandled exception: %s", exc)
+    return _render_error_page(500, "Unexpected server exception")
+
+
+app.register_error_handler(
+    SeeOtherDisplayException,
+    lambda exc: _render_error_page(303, getattr(exc, "description", None)),
+)
 
 if __name__ == '__main__':
     logging.getLogger("nebula_gui_flask").info("Starting Nebula GUI panel")

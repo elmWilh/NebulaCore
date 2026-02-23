@@ -67,6 +67,7 @@ window.NebulaContainers = {
                 <tr class="table-header-row">
                     <th style="padding: 18px 24px;">Container Identity</th>
                     <th style="padding: 18px 24px;">Image / Environment</th>
+                    <th style="padding: 18px 24px;">Projects</th>
                     <th style="padding: 18px 24px;">Assigned Users</th>
                     <th style="padding: 18px 24px;">Uptime / Status</th>
                     <th style="padding: 18px 24px; text-align: right;">Actions</th>
@@ -157,6 +158,15 @@ window.NebulaContainers = {
                             <div id="cont_users_selected" class="selected-users"></div>
                         </div>
                         <span class="input-hint" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; display: block;">Select users who can view/manage this container</span>
+                    </div>
+                    <div class="input-field">
+                        <label>Assign To Projects</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-kanban"></i>
+                            <select id="cont_project_ids" multiple style="min-height: 120px;">
+                            </select>
+                        </div>
+                        <span class="input-hint" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; display: block;">Optional: select one or more projects to link right after deploy</span>
                     </div>
                 </div>
 
@@ -294,6 +304,105 @@ window.NebulaContainers = {
         <div class="modal-footer">
             <button onclick="closeModal()" class="btn-secondary">Discard</button>
             <button onclick="saveContainer()" class="btn-primary" id="saveBtn">Deploy Instance</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if session.get('is_staff') %}
+<div id="containerSettingsModal" class="modal-overlay">
+    <div class="modal-content" style="width: 920px;">
+        <div class="modal-header">
+            <div>
+                <h3 id="settingsModalTitle" style="margin: 0; font-weight: 700; color: white;">Container Settings</h3>
+                <p id="settingsModalSub" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Update container access and runtime settings</p>
+            </div>
+            <button onclick="closeContainerSettingsModal()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div style="padding: 24px 28px; max-height: 72vh; overflow-y: auto;">
+            <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px;">
+                <div class="input-field">
+                    <label>Container Name</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-box-seam"></i>
+                        <input type="text" id="edit_cont_name" readonly>
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Container ID</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-hash"></i>
+                        <input type="text" id="edit_cont_id" readonly>
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Image</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-database-down"></i>
+                        <input type="text" id="edit_cont_image" readonly>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 10px; display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <div class="input-field">
+                    <label>Startup Command</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-terminal"></i>
+                        <input type="text" id="edit_cont_command" placeholder="e.g. ./start.sh --env prod">
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Allowed Ports</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-ethernet"></i>
+                        <input type="text" id="edit_cont_ports" placeholder="8080:80, 8443:443, 27015:27015/udp">
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 14px; display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <div class="input-field">
+                    <label>Restart Policy</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-arrow-repeat"></i>
+                        <select id="edit_restart_policy" style="width:100%; padding: 14px 16px 14px 46px; background:#050507; border:1px solid var(--border); border-radius: 12px; color:white;">
+                            <option value="no">no</option>
+                            <option value="always">always</option>
+                            <option value="unless-stopped">unless-stopped</option>
+                            <option value="on-failure">on-failure</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Max Retry Count</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-arrow-repeat"></i>
+                        <input type="number" id="edit_restart_retries" min="0" value="0">
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-field" style="margin-top: 16px;">
+                <label>Assigned Users</label>
+                <div class="user-picker">
+                    <div class="input-wrapper">
+                        <i class="bi bi-search"></i>
+                        <input type="text" id="edit_user_search" placeholder="Search user..." oninput="renderEditUserPicker(this.value)">
+                    </div>
+                    <div id="edit_users_list" class="users-list"></div>
+                    <div id="edit_users_selected" class="selected-users"></div>
+                </div>
+            </div>
+
+            <div class="input-field" style="margin-top: 16px;">
+                <label>Role Permissions</label>
+                <div id="edit_role_permissions_grid" style="border:1px solid var(--border); border-radius: 12px; overflow:auto; background:#07070b;"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeContainerSettingsModal()" class="btn-secondary">Cancel</button>
+            <button onclick="saveContainerSettingsModal()" class="btn-primary" id="saveSettingsBtn">Save Changes</button>
         </div>
     </div>
 </div>

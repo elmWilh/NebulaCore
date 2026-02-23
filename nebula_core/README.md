@@ -19,12 +19,32 @@
 - `api/` - HTTP and WebSocket API.
 - `services/` - business-logic services (docker, metrics, files, users).
 - `core/` - runtime, event bus, lifecycle.
-- `plugins/` - in-process plugins implementing `plugin_api_v1`.
+- `plugins/` - plugin sources used by DEV in-process mode and `plugin_runtime_v2` worker mode.
 - `db.py` and `db/` - SQLite access and schema handling.
+
+## Plugin Runtime
+
+- `plugin_api_v1` remains supported for compatibility.
+- `plugin_runtime_v2` (default for production) runs each plugin in a separate process via gRPC over Unix socket.
+- In-process plugins are DEV-only and blocked when `plugins.environment` is `production`.
+- Optional cgroup v2 backend can enforce per-plugin limits (`memory.max`, `cpu.max`, `pids.max`).
+- Plugin manager provides:
+  - subprocess spawn for each plugin
+  - per-call timeout enforcement (default 10s, max 30s)
+  - state machine (`initialized`, `healthy`, `degraded`, `unresponsive`, `crashed`, `disabled`)
+  - health monitoring with restart policy
+  - restart/crash counters and disable-after-threshold handling
+  - worker resource limits (memory/cpu)
+
+Runtime config (`serviceconfig.yaml`, `plugins`):
+- `cgroup_enabled`: enable cgroup v2 backend for process plugins.
+- `cgroup_required`: fail startup if cgroup backend is unavailable.
+- `cgroup_root`: cgroup root path (`auto` uses delegated service cgroup subtree).
+- `cgroup_cpu_quota_us`, `cgroup_cpu_period_us`, `cgroup_pids_max`: process limits.
 
 ## Plugin API v1
 
-- In-process plugins are discovered in `nebula_core/plugins/*/plugin.py`.
+- Plugin source discovery path: `nebula_core/plugins/*/plugin.py`.
 - Plugin contract:
   - module variable `PLUGIN_API_VERSION = "v1"`
   - factory `create_plugin()`

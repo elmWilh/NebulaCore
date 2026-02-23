@@ -300,6 +300,7 @@ class DockerService:
 
     def get_effective_container_permissions(self, container_id: str, username: str, db_name: str, is_staff: bool):
         full_id, policies = self.get_container_role_policies(container_id)
+        assignments = self.get_container_user_assignments(full_id)
         role_tag = self.resolve_user_role(username, db_name, is_staff)
         base = dict(self.DEFAULT_ROLE_PERMISSIONS.get(role_tag, self.DEFAULT_ROLE_PERMISSIONS["user"]))
         policy = dict(base)
@@ -311,6 +312,7 @@ class DockerService:
         policy["container_id"] = full_id
         policy["is_staff"] = bool(is_staff)
         policy["role_policies"] = policies
+        policy["user_assignments"] = assignments
         return policy
 
     def set_container_role_policies(self, container_id: str, role_policies: dict, updated_by: str):
@@ -365,6 +367,119 @@ class DockerService:
                     ),
                 )
         return self.get_container_role_policies(full_id)[1]
+
+    def get_container_user_assignments(self, container_id: str):
+        full_id = self.resolve_container_id(container_id)
+        with get_connection(SYSTEM_DB) as conn:
+            rows = conn.execute(
+                """
+                SELECT username, db_name, role_tag
+                FROM container_permissions
+                WHERE container_id = ?
+                ORDER BY username ASC
+                """,
+                (full_id,),
+            ).fetchall()
+        return [
+            {
+                "username": str(row["username"] or "").strip(),
+                "db_name": str(row["db_name"] or "system.db").strip() or "system.db",
+                "role_tag": self._normalize_role_tag(row["role_tag"] or "user"),
+            }
+            for row in rows
+            if str(row["username"] or "").strip()
+        ]
+
+    def set_container_access_policies(self, container_id: str, role_policies: dict, user_assignments: list, updated_by: str):
+        full_id = self.resolve_container_id(container_id)
+        if role_policies is not None and not isinstance(role_policies, dict):
+            raise RuntimeError("role_policies must be an object")
+        if user_assignments is not None and not isinstance(user_assignments, list):
+            raise RuntimeError("user_assignments must be an array")
+
+        with get_connection(SYSTEM_DB) as conn:
+            if isinstance(role_policies, dict):
+                for role, values in role_policies.items():
+                    role_tag = self._normalize_role_tag(role)
+                    base = dict(self.DEFAULT_ROLE_PERMISSIONS.get(role_tag, self.DEFAULT_ROLE_PERMISSIONS["user"]))
+                    raw = values if isinstance(values, dict) else {}
+                    row = {
+                        "allow_explorer": self._to_bool(raw.get("allow_explorer"), base["allow_explorer"]),
+                        "allow_root_explorer": self._to_bool(raw.get("allow_root_explorer"), base["allow_root_explorer"]),
+                        "allow_console": self._to_bool(raw.get("allow_console"), base["allow_console"]),
+                        "allow_shell": self._to_bool(raw.get("allow_shell"), base["allow_shell"]),
+                        "allow_settings": self._to_bool(raw.get("allow_settings"), base["allow_settings"]),
+                        "allow_edit_files": self._to_bool(raw.get("allow_edit_files"), base["allow_edit_files"]),
+                        "allow_edit_startup": self._to_bool(raw.get("allow_edit_startup"), base["allow_edit_startup"]),
+                        "allow_edit_ports": self._to_bool(raw.get("allow_edit_ports"), base["allow_edit_ports"]),
+                    }
+                    conn.execute(
+                        """
+                        INSERT INTO container_role_permissions (
+                            container_id, role_tag, allow_explorer, allow_root_explorer, allow_console, allow_shell,
+                            allow_settings, allow_edit_files, allow_edit_startup, allow_edit_ports, updated_by, updated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                        ON CONFLICT(container_id, role_tag) DO UPDATE SET
+                            allow_explorer=excluded.allow_explorer,
+                            allow_root_explorer=excluded.allow_root_explorer,
+                            allow_console=excluded.allow_console,
+                            allow_shell=excluded.allow_shell,
+                            allow_settings=excluded.allow_settings,
+                            allow_edit_files=excluded.allow_edit_files,
+                            allow_edit_startup=excluded.allow_edit_startup,
+                            allow_edit_ports=excluded.allow_edit_ports,
+                            updated_by=excluded.updated_by,
+                            updated_at=datetime('now')
+                        """,
+                        (
+                            full_id, role_tag,
+                            1 if row["allow_explorer"] else 0,
+                            1 if row["allow_root_explorer"] else 0,
+                            1 if row["allow_console"] else 0,
+                            1 if row["allow_shell"] else 0,
+                            1 if row["allow_settings"] else 0,
+                            1 if row["allow_edit_files"] else 0,
+                            1 if row["allow_edit_startup"] else 0,
+                            1 if row["allow_edit_ports"] else 0,
+                            updated_by or "unknown",
+                        ),
+                    )
+
+            if isinstance(user_assignments, list):
+                conn.execute(
+                    "DELETE FROM container_permissions WHERE container_id = ?",
+                    (full_id,),
+                )
+                dedup = {}
+                for item in user_assignments:
+                    if not isinstance(item, dict):
+                        continue
+                    username = str(item.get("username") or "").strip()
+                    if not username:
+                        continue
+                    dedup[username] = {
+                        "username": username,
+                        "db_name": str(item.get("db_name") or "system.db").strip() or "system.db",
+                        "role_tag": self._normalize_role_tag(item.get("role_tag") or "user"),
+                    }
+                for item in dedup.values():
+                    conn.execute(
+                        """
+                        INSERT INTO container_permissions (container_id, username, db_name, role_tag)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(container_id, username) DO UPDATE SET
+                            db_name=excluded.db_name,
+                            role_tag=excluded.role_tag
+                        """,
+                        (full_id, item["username"], item["db_name"], item["role_tag"]),
+                    )
+
+        return {
+            "container_id": full_id,
+            "role_policies": self.get_container_role_policies(full_id)[1],
+            "user_assignments": self.get_container_user_assignments(full_id),
+        }
 
     def ensure_client(self):
         """Attempt to (re)initialize docker client on demand."""

@@ -13,7 +13,7 @@ function updateMetrics() {
     const alertsEl = document.getElementById('alerts');
     const tasksEl = document.getElementById('tasks');
 
-    if (!cpuEl || !ramEl || !diskEl || !networkEl || !containersEl || !serversEl || !alertsEl || !tasksEl) {
+    if (!cpuEl && !ramEl && !diskEl && !networkEl && !containersEl && !serversEl && !alertsEl && !tasksEl) {
         return;
     }
 
@@ -30,15 +30,15 @@ function updateMetrics() {
 
             document.body.style.opacity = "1";
 
-            cpuEl.textContent = data.cpu || "—";
-            ramEl.textContent = data.ram || "—";
-            diskEl.textContent = data.disk || "—";
-            networkEl.textContent = data.network || "—";
+            if (cpuEl) cpuEl.textContent = data.cpu || "—";
+            if (ramEl) ramEl.textContent = data.ram || "—";
+            if (diskEl) diskEl.textContent = data.disk || "—";
+            if (networkEl) networkEl.textContent = data.network || "—";
             
-            containersEl.textContent = data.containers || "0";
-            serversEl.textContent = data.servers || "0";
-            alertsEl.textContent = data.alerts || "0";
-            tasksEl.textContent = data.tasks || "0";
+            if (containersEl) containersEl.textContent = data.containers || "0";
+            if (serversEl) serversEl.textContent = data.servers || "0";
+            if (alertsEl) alertsEl.textContent = data.alerts || "0";
+            if (tasksEl) tasksEl.textContent = data.tasks || "0";
         })
         .catch(() => {
             setUIOffline();

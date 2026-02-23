@@ -29,6 +29,12 @@ class GrpcPluginClient:
 
     def _validate_endpoint(self):
         candidate = self.endpoint
+        if candidate.startswith("unix://"):
+            socket_path = candidate[len("unix://"):].strip()
+            if not socket_path:
+                raise ValueError("Unix socket endpoint path is required")
+            return
+
         if "://" in candidate:
             parsed = urlparse(candidate)
             host = parsed.hostname or ""

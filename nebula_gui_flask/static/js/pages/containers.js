@@ -85,6 +85,12 @@ let deployPollInterval = null;
 let activePreset = '';
 let presetPermissionTemplates = {};
 let activePresetConfig = {};
+let availableProjects = [];
+let projectsByContainerId = {};
+let projectsMapCacheTs = 0;
+let editContainerId = null;
+let editSelectedUsers = new Map();
+let editRolePermissionMatrix = {};
 
 let containerPresets = {};
 
@@ -101,6 +107,58 @@ function scheduleLiveTelemetry() {
     if (containersInterval) clearInterval(containersInterval);
     metricsInterval = setInterval(updateStats, getMetricsPollIntervalMs());
     containersInterval = setInterval(fetchContainers, getContainersPollIntervalMs());
+}
+
+function containerIdentityKeys(container) {
+    const keys = [];
+    const id = String(container?.id || '').trim();
+    const fullId = String(container?.full_id || '').trim();
+    const name = String(container?.name || '').trim();
+    if (id) keys.push(id);
+    if (fullId && fullId !== id) keys.push(fullId);
+    if (name) keys.push(name);
+    return keys;
+}
+
+function buildProjectsByContainerMap(projects) {
+    const map = {};
+    (Array.isArray(projects) ? projects : []).forEach(project => {
+        const projectId = String(project?.id || '').trim();
+        const projectName = String(project?.name || '').trim();
+        if (!projectId || !projectName) return;
+        const entry = { id: projectId, name: projectName };
+        (Array.isArray(project?.containers) ? project.containers : []).forEach(cont => {
+            containerIdentityKeys(cont).forEach(key => {
+                if (!map[key]) map[key] = [];
+                if (!map[key].some(p => p.id === projectId)) map[key].push(entry);
+            });
+        });
+    });
+    Object.keys(map).forEach(key => {
+        map[key].sort((a, b) => a.name.localeCompare(b.name));
+    });
+    return map;
+}
+
+async function refreshContainerProjectsMap(force = false) {
+    if (!isStaff) {
+        projectsByContainerId = {};
+        return;
+    }
+    const now = Date.now();
+    if (!force && projectsMapCacheTs && (now - projectsMapCacheTs) < 15000) {
+        return;
+    }
+    try {
+        const res = await fetch('/api/projects?tab=active', { cache: 'no-store' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.detail || 'Failed to load projects');
+        projectsByContainerId = buildProjectsByContainerMap(payload?.projects || []);
+        projectsMapCacheTs = now;
+    } catch (_) {
+        projectsByContainerId = {};
+        projectsMapCacheTs = now;
+    }
 }
 
 function selectedUserKey(user) {
@@ -130,6 +188,37 @@ async function loadRoleCatalog() {
         roleCatalog = [];
     }
     if (!roleCatalog.includes('user')) roleCatalog.unshift('user');
+}
+
+async function loadAvailableProjects() {
+    if (!isStaff) return;
+    try {
+        const res = await fetch('/api/projects/active');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.detail || 'Failed to load projects');
+        availableProjects = Array.isArray(data?.projects) ? data.projects : [];
+    } catch (_) {
+        availableProjects = [];
+    }
+    renderProjectSelector();
+}
+
+function renderProjectSelector() {
+    const select = document.getElementById('cont_project_ids');
+    if (!select) return;
+    const selected = new Set(Array.from(select.selectedOptions || []).map(o => String(o.value)));
+    select.innerHTML = '';
+    availableProjects
+        .slice()
+        .sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || '')))
+        .forEach(project => {
+            const option = document.createElement('option');
+            option.value = String(project?.id || '');
+            const tags = Array.isArray(project?.tags) && project.tags.length ? ` [${project.tags.join(', ')}]` : '';
+            option.textContent = `${String(project?.name || option.value)}${tags}`;
+            option.selected = selected.has(option.value);
+            select.appendChild(option);
+        });
 }
 
 function renderRolePermissionMatrix() {
@@ -163,6 +252,39 @@ function onRolePermissionToggle(el) {
     if (!role || !key) return;
     if (!rolePermissionMatrix[role]) rolePermissionMatrix[role] = {};
     rolePermissionMatrix[role][key] = !!el.checked;
+}
+
+function renderEditRolePermissionMatrix() {
+    const host = document.getElementById('edit_role_permissions_grid');
+    if (!host) return;
+    if (!editRolePermissionMatrix || Object.keys(editRolePermissionMatrix).length === 0) {
+        editRolePermissionMatrix = cloneRoleMatrix({});
+    }
+    const roles = Object.keys(editRolePermissionMatrix);
+    let html = '<table style="width:100%; border-collapse: collapse; font-size: 0.78rem;"><thead><tr>';
+    html += '<th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border);">Role</th>';
+    rolePermissionColumns.forEach(col => {
+        html += `<th style="text-align:center; padding:8px 10px; border-bottom:1px solid var(--border);">${escapeHtml(col.label)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    roles.forEach(role => {
+        html += `<tr><td style="padding:8px 10px; border-bottom:1px solid var(--border); color:#d6d6df; font-weight:600;">${escapeHtml(role)}</td>`;
+        rolePermissionColumns.forEach(col => {
+            const checked = editRolePermissionMatrix[role][col.key] ? 'checked' : '';
+            html += `<td style="text-align:center; padding:8px 10px; border-bottom:1px solid var(--border);"><input class="role-perm-check" type="checkbox" data-edit-role="${escapeAttr(role)}" data-edit-key="${escapeAttr(col.key)}" ${checked} onchange="onEditRolePermissionToggle(this)"></td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    host.innerHTML = html;
+}
+
+function onEditRolePermissionToggle(el) {
+    const role = String(el?.dataset?.editRole || '');
+    const key = String(el?.dataset?.editKey || '');
+    if (!role || !key) return;
+    if (!editRolePermissionMatrix[role]) editRolePermissionMatrix[role] = {};
+    editRolePermissionMatrix[role][key] = !!el.checked;
 }
 
 async function loadContainerPresets() {
@@ -389,9 +511,87 @@ function renderUserPicker(searchText) {
     renderSelectedUsers();
 }
 
+function toggleEditUserSelection(user) {
+    const key = selectedUserKey(user);
+    if (editSelectedUsers.has(key)) editSelectedUsers.delete(key);
+    else editSelectedUsers.set(key, { username: user.username, db: user.db, role_tag: user.role_tag || 'user' });
+    renderEditUserPicker(document.getElementById('edit_user_search')?.value || '');
+}
+
+function renderEditSelectedUsers() {
+    const target = document.getElementById('edit_users_selected');
+    if (!target) return;
+    target.innerHTML = '';
+    if (editSelectedUsers.size === 0) {
+        target.innerHTML = '<span style="font-size:0.75rem; color: var(--text-muted);">No users selected</span>';
+        return;
+    }
+    Array.from(editSelectedUsers.values())
+        .sort((a, b) => `${a.username}:${a.db}`.localeCompare(`${b.username}:${b.db}`))
+        .forEach(u => {
+            const chip = document.createElement('span');
+            chip.className = 'user-chip';
+            chip.textContent = `${u.username} [${u.db}] (${u.role_tag || 'user'})`;
+            target.appendChild(chip);
+        });
+}
+
+function renderEditUserPicker(searchText) {
+    const listEl = document.getElementById('edit_users_list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const query = (searchText || '').toLowerCase().trim();
+    const filtered = assignableUsers.filter(u => {
+        const label = `${u.username} ${u.db}`.toLowerCase();
+        return !query || label.includes(query);
+    });
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = '<div style="padding:10px; color: var(--text-muted); font-size:0.8rem;">No users found</div>';
+        renderEditSelectedUsers();
+        return;
+    }
+
+    filtered.forEach(user => {
+        const row = document.createElement('div');
+        row.className = `user-option${editSelectedUsers.has(selectedUserKey(user)) ? ' is-selected' : ''}`;
+        row.onclick = () => toggleEditUserSelection(user);
+        const usernameHtml = escapeHtml(user.username);
+        const dbHtml = escapeHtml(user.db);
+        row.innerHTML = `
+            <div>${usernameHtml}</div>
+            <div style="font-size:0.72rem; color: var(--text-muted);">${dbHtml}</div>
+        `;
+        listEl.appendChild(row);
+    });
+    renderEditSelectedUsers();
+}
+
+function parseLegacyUserLabel(label) {
+    const raw = String(label || '').trim();
+    if (!raw) return null;
+    const match = raw.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    if (!match) return { username: raw, role_tag: 'user', db: 'system.db' };
+    return {
+        username: String(match[1] || '').trim(),
+        role_tag: String(match[2] || 'user').trim().toLowerCase(),
+        db: 'system.db'
+    };
+}
+
 function asNumber(value, fallback = 0) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+async function apiJson(url, options = undefined) {
+    const res = await fetch(url, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const detail = data && (data.detail || data.error || data.message);
+        throw new Error(String(detail || 'Request failed'));
+    }
+    return data;
 }
 
 function applyHealthState(status, pressure) {
@@ -440,6 +640,7 @@ function normalizeNode(raw) {
 
 async function initPage() {
     try {
+        bindContainerTableActions();
         startLiveTelemetry();
 
         if (isStaff) {
@@ -526,6 +727,56 @@ function updateActiveContainersStat(containers) {
     document.getElementById('stat_active_containers').innerHTML = `${running} <span class="stat-sub">running / ${total} total</span>`;
 }
 
+function bindContainerTableActions() {
+    const tbody = document.getElementById('container_table_body');
+    if (!tbody || tbody.dataset.boundActions === '1') return;
+    tbody.addEventListener('click', (event) => {
+        const menuTrigger = event.target.closest('.action-btn[data-menu-id]');
+        if (menuTrigger) {
+            event.preventDefault();
+            toggleMenu(event, menuTrigger.dataset.menuId);
+            return;
+        }
+
+        const menuAction = event.target.closest('[data-menu-action]');
+        if (!menuAction) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+
+        const action = String(menuAction.dataset.menuAction || '');
+        const containerId = String(menuAction.dataset.containerId || '');
+        const containerName = String(menuAction.dataset.containerName || containerId);
+        if (!containerId) return;
+
+        if (action === 'console') {
+            openConsoleModal(containerId, containerName);
+            return;
+        }
+        if (action === 'start') {
+            startContainer(containerId);
+            return;
+        }
+        if (action === 'stop') {
+            stopContainer(containerId);
+            return;
+        }
+        if (action === 'restart') {
+            restartContainer(containerId);
+            return;
+        }
+        if (action === 'settings') {
+            openContainerSettingsModal(containerId);
+            return;
+        }
+        if (action === 'delete') {
+            deleteContainer(containerId);
+        }
+    });
+    tbody.dataset.boundActions = '1';
+}
+
 function onNodeChanged() {
     hasContainerTableRendered = false;
     lastContainersSignature = '';
@@ -537,10 +788,11 @@ async function fetchContainers(showLoader = false) {
     const selectedNode = document.getElementById('node_selector')?.value || '';
     const listUrl = selectedNode ? `/api/containers/list?node=${encodeURIComponent(selectedNode)}` : '/api/containers/list';
     if (!hasContainerTableRendered || showLoader) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:60px;"><i class="bi bi-arrow-repeat spin" style="font-size:2rem; color:var(--accent);"></i></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:60px;"><i class="bi bi-arrow-repeat spin" style="font-size:2rem; color:var(--accent);"></i></td></tr>';
     }
 
     try {
+        await refreshContainerProjectsMap(showLoader);
         if (containersAbortController) containersAbortController.abort();
         containersAbortController = new AbortController();
         const response = await fetch(listUrl, { signal: containersAbortController.signal, cache: 'no-store' });
@@ -548,13 +800,13 @@ async function fetchContainers(showLoader = false) {
 
         if (!response.ok) {
             const detail = (containers && containers.detail) ? containers.detail : 'Failed to sync with Nebula Core';
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#ff4f4f;">${escapeHtml(detail)}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#ff4f4f;">${escapeHtml(detail)}</td></tr>`;
             hasContainerTableRendered = true;
             return;
         }
 
         if (!Array.isArray(containers) || containers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No active containers on this node</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">No active containers on this node</td></tr>';
             hasContainerTableRendered = true;
             currentContainers = [];
             lastContainersSignature = '[]';
@@ -583,15 +835,27 @@ async function fetchContainers(showLoader = false) {
             const containerStatus = String(cont.status || 'unknown').toLowerCase();
             const containerImage = String(cont.image || 'unknown');
             const containerIdPath = encodeURIComponent(containerId);
-            const encodedName = encodeURIComponent(containerName);
             const menuId = `drop-${safeDomId(containerId)}`;
-            const containerIdJs = jsQuote(containerId);
             const color = containerStatus === 'running' ? '#4ade80' : '#ff4f4f';
             const usersHtml = (cont.users || []).map((u, i) => {
                 const username = String(u || '');
                 const displayLetter = escapeHtml((username[0] || '?').toUpperCase());
                 return `<div class="user-avatar-mini" style="margin-left: ${i === 0 ? '0' : '-8px'}; background: ${stringToColor(username)}" title="${escapeAttr(username)}">${displayLetter}</div>`;
             }).join('');
+            const projectItems = [
+                ...(projectsByContainerId[String(containerId)] || []),
+                ...(projectsByContainerId[String(cont.full_id || '')] || []),
+                ...(projectsByContainerId[String(containerName)] || []),
+            ];
+            const seenProjects = new Set();
+            const dedupProjects = projectItems.filter(p => {
+                if (!p?.id || seenProjects.has(p.id)) return false;
+                seenProjects.add(p.id);
+                return true;
+            });
+            const projectsHtml = dedupProjects.length
+                ? dedupProjects.map(p => `<span class="badge badge-user" title="${escapeAttr(p.name)}">${escapeHtml(p.name)}</span>`).join(' ')
+                : '<span style="color:var(--text-muted); font-size:0.78rem;">Unassigned</span>';
             row.onclick = (event) => {
                 if (event.target.closest('.dropdown') || event.target.closest('a') || event.target.closest('button')) return;
                 window.location.href = `/containers/view/${containerIdPath}`;
@@ -613,6 +877,9 @@ async function fetchContainers(showLoader = false) {
                     <span class="badge badge-user">${escapeHtml(containerImage)}</span>
                 </td>
                 <td style="padding: 18px 24px;">
+                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${projectsHtml}</div>
+                </td>
+                <td style="padding: 18px 24px;">
                     <div style="display:flex;">${usersHtml}</div>
                 </td>
                 <td style="padding: 18px 24px;">
@@ -623,18 +890,19 @@ async function fetchContainers(showLoader = false) {
                 </td>
                 <td style="padding: 18px 24px; text-align: right;">
                     <div class="dropdown">
-                        <button class="action-btn" onclick="toggleMenu(event, '${menuId}')">
+                        <button class="action-btn" data-menu-id="${escapeAttr(menuId)}" aria-label="Container actions">
                             <i class="bi bi-three-dots"></i>
                         </button>
                         <div id="${menuId}" class="dropdown-content">
                             <a href="/containers/view/${containerIdPath}"><i class="bi bi-window-sidebar"></i> Container Mode</a>
-                            <a href="javascript:void(0)" onclick="openConsoleModal('${containerIdJs}', decodeURIComponent('${encodedName}')); return false;"><i class="bi bi-terminal"></i> Console</a>
-                            <a href="javascript:void(0)" onclick="startContainer('${containerIdJs}'); return false;"><i class="bi bi-play-fill"></i> Start</a>
-                            <a href="javascript:void(0)" onclick="stopContainer('${containerIdJs}'); return false;"><i class="bi bi-stop-fill"></i> Stop</a>
-                            <a href="javascript:void(0)" onclick="restartContainer('${containerIdJs}'); return false;"><i class="bi bi-arrow-clockwise"></i> Restart</a>
+                            <a href="#" data-menu-action="console" data-container-id="${escapeAttr(containerId)}" data-container-name="${escapeAttr(containerName)}"><i class="bi bi-terminal"></i> Console</a>
+                            <a href="#" data-menu-action="start" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-play-fill"></i> Start</a>
+                            <a href="#" data-menu-action="stop" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-stop-fill"></i> Stop</a>
+                            <a href="#" data-menu-action="restart" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-arrow-clockwise"></i> Restart</a>
                             ${isStaff ? `
+                            <a href="#" data-menu-action="settings" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-sliders"></i> Container Settings</a>
                             <hr style="border:0; border-top:1px solid var(--border); margin:6px 0;">
-                            <a href="javascript:void(0)" style="color:#ff6b6b;" onclick="deleteContainer('${containerIdJs}'); return false;"><i class="bi bi-trash3"></i> Delete</a>
+                            <a href="#" style="color:#ff6b6b;" data-menu-action="delete" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-trash3"></i> Delete</a>
                             ` : ''}
                         </div>
                     </div>
@@ -646,7 +914,7 @@ async function fetchContainers(showLoader = false) {
     } catch (e) {
         if (e && e.name === 'AbortError') return;
         if (!hasContainerTableRendered) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#ff4f4f;">Failed to sync with Nebula Core</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#ff4f4f;">Failed to sync with Nebula Core</td></tr>';
             hasContainerTableRendered = true;
         }
     }
@@ -833,6 +1101,7 @@ async function saveContainer() {
         role_tag: u.role_tag || 'user'
     }));
     data.role_permissions = rolePermissionMatrix;
+    data.project_ids = Array.from(document.getElementById('cont_project_ids')?.selectedOptions || []).map(o => String(o.value));
 
     if(!data.name || !data.image) { alert("Instance name and Image are required"); return; }
 
@@ -910,8 +1179,148 @@ function stringToColor(str) {
 function toggleMenu(e, id) {
     e.stopPropagation();
     const menu = document.getElementById(id);
+    if (!menu) return;
     document.querySelectorAll('.dropdown-content').forEach(d => { if(d !== menu) d.classList.remove('show'); });
     menu.classList.toggle('show');
+}
+
+async function openContainerSettingsModal(containerId) {
+    if (!isStaff) return;
+    const id = String(containerId || '').trim();
+    if (!id) return;
+
+    const modal = document.getElementById('containerSettingsModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    document.getElementById('settingsModalTitle').textContent = 'Container Settings';
+    document.getElementById('settingsModalSub').textContent = 'Loading current settings...';
+    document.getElementById('edit_cont_name').value = '';
+    document.getElementById('edit_cont_id').value = id;
+    document.getElementById('edit_cont_image').value = '';
+    document.getElementById('edit_cont_command').value = '';
+    document.getElementById('edit_cont_ports').value = '';
+    document.getElementById('edit_restart_policy').value = 'no';
+    document.getElementById('edit_restart_retries').value = '0';
+    editSelectedUsers = new Map();
+    editRolePermissionMatrix = cloneRoleMatrix({});
+    renderEditRolePermissionMatrix();
+    renderEditUserPicker('');
+
+    if (!assignableUsers.length) {
+        await loadAssignableUsers().catch(() => {});
+    }
+
+    try {
+        const [detail, settings, policy, perms] = await Promise.all([
+            apiJson(`/api/containers/detail/${encodeURIComponent(id)}`),
+            apiJson(`/api/containers/settings/${encodeURIComponent(id)}`),
+            apiJson(`/api/containers/restart-policy/${encodeURIComponent(id)}`),
+            apiJson(`/api/containers/permissions/${encodeURIComponent(id)}`)
+        ]);
+
+        editContainerId = String(detail.full_id || detail.id || id);
+        const containerName = String(detail.name || detail.id || id);
+        document.getElementById('settingsModalTitle').textContent = `Container Settings: ${containerName}`;
+        document.getElementById('settingsModalSub').textContent = `Edit runtime settings and access policies for ${editContainerId}`;
+        document.getElementById('edit_cont_name').value = containerName;
+        document.getElementById('edit_cont_id').value = editContainerId;
+        document.getElementById('edit_cont_image').value = String(detail.image || 'unknown');
+        document.getElementById('edit_cont_command').value = String(settings.startup_command || '');
+        document.getElementById('edit_cont_ports').value = String(settings.allowed_ports || '');
+        document.getElementById('edit_restart_policy').value = String(policy.restart_policy || 'no');
+        document.getElementById('edit_restart_retries').value = String(asNumber(policy.maximum_retry_count, 0));
+
+        const rolePolicies = (perms && typeof perms.role_policies === 'object') ? perms.role_policies : {};
+        editRolePermissionMatrix = cloneRoleMatrix(rolePolicies);
+        renderEditRolePermissionMatrix();
+
+        const assignments = Array.isArray(perms?.user_assignments) ? perms.user_assignments : [];
+        if (assignments.length > 0) {
+            assignments.forEach(item => {
+                const username = String(item?.username || '').trim();
+                if (!username) return;
+                const db = String(item?.db_name || item?.db || 'system.db').trim() || 'system.db';
+                const roleTag = String(item?.role_tag || 'user').trim().toLowerCase() || 'user';
+                editSelectedUsers.set(selectedUserKey({ username, db }), { username, db, role_tag: roleTag });
+            });
+        } else {
+            (Array.isArray(detail.users) ? detail.users : []).forEach(raw => {
+                const parsed = parseLegacyUserLabel(raw);
+                if (!parsed || !parsed.username) return;
+                editSelectedUsers.set(
+                    selectedUserKey({ username: parsed.username, db: parsed.db }),
+                    { username: parsed.username, db: parsed.db, role_tag: parsed.role_tag || 'user' }
+                );
+            });
+        }
+        renderEditUserPicker('');
+    } catch (e) {
+        editContainerId = null;
+        alert(`Failed to load container settings: ${e.message}`);
+    }
+}
+
+function closeContainerSettingsModal() {
+    const modal = document.getElementById('containerSettingsModal');
+    if (modal) modal.style.display = 'none';
+    editContainerId = null;
+    editSelectedUsers = new Map();
+}
+
+async function saveContainerSettingsModal() {
+    if (!isStaff || !editContainerId) return;
+    const btn = document.getElementById('saveSettingsBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> Saving...';
+    }
+
+    try {
+        const settingsPayload = {
+            startup_command: String(document.getElementById('edit_cont_command').value || ''),
+            allowed_ports: String(document.getElementById('edit_cont_ports').value || '')
+        };
+        const policyPayload = {
+            restart_policy: String(document.getElementById('edit_restart_policy').value || 'no'),
+            maximum_retry_count: Math.max(0, parseInt(document.getElementById('edit_restart_retries').value || '0', 10) || 0)
+        };
+        const permissionsPayload = {
+            role_policies: editRolePermissionMatrix,
+            user_assignments: Array.from(editSelectedUsers.values()).map(u => ({
+                username: u.username,
+                db_name: u.db || 'system.db',
+                role_tag: u.role_tag || 'user'
+            }))
+        };
+
+        const encodedId = encodeURIComponent(editContainerId);
+        await apiJson(`/api/containers/settings/${encodedId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settingsPayload)
+        });
+        await apiJson(`/api/containers/restart-policy/${encodedId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(policyPayload)
+        });
+        await apiJson(`/api/containers/permissions/${encodedId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(permissionsPayload)
+        });
+
+        closeContainerSettingsModal();
+        fetchContainers(true);
+    } catch (e) {
+        alert(`Save failed: ${e.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Save Changes';
+        }
+    }
 }
 
 function openCreateModal() {
@@ -929,6 +1338,8 @@ function openCreateModal() {
     document.getElementById('cont_command').value = '';
     document.getElementById('cont_env').value = '';
     document.getElementById('cont_volumes').value = '';
+    const projectSelect = document.getElementById('cont_project_ids');
+    if (projectSelect) projectSelect.innerHTML = '';
     activePresetConfig = {};
     rolePermissionMatrix = cloneRoleMatrix({});
     renderRolePermissionMatrix();
@@ -938,6 +1349,7 @@ function openCreateModal() {
         applyContainerPreset(firstPreset);
     }
     renderUserPicker('');
+    loadAvailableProjects().catch(() => {});
     document.getElementById('containerModal').style.display = 'flex';
 }
 
@@ -946,10 +1358,12 @@ function closeModal() { document.getElementById('containerModal').style.display 
 window.onclick = (e) => {
     document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
     const containerModal = document.getElementById('containerModal');
+    const containerSettingsModal = document.getElementById('containerSettingsModal');
     const consoleModal = document.getElementById('consoleModal');
     const deployModal = document.getElementById('deployProgressModal');
     const deployErrorModal = document.getElementById('deployErrorModal');
     if (containerModal && e.target === containerModal) closeModal();
+    if (containerSettingsModal && e.target === containerSettingsModal) closeContainerSettingsModal();
     if (consoleModal && e.target === consoleModal) closeConsoleModal();
     if (deployModal && e.target === deployModal) closeDeployProgressModal();
     if (deployErrorModal && e.target === deployErrorModal) closeDeployErrorModal();

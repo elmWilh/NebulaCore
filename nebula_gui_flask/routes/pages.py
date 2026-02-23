@@ -5,6 +5,14 @@ from flask import render_template, session
 
 
 def register_pages_routes(app, bridge):
+    def _render_module_page(title: str, description: str, icon: str):
+        return render_template(
+            'pages/module_stub.html',
+            module_title=title,
+            module_description=description,
+            module_icon=icon,
+        )
+
     @app.route('/')
     @bridge.login_required
     def dashboard():
@@ -51,3 +59,58 @@ def register_pages_routes(app, bridge):
     @bridge.login_required
     def projects_page():
         return render_template('pages/projects.html')
+
+    @app.route('/databases')
+    @bridge.login_required
+    def databases_page():
+        return _render_module_page(
+            title='Databases',
+            description='Overview of database instances, health, and storage usage.',
+            icon='bi-database',
+        )
+
+    @app.route('/task-scheduler')
+    @bridge.login_required
+    def task_scheduler_page():
+        return _render_module_page(
+            title='Task Scheduler',
+            description='Configure recurring jobs and monitor execution status.',
+            icon='bi-calendar2-check',
+        )
+
+    @app.route('/backups')
+    @bridge.login_required
+    def backups_page():
+        return _render_module_page(
+            title='Backups',
+            description='Manage backup plans, retention policies, and restore points.',
+            icon='bi-hdd-stack',
+        )
+
+    @app.route('/plugins')
+    @bridge.login_required
+    def plugins_page():
+        return _render_module_page(
+            title='Plugins',
+            description='Install, update, and control extension modules.',
+            icon='bi-puzzle',
+        )
+
+    @app.route('/audit-log')
+    @bridge.login_required
+    @bridge.staff_required
+    def audit_log_page():
+        return _render_module_page(
+            title='Audit Log',
+            description='Track security-relevant actions and administrative changes.',
+            icon='bi-clipboard2-pulse',
+        )
+
+    @app.route('/fault-sentinel')
+    @bridge.login_required
+    def fault_sentinel_page():
+        return _render_module_page(
+            title='Fault Sentinel',
+            description='Future module for automated anomaly and failure detection.',
+            icon='bi-activity',
+        )

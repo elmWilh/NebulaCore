@@ -1,0 +1,54 @@
+/* nebula_gui_flask/static/css/pages/module_stub.css
+ * Copyright (c) 2026 Monolink Systems
+ * Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+ */
+.module-stub {
+  background: linear-gradient(160deg, rgba(88, 101, 255, 0.12), rgba(88, 101, 255, 0.03));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 28px;
+}
+
+.module-stub__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.module-stub__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(88, 101, 255, 0.24);
+  color: #d9ddff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  border: 1px solid rgba(130, 142, 255, 0.35);
+}
+
+.module-stub h2 {
+  font-size: 1.45rem;
+  color: #f5f7ff;
+  margin: 0 0 6px 0;
+}
+
+.module-stub p {
+  margin: 0;
+  color: #b4bdd8;
+}
+
+.module-stub__body {
+  margin-top: 24px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px dashed rgba(180, 189, 216, 0.35);
+  background: rgba(13, 17, 31, 0.55);
+}
+
+.module-stub__body h3 {
+  margin: 0 0 8px 0;
+  color: #f0f3ff;
+  font-size: 1.05rem;
+}

@@ -54,11 +54,6 @@ It is an actively evolving foundation aimed at building a secure and extensible 
   - host metrics (`/metrics/current`);
   - admin dashboard metrics with RAM/network/disks/container memory breakdown;
   - buffered logs and live log stream via WebSocket.
-- Extend behavior with Plugin API v1:
-  - list/rescan plugin modules;
-  - plugin health checks;
-  - trigger `sync-users`;
-  - support in-process and gRPC plugin contract (`nebula_core/grpc/plugin_api_v1.proto`).
 
 > [!IMPORTANT]
 > Nebula Core (`:8000`) should not be exposed directly to the public Internet. Put it behind a reverse proxy, HTTPS, and firewall rules.
@@ -126,6 +121,23 @@ source .venv/bin/activate
 python -m nebula_core
 ```
 
+### 4.1 Optional: run Core as systemd service (recommended)
+
+```bash
+cd "$PROJECT_DIR"
+python3 install/main.py --core-service-install --core-service-name nebula-core
+```
+
+Quick terminal control:
+
+```bash
+./corectl.sh restart
+./corectl.sh status
+./corectl.sh logs
+```
+
+Detailed guide: `docs/CORE_SERVICE.md`.
+
 ### 5. Run initial admin setup
 
 ```bash
@@ -150,7 +162,12 @@ Open `http://127.0.0.1:5000`.
 
 - GUI: `http://127.0.0.1:5000`
 - Core API: `http://127.0.0.1:8000`
-- Plugin API docs: `docs/PLUGIN_API.md`
+
+## API Documentation
+
+- `docs/API_DOCS.md`
+- `docs/CORE_INSTALL_API.md`
+- `docs/PLUGIN_MANAGER_API.md`
 
 ## About Monolink Systems
 

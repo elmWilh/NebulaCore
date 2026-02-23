@@ -1,0 +1,199 @@
+/* nebula_gui_flask/static/css/pages/error.css
+ * Copyright (c) 2026 Monolink Systems
+ * Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+ */
+:root {
+  --bg0: #05070e;
+  --bg1: #0e1324;
+  --card: rgba(14, 18, 34, 0.82);
+  --border: rgba(130, 146, 255, 0.26);
+  --text: #eff2ff;
+  --muted: #b5bfdc;
+  --accent: #7d8dff;
+  --accent-strong: #5e72ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Inter", sans-serif;
+  background: radial-gradient(circle at 18% 15%, #16234a 0%, transparent 34%),
+              radial-gradient(circle at 82% 78%, #2a184c 0%, transparent 40%),
+              linear-gradient(150deg, var(--bg0), var(--bg1));
+  color: var(--text);
+}
+
+.error-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.error-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(36px);
+  opacity: 0.48;
+}
+
+.error-orb-a {
+  width: 320px;
+  height: 320px;
+  background: #5a74ff;
+  top: -90px;
+  left: -70px;
+}
+
+.error-orb-b {
+  width: 260px;
+  height: 260px;
+  background: #9f5eff;
+  right: -60px;
+  bottom: -70px;
+}
+
+.error-card {
+  width: min(840px, 100%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 1;
+}
+
+.error-topline {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #9fa9ce;
+}
+
+.error-code {
+  margin-top: 8px;
+  font-size: clamp(2.8rem, 10vw, 5.8rem);
+  font-weight: 800;
+  line-height: 1;
+  color: #d6ddff;
+  text-shadow: 0 0 30px rgba(125, 141, 255, 0.42);
+}
+
+h1 {
+  margin: 8px 0 0;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+
+.error-subtitle {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+
+.error-meta {
+  margin-top: 22px;
+  display: grid;
+  gap: 10px;
+}
+
+.meta-item {
+  border: 1px solid rgba(159, 175, 255, 0.2);
+  background: rgba(17, 23, 42, 0.64);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.meta-label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #95a1c7;
+}
+
+.meta-value {
+  display: block;
+  margin-top: 4px;
+  color: #edf1ff;
+  word-break: break-word;
+}
+
+.quote-box {
+  margin: 18px 0 0;
+  border-left: 3px solid var(--accent);
+  background: rgba(17, 21, 37, 0.72);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.quote-box i {
+  font-size: 1rem;
+  color: #9fb0ff;
+}
+
+.quote-box p {
+  margin: 8px 0 6px;
+  color: #e8edff;
+}
+
+.quote-box footer {
+  color: #9ca8d3;
+  font-size: 0.92rem;
+}
+
+.actions {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn {
+  text-decoration: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: 0.2s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(145deg, #6f82ff, var(--accent-strong));
+  color: #fff;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.btn-secondary {
+  border: 1px solid rgba(165, 177, 235, 0.33);
+  color: #dde5ff;
+  background: rgba(22, 27, 47, 0.66);
+}
+
+.btn-secondary:hover {
+  background: rgba(30, 36, 61, 0.75);
+}
+
+@media (max-width: 640px) {
+  .error-shell {
+    padding: 16px;
+  }
+
+  .error-card {
+    padding: 20px;
+    border-radius: 16px;
+  }
+}

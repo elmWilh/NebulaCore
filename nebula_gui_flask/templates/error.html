@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!--
+  nebula_gui_flask/templates/error.html
+  Copyright (c) 2026 Monolink Systems
+  Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ error_status }} {{ error_title }} • Nebula Panel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/error.css') }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body>
+  <main class="error-shell">
+    <div class="error-orb error-orb-a"></div>
+    <div class="error-orb error-orb-b"></div>
+    <section class="error-card">
+      <div class="error-topline">Nebula Control Plane</div>
+      <div class="error-code">{{ error_status }}</div>
+      <h1>{{ error_title }}</h1>
+      <p class="error-subtitle">{{ error_subtitle }}</p>
+
+      <div class="error-meta">
+        <div class="meta-item">
+          <span class="meta-label">Request Path</span>
+          <span class="meta-value">{{ request_path }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Hint</span>
+          <span class="meta-value">{{ error_hint }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Detail</span>
+          <span class="meta-value">{{ error_detail }}</span>
+        </div>
+      </div>
+
+      <blockquote class="quote-box">
+        <i class="bi bi-quote"></i>
+        <p>{{ error_quote }}</p>
+        <footer>{{ error_quote_author }}</footer>
+      </blockquote>
+
+      <div class="actions">
+        <a href="/" class="btn btn-primary"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        <a href="/login" class="btn btn-secondary"><i class="bi bi-box-arrow-in-right"></i> Login</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

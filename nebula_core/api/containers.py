@@ -427,13 +427,14 @@ async def update_container_permissions(container_id: str, data: dict, request: R
     if not await _can_access_container_async(username, db_name, True, container_id):
         raise HTTPException(status_code=403, detail="Access denied for this container")
     try:
-        policies = await _run_docker(
-            docker_service.set_container_role_policies,
+        result = await _run_docker(
+            docker_service.set_container_access_policies,
             container_id,
             (data or {}).get("role_policies"),
+            (data or {}).get("user_assignments"),
             username,
         )
-        return {"status": "updated", "container_id": container_id, "role_policies": policies}
+        return {"status": "updated", **result}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
