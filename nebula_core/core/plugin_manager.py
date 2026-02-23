@@ -359,6 +359,7 @@ class PluginManager:
 
         self.runtime_socket_dir = Path(self.config.get("runtime_socket_dir") or "/tmp/nebula/plugins").resolve()
         self.runtime_log_dir = Path(self.config.get("runtime_log_dir") or "/tmp/nebula/plugin-logs").resolve()
+        self.state_file = self._resolve_state_file(self.config.get("state_file") or "storage/plugins/state.json")
         self.runner_command = self._parse_runner_command(
             self.config.get("runner_command") or [sys.executable, "-m", "nebula_core.core.plugin_runner"]
         )
@@ -379,6 +380,7 @@ class PluginManager:
         self._plugins: Dict[str, PluginRecord] = {}
         self._health_task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
+        self._enabled_state: Dict[str, bool] = self._load_enabled_state()
 
         if bool(self.config.get("in_process_enabled", True)) and not self.dev_mode:
             logger.warning("In-process plugins are disabled outside DEV mode")
@@ -405,6 +407,73 @@ class PluginManager:
         if candidate.is_absolute():
             return candidate
         return (base / candidate).resolve()
+
+    @staticmethod
+    def _resolve_state_file(value: str) -> Path:
+        candidate = Path(str(value or "").strip() or "storage/plugins/state.json")
+        if candidate.is_absolute():
+            return candidate
+        return (Path(__file__).resolve().parents[2] / candidate).resolve()
+
+    def _load_enabled_state(self) -> Dict[str, bool]:
+        path = self.state_file
+        if not path.exists():
+            return {}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to read plugin state file %s: %s", path, exc)
+            return {}
+
+        if not isinstance(raw, dict):
+            return {}
+        plugins = raw.get("plugins", raw)
+        if not isinstance(plugins, dict):
+            return {}
+
+        out: Dict[str, bool] = {}
+        for name, item in plugins.items():
+            if not isinstance(name, str):
+                continue
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            if isinstance(item, dict):
+                enabled = bool(item.get("enabled", True))
+            else:
+                enabled = bool(item)
+            out[clean_name] = enabled
+        return out
+
+    def _save_enabled_state(self):
+        payload = {
+            "version": 1,
+            "plugins": {
+                name: {
+                    "enabled": bool(enabled),
+                    "updated_at": int(time.time()),
+                }
+                for name, enabled in sorted(self._enabled_state.items())
+            },
+        }
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.state_file.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=True, indent=2)
+        os.replace(tmp, self.state_file)
+
+    def _is_enabled(self, plugin_name: str) -> bool:
+        return bool(self._enabled_state.get(plugin_name, True))
+
+    def _set_enabled(self, plugin_name: str, enabled: bool):
+        clean_name = str(plugin_name or "").strip()
+        if not clean_name:
+            return
+        self._enabled_state[clean_name] = bool(enabled)
+        try:
+            self._save_enabled_state()
+        except Exception as exc:
+            logger.warning("Failed to persist plugin state for %s: %s", plugin_name, exc)
 
     async def initialize(self):
         if not self.enabled:
@@ -454,6 +523,7 @@ class PluginManager:
     async def rescan(self):
         if not self.enabled:
             return []
+        self._enabled_state = self._load_enabled_state()
         discovered: Dict[str, PluginRecord] = {}
 
         if self.in_process_enabled:
@@ -501,6 +571,7 @@ class PluginManager:
             rec.status = PLUGIN_STATE_DISABLED
             rec.message = "manually stopped"
             rec.updated_at = time.time()
+            self._set_enabled(name, False)
             return {"status": "stopped", "plugin": name}
 
         if op in {"start", "restart"}:
@@ -509,6 +580,7 @@ class PluginManager:
                     raise PluginError("Plugin runtime path is unknown")
                 await self._start_process_plugin(rec, Path(rec.runtime.plugin_dir))
                 await self._initialize_plugin(rec)
+                self._set_enabled(name, True)
                 return {"status": "started" if op == "start" else "restarted", "plugin": name}
 
             if rec.source in {"in_process", "grpc"}:
@@ -516,6 +588,7 @@ class PluginManager:
                 rec.status = PLUGIN_STATE_INITIALIZED
                 rec.message = f"manually {op}ed"
                 rec.updated_at = time.time()
+                self._set_enabled(name, True)
                 return {"status": "started" if op == "start" else "restarted", "plugin": name}
 
         raise PluginError("Action is not available for this plugin")
@@ -575,7 +648,12 @@ class PluginManager:
                     token_env=str(item.get("token_env") or "").strip(),
                     allow_remote=self.allow_remote_grpc,
                 )
-                await self._initialize_plugin(rec)
+                if self._is_enabled(name):
+                    await self._initialize_plugin(rec)
+                else:
+                    rec.status = PLUGIN_STATE_DISABLED
+                    rec.message = "disabled by persisted state"
+                    rec.updated_at = time.time()
             except Exception as exc:
                 rec.status = PLUGIN_STATE_DEGRADED
                 rec.error = str(exc)
@@ -621,9 +699,15 @@ class PluginManager:
                 continue
 
             rec = PluginRecord(name=name, source="process", manifest=manifest, runtime_version="plugin_runtime_v2")
+            rec.runtime.plugin_dir = str(entry)
             try:
-                await self._start_process_plugin(rec, entry)
-                await self._initialize_plugin(rec)
+                if self._is_enabled(name):
+                    await self._start_process_plugin(rec, entry)
+                    await self._initialize_plugin(rec)
+                else:
+                    rec.status = PLUGIN_STATE_DISABLED
+                    rec.message = "disabled by persisted state"
+                    rec.updated_at = time.time()
             except Exception as exc:
                 rec.status = PLUGIN_STATE_CRASHED
                 rec.error = str(exc)
@@ -666,7 +750,12 @@ class PluginManager:
 
                 module = self._import_plugin_module(name, plugin_file)
                 rec.plugin_obj = self._create_plugin_instance(module, name)
-                await self._initialize_plugin(rec)
+                if self._is_enabled(name):
+                    await self._initialize_plugin(rec)
+                else:
+                    rec.status = PLUGIN_STATE_DISABLED
+                    rec.message = "disabled by persisted state"
+                    rec.updated_at = time.time()
             except Exception as exc:
                 rec.status = PLUGIN_STATE_DEGRADED
                 rec.error = str(exc)
@@ -898,6 +987,7 @@ class PluginManager:
         if rec.consecutive_crashes >= self.max_crashes:
             rec.status = PLUGIN_STATE_DISABLED
             rec.message = "disabled after repeated crashes"
+            self._set_enabled(rec.name, False)
             logger.error("Plugin disabled after %d crashes: %s", rec.consecutive_crashes, rec.name)
 
     async def _maybe_restart(self, rec: PluginRecord, reason: str):
@@ -910,6 +1000,7 @@ class PluginManager:
             rec.message = "disabled after restart budget exhaustion"
             rec.error = f"restart budget exceeded ({self.max_restarts})"
             rec.updated_at = time.time()
+            self._set_enabled(rec.name, False)
             logger.error("Plugin disabled due to restart policy: %s", rec.name)
             return
 
