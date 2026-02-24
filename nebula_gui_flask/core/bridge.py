@@ -80,6 +80,7 @@ class NebulaBridge:
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if 'user_id' not in session or not session.get("core_session"):
+                session.clear()
                 return redirect(url_for('admin_login'))
             return f(*args, **kwargs)
         return decorated_function
@@ -122,6 +123,7 @@ class NebulaBridge:
             if r.status_code in [200, 303]:
                 core_session = r.cookies.get("nebula_session")
                 if not core_session:
+                    session.clear()
                     return False, "Core session not established"
                 session.permanent = True
                 session['user_id'] = admin_id
@@ -140,9 +142,14 @@ class NebulaBridge:
 
     def resolve_user_sector(self, username):
         try:
+            headers = {}
+            token = _resolve_internal_auth_key()
+            if token:
+                headers["x-nebula-token"] = token
             r = requests.get(
                 f"{self.core_url}/system/lookup", 
                 params={"username": username}, 
+                headers=headers or None,
                 timeout=3
             )
             if r.status_code == 200:
@@ -163,22 +170,26 @@ class NebulaBridge:
                 data=payload,
                 timeout=5
             )
+            response_data = {}
+            try:
+                response_data = r.json() if r.content else {}
+            except Exception:
+                response_data = {}
             if r.status_code == 200:
                 core_session = r.cookies.get("nebula_session")
                 if not core_session:
+                    session.clear()
                     return False, "Core session not established"
-                role_tag = self._resolve_role_tag(core_session, username, db_name) or "user"
+                resolved_db = str(response_data.get("db_name") or db_name or "system.db")
+                role_tag = self._resolve_role_tag(core_session, username, resolved_db) or "user"
                 session.permanent = True
                 session['user_id'] = username
                 session['is_staff'] = False
-                session['db_name'] = db_name
+                session['db_name'] = resolved_db
                 session['role_tag'] = role_tag
                 session['core_session'] = core_session
                 return True, None
-            try:
-                detail = r.json().get("detail", "INVALID_CREDENTIALS")
-            except Exception:
-                detail = "INVALID_CREDENTIALS"
+            detail = response_data.get("detail", "INVALID_CREDENTIALS") if isinstance(response_data, dict) else "INVALID_CREDENTIALS"
             return False, detail
         except Exception as e:
             return False, str(e)
@@ -259,7 +270,8 @@ class NebulaBridge:
         url = f"{self.core_url}{endpoint}"
         core_session = session.get("core_session")
         if not core_session:
-            return {"detail": "No active core session"}, 401
+            session.clear()
+            return {"detail": "SESSION_EXPIRED", "redirect": url_for("admin_login")}, 401
         cookies = {"nebula_session": core_session}
         
         try:
@@ -272,6 +284,9 @@ class NebulaBridge:
                 cookies=cookies,
                 timeout=timeout
             )
+            if r.status_code == 401:
+                session.clear()
+                return {"detail": "SESSION_EXPIRED", "redirect": url_for("admin_login")}, 401
             try:
                 return r.json(), r.status_code
             except:

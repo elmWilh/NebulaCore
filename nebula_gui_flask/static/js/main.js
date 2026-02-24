@@ -12,13 +12,16 @@ function updateMetrics() {
     const serversEl = document.getElementById('servers');
     const alertsEl = document.getElementById('alerts');
     const tasksEl = document.getElementById('tasks');
-
     if (!cpuEl && !ramEl && !diskEl && !networkEl && !containersEl && !serversEl && !alertsEl && !tasksEl) {
         return;
     }
 
     fetch('/api/metrics')
         .then(r => {
+            if (r.status === 401) {
+                window.location.href = '/login';
+                throw new Error('SESSION_EXPIRED');
+            }
             if (!r.ok) throw new Error();
             return r.json();
         })

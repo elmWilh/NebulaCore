@@ -5,7 +5,7 @@ import threading
 import time
 import uuid
 
-from flask import jsonify, request, session
+from flask import jsonify, request, session, url_for
 
 
 def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, run_deploy_job):
@@ -67,7 +67,8 @@ def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, ru
         started_by = session.get('user_id', 'unknown')
         core_session = session.get("core_session")
         if not core_session:
-            return jsonify({"detail": "No active core session"}), 401
+            session.clear()
+            return jsonify({"detail": "SESSION_EXPIRED", "redirect": url_for("admin_login")}), 401
         now = time.time()
 
         with deploy_jobs_lock:

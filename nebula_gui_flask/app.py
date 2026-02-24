@@ -340,6 +340,7 @@ def csrf_guard():
     if not request.path.startswith("/api/"):
         return None
     if "user_id" not in session:
+        session.clear()
         return None
 
     origin = request.headers.get("Origin")
@@ -659,14 +660,11 @@ def admin_login():
         # Always drop previous GUI session before a new login attempt to
         # prevent stale identity reuse after failed authentication.
         session.clear()
-        db_name, user_type = bridge.resolve_user_sector(username)
-        if not db_name:
-            _register_failed_login_attempt(client_ip)
-            return jsonify({"detail": "User not found"}), 401
-        if user_type == 'staff':
-            success, error = bridge.admin_auth(username, password, otp=otp)
-        else:
-            success, error = bridge.user_auth(username, password, db_name, otp=otp)
+        # 1) Try staff auth path first.
+        # 2) Fallback to user auth with Core-side safe auto-db discovery.
+        success, error = bridge.admin_auth(username, password, otp=otp)
+        if not success:
+            success, error = bridge.user_auth(username, password, "auto", otp=otp)
         if success:
             _clear_login_attempts(client_ip)
             return jsonify({"status": "success", "redirect": url_for('dashboard')})

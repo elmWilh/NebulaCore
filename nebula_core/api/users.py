@@ -7,6 +7,8 @@ import hashlib
 import hmac
 import secrets
 import logging
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Form, Response, Depends, Request
@@ -28,6 +30,12 @@ import pyotp
 router = APIRouter(prefix="/users", tags=["Users"])
 user_service = UserService()
 logger = logging.getLogger("nebula_core.users")
+
+LOGIN_RATE_WINDOW_SECONDS = int(os.getenv("NEBULA_CORE_LOGIN_WINDOW_SECONDS", "300"))
+LOGIN_RATE_MAX_ATTEMPTS = int(os.getenv("NEBULA_CORE_LOGIN_MAX_ATTEMPTS", "8"))
+LOGIN_RATE_LOCKOUT_SECONDS = int(os.getenv("NEBULA_CORE_LOGIN_LOCKOUT_SECONDS", "900"))
+_LOGIN_RATE_STATE = {}
+_LOGIN_RATE_LOCK = threading.Lock()
 
 
 def _session_from_request(request: Request):
@@ -139,6 +147,84 @@ def _resolve_user_location_for_reset(username: str, db_name: str = ""):
 def _resolve_requester_ip(request: Request) -> str:
     forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
     return forwarded or (request.client.host if request.client else "")
+
+
+def _login_rate_keys(request: Request, username: str):
+    ip = _resolve_requester_ip(request) or "unknown"
+    user = str(username or "").strip().lower()[:96] or "unknown"
+    return [f"ip:{ip}", f"user:{ip}:{user}"]
+
+
+def _login_rate_retry_after(keys: list[str]) -> int:
+    now = time.time()
+    window_start = now - max(30, LOGIN_RATE_WINDOW_SECONDS)
+    retry_after = 0
+    with _LOGIN_RATE_LOCK:
+        for key in keys:
+            state = _LOGIN_RATE_STATE.get(key)
+            if not state:
+                continue
+            failures = [ts for ts in state.get("failures", []) if ts >= window_start]
+            lock_until = float(state.get("lock_until", 0) or 0)
+            if lock_until > now:
+                retry_after = max(retry_after, int(lock_until - now))
+                _LOGIN_RATE_STATE[key] = {"failures": failures, "lock_until": lock_until}
+                continue
+            if failures:
+                _LOGIN_RATE_STATE[key] = {"failures": failures, "lock_until": 0}
+            else:
+                _LOGIN_RATE_STATE.pop(key, None)
+    return retry_after
+
+
+def _login_rate_fail(keys: list[str]):
+    now = time.time()
+    window_start = now - max(30, LOGIN_RATE_WINDOW_SECONDS)
+    with _LOGIN_RATE_LOCK:
+        for key in keys:
+            state = _LOGIN_RATE_STATE.get(key, {"failures": [], "lock_until": 0})
+            failures = [ts for ts in state.get("failures", []) if ts >= window_start]
+            failures.append(now)
+            lock_until = float(state.get("lock_until", 0) or 0)
+            if len(failures) >= max(3, LOGIN_RATE_MAX_ATTEMPTS):
+                lock_until = now + max(30, LOGIN_RATE_LOCKOUT_SECONDS)
+                failures = []
+            _LOGIN_RATE_STATE[key] = {"failures": failures, "lock_until": lock_until}
+
+
+def _login_rate_success(keys: list[str]):
+    with _LOGIN_RATE_LOCK:
+        for key in keys:
+            _LOGIN_RATE_STATE.pop(key, None)
+
+
+def _fetch_client_login_row(db_name: str, username: str):
+    normalized_db = normalize_client_db_name(db_name)
+    db_path, resolved_db = resolve_client_db_path(normalized_db)
+    available = {name.lower() for name in list_client_databases()}
+    if resolved_db.lower() not in available:
+        return None, None
+
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "password_hash" not in cols:
+            return None, None
+        select_cols = ["id", "username", "password_hash", "is_active", "is_staff"]
+        if "password_set_required" in cols:
+            select_cols.append("password_set_required")
+        if "two_factor_secret" in cols:
+            select_cols.append("two_factor_secret")
+        if "two_factor_enabled" in cols:
+            select_cols.append("two_factor_enabled")
+        row = conn.execute(
+            f"SELECT {', '.join(select_cols)} FROM users WHERE username=?",
+            (username,),
+        ).fetchone()
+        return row, resolved_db
+    finally:
+        conn.close()
 
 @router.get("/databases")
 def get_available_databases(_=Depends(verify_staff_or_internal)):
@@ -314,6 +400,7 @@ def user_detail(
 
 @router.post("/login")
 def login(
+    request: Request,
     response: Response,
     username: str = Form(...),
     password: str = Form(...),
@@ -321,40 +408,40 @@ def login(
     db_name: str = Query("system.db")
 ):
     secure_cookie = os.getenv("NEBULA_COOKIE_SECURE", "false").strip().lower() == "true"
+    rate_keys = _login_rate_keys(request, username)
+    retry_after = _login_rate_retry_after(rate_keys)
+    if retry_after > 0:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many login attempts. Try again in {retry_after}s",
+            headers={"Retry-After": str(retry_after)},
+        )
     try:
-        resolved_db = db_name
-        if db_name == "system.db":
-            with get_connection(SYSTEM_DB) as conn:
-                row = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-        else:
-            normalized_db = normalize_client_db_name(db_name)
-            db_path, resolved_db = resolve_client_db_path(normalized_db)
-            available = {name.lower() for name in list_client_databases()}
-            if resolved_db.lower() not in available:
-                raise HTTPException(status_code=401, detail="Invalid Identity or Security Key")
+        requested_db = str(db_name or "").strip() or "system.db"
+        auto_lookup = requested_db.lower() in {"auto", "*", "any"}
+        candidate_dbs = ["system.db"] + list_client_databases() if auto_lookup else [requested_db]
 
-            # Login must not mutate client DB schema; open in read-only mode.
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-            conn.row_factory = sqlite3.Row
+        row = None
+        resolved_db = "system.db"
+        for candidate in candidate_dbs:
             try:
-                cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-                if "password_hash" not in cols:
-                    raise HTTPException(status_code=401, detail="Invalid Identity or Security Key")
-                select_cols = ["id", "username", "password_hash", "is_active", "is_staff"]
-                if "password_set_required" in cols:
-                    select_cols.append("password_set_required")
-                if "two_factor_secret" in cols:
-                    select_cols.append("two_factor_secret")
-                if "two_factor_enabled" in cols:
-                    select_cols.append("two_factor_enabled")
-                row = conn.execute(
-                    f"SELECT {', '.join(select_cols)} FROM users WHERE username=?",
-                    (username,),
-                ).fetchone()
-            finally:
-                conn.close()
+                if candidate == "system.db":
+                    with get_connection(SYSTEM_DB) as conn:
+                        probe = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+                    probe_db = "system.db"
+                else:
+                    probe, probe_db = _fetch_client_login_row(candidate, username)
+                if not probe:
+                    continue
+                if not user_service.verify_password(password, probe["password_hash"]):
+                    continue
+                row = probe
+                resolved_db = probe_db
+                break
+            except Exception:
+                continue
 
-        if not row or not user_service.verify_password(password, row["password_hash"]):
+        if not row:
             raise HTTPException(status_code=401, detail="Invalid Identity or Security Key")
         if bool(row["password_set_required"]) if "password_set_required" in row.keys() else False:
             raise HTTPException(status_code=403, detail="PASSWORD_RESET_REQUIRED")
@@ -376,10 +463,14 @@ def login(
             samesite="Lax",
             secure=secure_cookie,
         )
-        return {"status": "authorized", "redirect": "/dashboard"}
-    except HTTPException:
+        _login_rate_success(rate_keys)
+        return {"status": "authorized", "redirect": "/dashboard", "db_name": resolved_db}
+    except HTTPException as exc:
+        if exc.status_code != 429:
+            _login_rate_fail(rate_keys)
         raise
     except Exception:
+        _login_rate_fail(rate_keys)
         raise HTTPException(status_code=401, detail="Invalid Identity or Security Key")
 
 

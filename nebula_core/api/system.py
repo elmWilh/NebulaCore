@@ -3,9 +3,10 @@
 # Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
 import sqlite3
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from ..core.system_info import get_system_info
 from ..db import SYSTEM_DB, CLIENTS_DIR, get_connection
+from .security import verify_staff_or_internal
 
 router = APIRouter(prefix="/system", tags=["System"])
 
@@ -14,7 +15,10 @@ async def system_status():
     return {"status": "ok", "system": get_system_info()}
 
 @router.get("/lookup")
-async def resolve_user_location(username: str = Query(...)):
+async def resolve_user_location(
+    username: str = Query(...),
+    _=Depends(verify_staff_or_internal),
+):
     try:
         with get_connection(SYSTEM_DB) as conn:
             admin = conn.execute(

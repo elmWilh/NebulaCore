@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "plugins": {
+    "ad_migration_demo": {
+      "enabled": false,
+      "updated_at": 1771893093
+    },
+    "sample_sync": {
+      "enabled": false,
+      "updated_at": 1771893093
+    }
+  }
+}
