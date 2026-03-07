@@ -10,6 +10,8 @@ import os
 import re
 import shutil
 import json
+import io
+import tarfile
 from ..db import get_connection, SYSTEM_DB
 from ..core.context import context
 
@@ -1408,6 +1410,59 @@ class DockerService:
             "path": target,
             "content": output,
             "truncated": len(output.encode("utf-8", errors="ignore")) >= limit,
+        }
+
+    def write_file(self, container_id: str, path: str, content: str, max_bytes: int = 500000):
+        if not self.available or self.client is None:
+            if not self.ensure_client():
+                raise RuntimeError("Docker daemon not available")
+        try:
+            container = self.client.containers.get(container_id)
+        except docker.errors.NotFound:
+            raise RuntimeError("Container not found")
+
+        allowed_roots = self._workspace_roots_for_container(container)
+        target = self._normalize_explorer_path(path)
+        if not target:
+            raise RuntimeError("Path is required")
+        if not self._is_allowed_explorer_path(target, allowed_roots):
+            raise RuntimeError("Access outside workspace paths is blocked")
+
+        payload = (content or "").encode("utf-8")
+        limit = max(1024, min(int(max_bytes), 1000000))
+        if len(payload) > limit:
+            raise RuntimeError(f"File content exceeds write limit ({limit} bytes)")
+
+        parent = posixpath.dirname(target) or "/"
+        file_name = posixpath.basename(target)
+        if not file_name or file_name in (".", ".."):
+            raise RuntimeError("Target file path is invalid")
+
+        parent_q = shlex.quote(parent)
+        rc, output = self._exec_shell(
+            container,
+            f"if [ -d {parent_q} ] && [ -w {parent_q} ]; then :; else echo '__NEBULA_DIR_NOT_WRITABLE__'; exit 47; fi"
+        )
+        if rc == 47 or "__NEBULA_DIR_NOT_WRITABLE__" in output:
+            raise RuntimeError("Target directory is not writable in this container")
+
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w") as archive:
+            info = tarfile.TarInfo(name=file_name)
+            info.size = len(payload)
+            info.mtime = int(time.time())
+            info.mode = 0o644
+            archive.addfile(info, io.BytesIO(payload))
+        stream.seek(0)
+
+        ok = container.put_archive(parent, stream.getvalue())
+        if not ok:
+            raise RuntimeError("Failed to write file content to container filesystem")
+
+        return {
+            "id": container.id[:12],
+            "path": target,
+            "bytes": len(payload),
         }
 
     @staticmethod

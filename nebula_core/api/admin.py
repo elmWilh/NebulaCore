@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Monolink Systems
 # Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
+import re
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Header, Depends, Request, Form, Response
 from fastapi.responses import HTMLResponse
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/system/internal/core", tags=["System-Security"])
 user_service = UserService()
 
 INTERNAL_AUTH_KEY = os.getenv("NEBULA_INSTALLER_TOKEN", "LOCAL_DEV_KEY_2026")
+TOTP_VALID_WINDOW = max(1, min(int(os.getenv("NEBULA_TOTP_VALID_WINDOW", "2")), 5))
 
 AdminUsername = Annotated[str, StringConstraints(
     min_length=5, 
@@ -38,6 +40,19 @@ class AdminUpdate(BaseModel):
 
 class MailTestRequest(BaseModel):
     email: str
+
+
+def _normalize_otp_code(raw_code: str) -> str:
+    return re.sub(r"\D", "", str(raw_code or ""))
+
+
+def _verify_totp_code(secret: str, raw_code: str) -> bool:
+    if not secret:
+        return False
+    code = _normalize_otp_code(raw_code)
+    if len(code) != 6:
+        return False
+    return bool(pyotp.TOTP(str(secret).strip()).verify(code, valid_window=TOTP_VALID_WINDOW))
 
 def verify_internal_access(x_nebula_token: str = Header(None)):
     if not x_nebula_token or x_nebula_token != INTERNAL_AUTH_KEY:
@@ -67,7 +82,7 @@ async def process_login(
         if bool(user["two_factor_enabled"]):
             if not otp or len(otp.strip()) == 0:
                 raise HTTPException(status_code=401, detail="2FA_REQUIRED")
-            if not user["two_factor_secret"] or not pyotp.TOTP(user["two_factor_secret"]).verify(otp.strip(), valid_window=1):
+            if not _verify_totp_code(user["two_factor_secret"], otp):
                 raise HTTPException(status_code=401, detail="INVALID_2FA_CODE")
 
         secure_cookie = os.getenv("NEBULA_COOKIE_SECURE", "false").strip().lower() == "true"

@@ -98,32 +98,54 @@
 </div>
 
 <div id="twofa-modal" class="modal-overlay" onclick="if(event.target===this){close2FAModal();}">
-    <div class="modal-content" style="max-width: 560px; width: 92%;">
-        <div class="modal-header">
-            <h3 style="margin: 0; color: white; font-size: 1rem;">Two-Factor Authentication</h3>
-            <button class="btn-secondary" onclick="close2FAModal()"><i class="bi bi-x-lg"></i></button>
+    <div class="modal-content twofa-modal-card">
+        <div class="modal-header twofa-modal-header">
+            <div class="twofa-heading">
+                <h3>Two-Factor Authentication</h3>
+                <p>Protect this account with time-based one-time codes.</p>
+            </div>
+            <button class="btn-secondary twofa-close-btn" onclick="close2FAModal()"><i class="bi bi-x-lg"></i></button>
         </div>
-        <div style="padding: 16px;">
-            <div id="twofa-status" style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 14px;">Loading status...</div>
-            <div id="twofa-setup-box" style="display:none;">
-                <p style="margin: 0 0 12px; color: #d1d1d1; font-size: 0.86rem;">
-                    1) Scan QR in Google Authenticator, 2) enter 6-digit code to confirm.
-                </p>
-                <div id="twofa-qr" style="width:220px;height:220px;background:white;padding:8px;border-radius:10px;margin-bottom:10px;"></div>
-                <code id="twofa-secret" style="display:block; margin-bottom:12px; color:#4ade80; font-size:0.78rem;"></code>
-                <div style="display:flex; gap:8px;">
-                    <input id="twofa-code" type="text" maxlength="6" placeholder="123456" style="flex:1; background:#050507;border:1px solid var(--border);color:white;border-radius:10px;padding:10px 12px;">
-                    <button class="add-user-btn" onclick="confirm2FA()">Confirm</button>
+        <div class="twofa-modal-body">
+            <div id="twofa-status" class="twofa-status-chip is-loading">Loading status...</div>
+            <div class="twofa-info-banner">
+                Use Google Authenticator. Scan QR code, then enter the current 6-digit code in `123-456` format.
+            </div>
+
+            <div id="twofa-setup-box" class="twofa-section" style="display:none;">
+                <div class="twofa-qr-shell">
+                    <div id="twofa-qr" class="twofa-qr-box"></div>
+                    <code id="twofa-secret" class="twofa-secret"></code>
+                </div>
+                <div class="twofa-input-stack">
+                    <div class="twofa-code-grid">
+                        <input id="twofa-code-1" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-code-2" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-code-3" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-code-4" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-code-5" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-code-6" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                    </div>
+                    <button class="add-user-btn twofa-enable-btn" onclick="confirm2FA()">Enable 2FA</button>
                 </div>
             </div>
-            <div id="twofa-disable-box" style="display:none;">
-                <p style="margin: 0 0 10px; color: #d1d1d1; font-size: 0.86rem;">2FA enabled. Enter current code to disable.</p>
-                <div style="display:flex; gap:8px;">
-                    <input id="twofa-disable-code" type="text" maxlength="6" placeholder="123456" style="flex:1; background:#050507;border:1px solid var(--border);color:white;border-radius:10px;padding:10px 12px;">
+
+            <div id="twofa-disable-box" class="twofa-section" style="display:none;">
+                <p class="twofa-help">2FA is active. Enter a current authenticator code to disable.</p>
+                <div class="twofa-input-stack">
+                    <div class="twofa-code-grid">
+                        <input id="twofa-disable-code-1" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-disable-code-2" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-disable-code-3" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-disable-code-4" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-disable-code-5" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                        <input id="twofa-disable-code-6" class="twofa-code-digit" type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code">
+                    </div>
                     <button class="btn-secondary" onclick="disable2FA()">Disable</button>
                 </div>
             </div>
-            <div id="twofa-error" style="display:none; margin-top:10px; color:#ff6b6b; font-size:0.82rem;"></div>
+
+            <div id="twofa-error" class="twofa-error" style="display:none;"></div>
         </div>
     </div>
 </div>

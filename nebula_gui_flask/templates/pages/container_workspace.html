@@ -291,7 +291,10 @@ window.NebulaWorkspace = {
         <div class="preview-header">
             <span id="preview-path-title">File Preview</span>
             <div class="inline-actions">
-                <button class="chip-btn" onclick="copyText('file-preview')"><i class="bi bi-clipboard"></i> Copy</button>
+                <button id="preview-copy-btn" class="chip-btn" onclick="copyPreviewText()"><i class="bi bi-clipboard"></i> Copy</button>
+                <button id="preview-edit-btn" class="chip-btn" onclick="editTextFile()"><i class="bi bi-pencil"></i> Edit</button>
+                <button id="preview-download-btn" class="chip-btn" onclick="downloadFile()"><i class="bi bi-download"></i> Download</button>
+                <button id="preview-save-btn" class="chip-btn" onclick="saveFile()"><i class="bi bi-save"></i> Save</button>
                 <button class="chip-btn" onclick="closeFilePreviewModal()"><i class="bi bi-x-lg"></i> Close</button>
             </div>
         </div>

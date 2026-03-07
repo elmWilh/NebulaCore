@@ -2,8 +2,11 @@
 # Copyright (c) 2026 Monolink Systems
 # Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import asyncio
+import posixpath
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi.responses import Response
 from ..services.docker_service import DockerService
 from ..core.context import context
 from ..db import get_connection, SYSTEM_DB
@@ -256,6 +259,65 @@ async def read_container_file(
         perms = await _effective_permissions(username, db_name, is_staff, container_id)
         _forbidden_if(not perms.get("allow_explorer", True), "File explorer access is disabled for your role")
         return await _run_docker(docker_service.read_file, container_id, path=path, max_bytes=max_bytes)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/download-file/{container_id}")
+async def download_container_file(
+    container_id: str,
+    request: Request,
+    path: str = Query(...),
+    max_bytes: int = Query(500000)
+):
+    username, db_name, is_staff = _session_from_request(request)
+    if not await _can_access_container_async(username, db_name, is_staff, container_id):
+        raise HTTPException(status_code=403, detail="Access denied for this container")
+    try:
+        perms = await _effective_permissions(username, db_name, is_staff, container_id)
+        _forbidden_if((not is_staff) and (not perms.get("allow_explorer", True)), "File explorer access is disabled for your role")
+        _forbidden_if(not (is_staff or perms.get("allow_edit_files", False)), "File download is disabled for your role")
+        data = await _run_docker(docker_service.read_file, container_id, path=path, max_bytes=max_bytes)
+        if data.get("truncated"):
+            raise HTTPException(status_code=413, detail="File is too large to download from this panel")
+        target = data.get("path") or path
+        file_name = posixpath.basename(target) or "file.txt"
+        header_name = quote(file_name, safe="")
+        return Response(
+            content=(data.get("content") or "").encode("utf-8", errors="replace"),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{header_name}"},
+        )
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/save-file/{container_id}")
+async def save_container_file(
+    container_id: str,
+    request: Request,
+    data: dict,
+    path: str = Query(...)
+):
+    username, db_name, is_staff = _session_from_request(request)
+    if not await _can_access_container_async(username, db_name, is_staff, container_id):
+        raise HTTPException(status_code=403, detail="Access denied for this container")
+    try:
+        perms = await _effective_permissions(username, db_name, is_staff, container_id)
+        _forbidden_if((not is_staff) and (not perms.get("allow_explorer", True)), "File explorer access is disabled for your role")
+        _forbidden_if(not (is_staff or perms.get("allow_edit_files", False)), "File write access is disabled for your role")
+        content = (data or {}).get("content", "")
+        if not isinstance(content, str):
+            raise HTTPException(status_code=400, detail="File content must be text")
+        result = await _run_docker(docker_service.write_file, container_id, path=path, content=content)
+        result["saved_by"] = username
+        return result
+    except HTTPException:
+        raise
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

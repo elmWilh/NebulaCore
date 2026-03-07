@@ -15,6 +15,26 @@ let latestLogsText = '';
 let consoleEvents = [];
 let availablePorts = [];
 let currentConsoleMode = 'console';
+let activePreviewPath = '';
+let previewEditMode = false;
+let previewDirty = false;
+
+function canManageFileContent() {
+    const isStaff = !!(profilePolicy && profilePolicy.is_staff);
+    if (isStaff) return true;
+    return !!(accessPolicy && accessPolicy.allow_edit_files === true);
+}
+
+function updateFilePreviewActions() {
+    const editBtn = document.getElementById('preview-edit-btn');
+    const downloadBtn = document.getElementById('preview-download-btn');
+    const saveBtn = document.getElementById('preview-save-btn');
+    const hasPath = !!activePreviewPath;
+    const canManage = canManageFileContent();
+    if (editBtn) editBtn.disabled = !hasPath || !canManage;
+    if (downloadBtn) downloadBtn.disabled = !hasPath || !canManage;
+    if (saveBtn) saveBtn.disabled = !hasPath || !canManage || !previewEditMode || !previewDirty;
+}
 
 function showToast(message, level = 'ok', lifeMs = 2600) {
     const zone = document.getElementById('toast-zone');
@@ -436,6 +456,7 @@ function applyWorkspacePermissions() {
     if (runBtn && policy.allow_console === false && policy.allow_shell === false) {
         runBtn.disabled = true;
     }
+    updateFilePreviewActions();
 }
 
 async function containerAction(action) {
@@ -711,15 +732,21 @@ async function previewFile(path) {
     const modal = document.getElementById('file-preview-modal');
     const pre = document.getElementById('file-preview');
     const title = document.getElementById('preview-path-title');
-    title.textContent = path;
+    activePreviewPath = (path || '').trim();
+    previewEditMode = false;
+    previewDirty = false;
+    title.textContent = activePreviewPath || 'File Preview';
     modal.style.display = 'flex';
-    pre.textContent = `Reading ${path}...`;
+    pre.contentEditable = 'false';
+    pre.oninput = null;
+    pre.textContent = `Reading ${activePreviewPath}...`;
+    updateFilePreviewActions();
 
     try {
-        const data = await apiJson(`/api/containers/file-content/${containerId}?path=${encodeURIComponent(path)}&max_bytes=200000`);
+        const data = await apiJson(`/api/containers/file-content/${containerId}?path=${encodeURIComponent(activePreviewPath)}&max_bytes=200000`);
         const trunc = data.truncated ? '\n\n--- file truncated ---' : '';
         pre.textContent = `${data.content || '(empty file)'}${trunc}`;
-        setStatus(`Previewing ${path}`);
+        setStatus(`Previewing ${activePreviewPath}`);
     } catch (e) {
         pre.textContent = `Cannot read file: ${e.message}`;
     }
@@ -727,7 +754,122 @@ async function previewFile(path) {
 
 function closeFilePreviewModal() {
     const modal = document.getElementById('file-preview-modal');
+    const pre = document.getElementById('file-preview');
+    activePreviewPath = '';
+    previewEditMode = false;
+    previewDirty = false;
+    pre.contentEditable = 'false';
+    pre.oninput = null;
     modal.style.display = 'none';
+    updateFilePreviewActions();
+}
+
+function copyPreviewText() {
+    copyText('file-preview');
+}
+
+function downloadFile(path = activePreviewPath) {
+    const target = (path || activePreviewPath || '').trim();
+    if (!target) {
+        showToast('No file selected for download.', 'warn');
+        return;
+    }
+    if (!canManageFileContent()) {
+        showToast('Download is allowed only for users with file write permission.', 'warn');
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = `/api/containers/download-file/${containerId}?path=${encodeURIComponent(target)}`;
+    link.download = target.split('/').pop() || 'file';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast('Download started.', 'ok', 1400);
+}
+
+function editTextFile(path = activePreviewPath) {
+    const target = (path || activePreviewPath || '').trim();
+    if (!target) {
+        showToast('No file selected for editing.', 'warn');
+        return;
+    }
+    if (!canManageFileContent()) {
+        showToast('Editing is allowed only for users with file write permission.', 'warn');
+        return;
+    }
+    const modal = document.getElementById('file-preview-modal');
+    const pre = document.getElementById('file-preview');
+    const title = document.getElementById('preview-path-title');
+    activePreviewPath = target;
+    previewEditMode = true;
+    previewDirty = false;
+    title.textContent = `Editing ${target}`;
+    modal.style.display = 'flex';
+    pre.contentEditable = 'true';
+    pre.textContent = `Loading ${target}...`;
+    pre.oninput = () => {
+        previewDirty = true;
+        updateFilePreviewActions();
+    };
+    updateFilePreviewActions();
+    
+    (async () => {
+        try {
+            const data = await apiJson(`/api/containers/file-content/${containerId}?path=${encodeURIComponent(target)}&max_bytes=500000`);
+            pre.textContent = data.content || '';
+            previewDirty = false;
+            updateFilePreviewActions();
+            setStatus(`Editing ${target}`);
+        } catch (e) {
+            pre.textContent = `Cannot load file for editing: ${e.message}`;
+            previewEditMode = false;
+            previewDirty = false;
+            pre.contentEditable = 'false';
+            updateFilePreviewActions();
+        }
+    })();
+}
+
+async function saveFile() {
+    if (!activePreviewPath) {
+        showToast('No file selected for saving.', 'warn');
+        return;
+    }
+    if (!previewEditMode) {
+        showToast('Enable edit mode before saving.', 'warn');
+        return;
+    }
+    if (!canManageFileContent()) {
+        showToast('Saving is allowed only for users with file write permission.', 'warn');
+        return;
+    }
+    const pre = document.getElementById('file-preview');
+    const saveBtn = document.getElementById('preview-save-btn');
+    if (!saveBtn) {
+        showToast('Save control is unavailable in UI.', 'error');
+        return;
+    }
+    const newContent = pre.textContent || '';
+    saveBtn.disabled = true;
+    const oldText = saveBtn.textContent;
+    saveBtn.textContent = 'Saving...';
+    try {
+        await apiJson(`/api/containers/save-file/${containerId}?path=${encodeURIComponent(activePreviewPath)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: newContent })
+        });
+        previewDirty = false;
+        updateFilePreviewActions();
+        showToast('File saved.', 'ok');
+        setStatus(`Saved ${activePreviewPath}`);
+        await loadFiles();
+    } catch (e) {
+        showToast(`Failed to save file: ${e.message}`, 'error');
+    } finally {
+        saveBtn.textContent = oldText || 'Save';
+        updateFilePreviewActions();
+    }
 }
 
 function goParentDir() {
@@ -910,6 +1052,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     configureToolbox('generic');
     configureStartupCommandHint('generic');
     configureConsoleMode('console', 'generic');
+    updateFilePreviewActions();
     await loadContainerMeta();
     await loadProfilePolicy();
     await initWorkspaceRoots();

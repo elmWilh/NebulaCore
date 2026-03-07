@@ -57,6 +57,14 @@ async def create_directory(path: str, _=Depends(verify_staff_or_internal)):
     except PermissionError:
         raise HTTPException(status_code=403, detail=f"Access denied for {path}")
 
+@router.put("/dir/{path:path}")
+async def write_text_file(path: str, file: FileContent, _=Depends(verify_staff_or_internal)):
+    try:
+        await context.runtime.get_service("file_service").write_file(path, file.content)
+        return {"status": "ok", "path": path}
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"Access denied for {path}")
+    
 @router.delete("/dir/{path:path}")
 async def delete_directory(path: str, _=Depends(verify_staff_or_internal)):
     try:

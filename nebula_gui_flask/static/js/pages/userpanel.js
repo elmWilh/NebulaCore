@@ -5,6 +5,88 @@
 let panelData = null;
 let twoFAEnabled = false;
 
+function sanitizeOtpInputValue(value) {
+    return String(value || '').replace(/\D/g, '').slice(0, 6);
+}
+
+function sanitizeOtpPart(value) {
+    return String(value || '').replace(/\D/g, '').slice(0, 1);
+}
+
+function readSplitCode(prefix) {
+    const digits = [];
+    for (let i = 1; i <= 6; i += 1) {
+        const field = document.getElementById(`${prefix}-${i}`);
+        const val = sanitizeOtpPart(field ? field.value : '');
+        if (field) field.value = val;
+        digits.push(val);
+    }
+    return digits.join('');
+}
+
+function resetSplitCode(prefix) {
+    for (let i = 1; i <= 6; i += 1) {
+        const field = document.getElementById(`${prefix}-${i}`);
+        if (field) field.value = '';
+    }
+}
+
+function bindSplitOtpInputs(prefix) {
+    const fields = [];
+    for (let i = 1; i <= 6; i += 1) {
+        const field = document.getElementById(`${prefix}-${i}`);
+        if (field) fields.push(field);
+    }
+    if (fields.length !== 6) return;
+    fields.forEach((field, idx) => {
+        field.addEventListener('input', () => {
+            field.value = sanitizeOtpPart(field.value);
+            if (field.value && idx < fields.length - 1) {
+                fields[idx + 1].focus();
+            }
+        });
+        field.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !field.value && idx > 0) {
+                fields[idx - 1].focus();
+            }
+            if (e.key === 'ArrowLeft' && idx > 0) {
+                fields[idx - 1].focus();
+            }
+            if (e.key === 'ArrowRight' && idx < fields.length - 1) {
+                fields[idx + 1].focus();
+            }
+        });
+        field.addEventListener('paste', (e) => {
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            const digits = sanitizeOtpInputValue(text);
+            if (digits.length !== 6) return;
+            e.preventDefault();
+            for (let i = 0; i < 6; i += 1) {
+                fields[i].value = digits[i];
+            }
+            fields[5].focus();
+        });
+    });
+}
+
+function render2FAStatusChip(enabled, loading = false) {
+    const status = document.getElementById('twofa-status');
+    if (!status) return;
+    status.classList.remove('is-enabled', 'is-disabled', 'is-loading');
+    if (loading) {
+        status.classList.add('is-loading');
+        status.textContent = 'Status: loading...';
+        return;
+    }
+    if (enabled) {
+        status.classList.add('is-enabled');
+        status.textContent = 'Status: enabled';
+        return;
+    }
+    status.classList.add('is-disabled');
+    status.textContent = 'Status: disabled';
+}
+
 function statusClass(status) {
     return String(status || '').toLowerCase() === 'running' ? 'status-running' : 'status-stopped';
 }
@@ -155,8 +237,9 @@ function close2FAModal() {
 async function open2FAModal() {
     clear2FAError();
     document.getElementById('twofa-modal').style.display = 'flex';
+    render2FAStatusChip(false, true);
     await refresh2FAStatus();
-    document.getElementById('twofa-status').textContent = twoFAEnabled ? 'Status: enabled' : 'Status: disabled';
+    render2FAStatusChip(twoFAEnabled, false);
     document.getElementById('twofa-disable-box').style.display = twoFAEnabled ? 'block' : 'none';
     document.getElementById('twofa-setup-box').style.display = twoFAEnabled ? 'none' : 'block';
     if (!twoFAEnabled) {
@@ -184,7 +267,7 @@ async function setup2FA() {
 
 async function confirm2FA() {
     clear2FAError();
-    const code = document.getElementById('twofa-code').value.trim();
+    const code = sanitizeOtpInputValue(readSplitCode('twofa-code'));
     const res = await fetch('/api/user/2fa/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -196,14 +279,14 @@ async function confirm2FA() {
         return;
     }
     await refresh2FAStatus();
-    document.getElementById('twofa-status').textContent = 'Status: enabled';
+    render2FAStatusChip(true, false);
     document.getElementById('twofa-disable-box').style.display = 'block';
     document.getElementById('twofa-setup-box').style.display = 'none';
 }
 
 async function disable2FA() {
     clear2FAError();
-    const code = document.getElementById('twofa-disable-code').value.trim();
+    const code = sanitizeOtpInputValue(readSplitCode('twofa-disable-code'));
     const res = await fetch('/api/user/2fa/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -215,20 +298,21 @@ async function disable2FA() {
         return;
     }
     await refresh2FAStatus();
-    document.getElementById('twofa-status').textContent = 'Status: disabled';
+    render2FAStatusChip(false, false);
     document.getElementById('twofa-disable-box').style.display = 'none';
     document.getElementById('twofa-setup-box').style.display = 'block';
-    document.getElementById('twofa-disable-code').value = '';
+    resetSplitCode('twofa-disable-code');
     await setup2FA();
 }
 
 document.getElementById('btn-2fa').addEventListener('click', open2FAModal);
 
 document.addEventListener('DOMContentLoaded', async () => {
+    bindSplitOtpInputs('twofa-code');
+    bindSplitOtpInputs('twofa-disable-code');
     try {
         await loadUserPanel();
     } catch (e) {
         document.getElementById('containers-tbody').innerHTML = `<tr><td colspan="5" style="padding:20px;color:#ff6b6b;">${e.message}</td></tr>`;
     }
 });
-

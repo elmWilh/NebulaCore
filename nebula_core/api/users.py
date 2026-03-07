@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Monolink Systems
 # Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
+import re
 import sqlite3
 import hashlib
 import hmac
@@ -36,6 +37,7 @@ LOGIN_RATE_MAX_ATTEMPTS = int(os.getenv("NEBULA_CORE_LOGIN_MAX_ATTEMPTS", "8"))
 LOGIN_RATE_LOCKOUT_SECONDS = int(os.getenv("NEBULA_CORE_LOGIN_LOCKOUT_SECONDS", "900"))
 _LOGIN_RATE_STATE = {}
 _LOGIN_RATE_LOCK = threading.Lock()
+TOTP_VALID_WINDOW = max(1, min(int(os.getenv("NEBULA_TOTP_VALID_WINDOW", "2")), 5))
 
 
 def _session_from_request(request: Request):
@@ -84,6 +86,19 @@ def _db_name_variants(db_name: str):
     else:
         variants.add(f"{raw}.db")
     return [v for v in variants if v]
+
+
+def _normalize_otp_code(raw_code: str) -> str:
+    return re.sub(r"\D", "", str(raw_code or ""))
+
+
+def _verify_totp_code(secret: str, raw_code: str) -> bool:
+    if not secret:
+        return False
+    code = _normalize_otp_code(raw_code)
+    if len(code) != 6:
+        return False
+    return bool(pyotp.TOTP(str(secret).strip()).verify(code, valid_window=TOTP_VALID_WINDOW))
 
 
 def _hash_reset_code(db_name: str, username: str, code: str) -> str:
@@ -451,7 +466,7 @@ def login(
         if two_factor_enabled:
             if not otp or len(otp.strip()) == 0:
                 raise HTTPException(status_code=401, detail="2FA_REQUIRED")
-            if not two_factor_secret or not pyotp.TOTP(two_factor_secret).verify(otp.strip(), valid_window=1):
+            if not _verify_totp_code(two_factor_secret, otp):
                 raise HTTPException(status_code=401, detail="INVALID_2FA_CODE")
 
         session_token = create_session_token(username=username, db_name=resolved_db)
@@ -647,7 +662,7 @@ def user_2fa_confirm(request: Request, code: str = Form(...)):
         secret = row["two_factor_secret"]
         if not secret:
             raise HTTPException(status_code=400, detail="2FA_SETUP_NOT_STARTED")
-        if not pyotp.TOTP(secret).verify(code.strip(), valid_window=1):
+        if not _verify_totp_code(secret, code):
             raise HTTPException(status_code=400, detail="INVALID_2FA_CODE")
 
         conn.execute("UPDATE users SET two_factor_enabled = 1 WHERE username = ?", (username,))
@@ -665,7 +680,7 @@ def user_2fa_disable(request: Request, code: str = Form(...)):
         if not bool(row["two_factor_enabled"]):
             return {"status": "already_disabled"}
         secret = row["two_factor_secret"]
-        if not secret or not pyotp.TOTP(secret).verify(code.strip(), valid_window=1):
+        if not _verify_totp_code(secret, code):
             raise HTTPException(status_code=400, detail="INVALID_2FA_CODE")
 
         conn.execute(

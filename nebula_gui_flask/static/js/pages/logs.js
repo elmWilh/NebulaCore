@@ -2,10 +2,11 @@
 // Copyright (c) 2026 Monolink Systems
 // Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 
-  const socket = io();
+  const socket = (typeof window.io === 'function') ? window.io() : null;
   const container = document.getElementById('log-container');
   const autoscroll = document.getElementById('autoscroll');
   const statePill = document.getElementById('logs-state-pill');
+  let historyPollTimer = null;
 
   function addLog(entry) {
     if (container.innerText === 'Waiting for logs...') {
@@ -56,20 +57,54 @@
     }
   };
 
-  socket.on('log_update', handleLogEvent);
-  socket.on('log_history', handleLogEvent);
+  if (socket) {
+    socket.on('connect', () => {
+      if (statePill) statePill.textContent = 'live connected';
+    });
+    socket.on('disconnect', () => {
+      if (statePill) statePill.textContent = 'live disconnected';
+    });
+    socket.on('log_update', handleLogEvent);
+    socket.on('log_history', handleLogEvent);
+  } else if (statePill) {
+    statePill.textContent = 'socket unavailable, using history polling';
+  }
 
   function clearLogs() {
     container.innerHTML = '<div class="logs-placeholder">Console cleared</div>';
   }
 
+  function loadHistory() {
+    return fetch('/api/logs/history', { credentials: 'same-origin' })
+      .then(r => r.json().catch(() => ({})))
+      .then(logs => {
+        if (!Array.isArray(logs)) {
+          return;
+        }
+        if (logs.length > 0) {
+          container.innerHTML = '';
+          logs.forEach(addLog);
+          container.scrollTop = container.scrollHeight;
+        }
+      });
+  }
+
   // Initial history load
-  fetch('/api/logs/history').then(r => r.json()).then(logs => {
-    if (logs.length > 0) {
-      container.innerHTML = '';
-      logs.forEach(addLog);
-      container.scrollTop = container.scrollHeight;
+  loadHistory().then(() => {
+    if (!socket) {
+      historyPollTimer = setInterval(() => {
+        loadHistory().catch(() => {
+          if (statePill) statePill.textContent = 'history unavailable';
+        });
+      }, 3000);
     }
   }).catch(() => {
     if (statePill) statePill.textContent = 'history unavailable';
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (historyPollTimer) {
+      clearInterval(historyPollTimer);
+      historyPollTimer = null;
+    }
   });
