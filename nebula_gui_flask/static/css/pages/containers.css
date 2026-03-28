@@ -72,8 +72,31 @@
         outline: none; transition: 0.2s; font-size: 0.85rem; resize: vertical;
         font-family: 'JetBrains Mono', monospace; line-height: 1.4;
     }
+    .input-wrapper select {
+        width: 100%; padding: 14px 16px 14px 46px; background: #050507;
+        border: 1px solid var(--border); border-radius: 12px; color: white;
+        outline: none; transition: 0.2s; font-size: 0.9rem;
+    }
     .input-wrapper input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
     .input-wrapper textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
+    .input-wrapper select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15); }
+    .input-wrapper-multi { align-items: stretch; }
+    .input-wrapper-multi i { top: 16px; transform: none; }
+    .architect-project-select {
+        min-height: 138px;
+        background:
+            linear-gradient(180deg, rgba(88, 101, 255, 0.08), rgba(88, 101, 255, 0.02)),
+            #050507;
+    }
+    .architect-project-select option {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        color: #eef3ff;
+    }
+    .architect-project-select option:checked {
+        background: rgba(88, 101, 255, 0.35);
+        color: #ffffff;
+    }
     .user-picker { display: flex; flex-direction: column; gap: 10px; }
     .input-hint {
         font-size: 0.72rem;
@@ -183,10 +206,9 @@
     .dropdown-content a:hover { background: rgba(88, 101, 255, 0.1); color: var(--accent); }
     .show { display: block !important; animation: slideIn 0.2s ease; }
     .modal-footer { padding: 24px 32px; background: rgba(255,255,255,0.01); border-top: 1px solid var(--border); display: flex; gap: 16px; justify-content: flex-end; }
-    .btn-primary { padding: 14px 32px; background: var(--accent); color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.2s; }
-    .btn-secondary { padding: 14px 24px; background: transparent; color: white; border: 1px solid var(--border); border-radius: 12px; font-weight: 600; cursor: pointer; }
+    .btn-primary { padding: 14px 32px; background: linear-gradient(135deg, var(--accent) 0%, #2f7df6 100%); color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.2s; box-shadow: 0 14px 28px rgba(47, 125, 246, 0.28); }
+    .btn-secondary { padding: 14px 24px; background: rgba(255,255,255,0.03); color: white; border: 1px solid var(--border); border-radius: 12px; font-weight: 600; cursor: pointer; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     .spin { animation: spin 1s linear infinite; display: inline-block; }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-

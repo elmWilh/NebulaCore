@@ -162,6 +162,60 @@
     position: relative;
     width: 100%;
   }
+  .chart-box canvas {
+    opacity: 1;
+    transition: opacity 0.22s ease;
+  }
+  .chart-box.is-loading canvas {
+    opacity: 0;
+  }
+  .chart-loader {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 14px;
+    background:
+      linear-gradient(180deg, rgba(8, 12, 22, 0.75), rgba(8, 12, 22, 0.45));
+    border-radius: 14px;
+    z-index: 2;
+  }
+  .chart-box.is-loading .chart-loader {
+    display: flex;
+  }
+  .chart-loader-label {
+    font-size: 0.82rem;
+    color: #b8c3e0;
+    letter-spacing: 0.02em;
+  }
+  .chart-loader-wave {
+    width: 82%;
+    height: 56px;
+    border-radius: 999px;
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .chart-loader-wave::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(99, 163, 255, 0.7), transparent);
+    transform: translateX(-100%);
+    animation: dashboardLoaderWave 1.3s ease-in-out infinite;
+  }
+  .chart-loader-orbit {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    border: 2px solid rgba(99, 163, 255, 0.18);
+    border-top-color: rgba(99, 163, 255, 0.95);
+    border-right-color: rgba(61, 220, 151, 0.85);
+    animation: dashboardLoaderSpin 0.9s linear infinite;
+    box-shadow: 0 0 28px rgba(99, 163, 255, 0.16);
+  }
   .chart-box-line {
     height: 170px;
   }
@@ -172,6 +226,14 @@
     width: 100% !important;
     max-width: 100%;
     height: 100% !important;
+  }
+  @keyframes dashboardLoaderWave {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  @keyframes dashboardLoaderSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
   @media (max-width: 1024px) {
     .obs-card,
@@ -197,4 +259,3 @@
       height: 210px;
     }
   }
-

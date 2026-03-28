@@ -68,7 +68,7 @@ class NebulaRuntime:
         # Import kernel services locally to avoid circular dependencies
         from nebula_core.services.heartbeat import HeartbeatService
         from nebula_core.services.file_service import FileService
-        from nebula_core.services.metrics_service import MetricsService
+        from nebula_core.services.metrics_service import metrics_service
 
         # Setup Heartbeat Service
         services_cfg = self.service_config.get("services", self.service_config)
@@ -91,15 +91,13 @@ class NebulaRuntime:
 
         # Setup Metrics Service
         m_cfg = services_cfg.get("metrics", {})
-        metrics_service = None
+        shared_metrics_service = None
         if m_cfg.get("enabled", True):
-            metrics_service = MetricsService(
-                name="metrics",
-                interval=m_cfg.get("interval", 5)
-            )
+            metrics_service.configure(interval=m_cfg.get("interval", 3))
+            shared_metrics_service = metrics_service
 
         # Register services for lifecycle management
-        for svc in (file_service, heartbeat, metrics_service):
+        for svc in (file_service, heartbeat, shared_metrics_service):
             if svc:
                 self.register_service(svc)
 

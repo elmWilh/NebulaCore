@@ -4,6 +4,9 @@
 
 // static/js/main.js — WORK WIDTH api_metrics
 function updateMetrics() {
+    if (window.__nebulaDashboardManaged === true) {
+        return;
+    }
     const cpuEl = document.getElementById('cpu');
     const ramEl = document.getElementById('ram');
     const diskEl = document.getElementById('disk');
@@ -67,10 +70,12 @@ function scheduleMetricsLoop() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    if (window.__nebulaDashboardManaged === true) return;
     updateMetrics();
     scheduleMetricsLoop();
 });
 document.addEventListener('visibilitychange', () => {
+    if (window.__nebulaDashboardManaged === true) return;
     scheduleMetricsLoop();
     if (!document.hidden) updateMetrics();
 });

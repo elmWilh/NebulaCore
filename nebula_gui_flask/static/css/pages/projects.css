@@ -1,8 +1,19 @@
+.project-page {
+    gap: 28px;
+}
+
 .project-tabs {
     display: flex; gap: 8px; background: rgba(255, 255, 255, 0.03);
     padding: 6px; border-radius: 14px; border: 1px solid var(--border);
-    margin-bottom: 24px; width: fit-content;
+    margin-top: 10px; width: fit-content;
 }
+
+.project-create-btn {
+    border: none;
+    cursor: pointer;
+    align-self: flex-start;
+}
+
 .tab-item {
     padding: 10px 20px; border-radius: 10px; color: var(--text-muted);
     font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.2s;
@@ -20,22 +31,13 @@
     pointer-events: none;
 }
 
-.project-filter-bar .input-wrapper select,
-.input-wrapper select {
-    width: 100%;
-    background: #0a0a0e;
-    color: #eee;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px 14px 12px 42px;
-    font-size: 0.86rem;
-    outline: none;
-}
-
-.project-filter-bar .input-wrapper select:focus,
-.input-wrapper select:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 4px rgba(88, 101, 255, 0.15);
+.project-filter-bar {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 10px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
 }
 
 .project-row { border-bottom: 1px solid var(--border); transition: 0.2s; cursor: pointer; }
@@ -81,5 +83,10 @@
 @media (max-width: 980px) {
     .project-filter-grid {
         grid-template-columns: 1fr !important;
+    }
+
+    .project-tabs {
+        width: 100%;
+        flex-wrap: wrap;
     }
 }

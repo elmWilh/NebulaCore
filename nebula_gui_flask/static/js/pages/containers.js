@@ -75,6 +75,7 @@ let metricsAbortController = null;
 let containersAbortController = null;
 let metricsFailures = 0;
 let previousNetworkTotal = null;
+let lastContainerStatsSnapshot = null;
 let hasContainerTableRendered = false;
 let lastContainersSignature = '';
 let currentContainers = [];
@@ -691,8 +692,17 @@ async function updateStats() {
         const netTotal = netUp + netDown;
         const trendIcon = previousNetworkTotal === null ? '•' : (netTotal >= previousNetworkTotal ? '↑' : '↓');
         previousNetworkTotal = netTotal;
-        const activeContainers = asNumber(data.active_containers, 0);
-        const totalContainers = asNumber(data.containers, activeContainers);
+        let activeContainers = asNumber(data.active_containers, 0);
+        let totalContainers = asNumber(data.containers, activeContainers);
+
+        if (Array.isArray(currentContainers) && currentContainers.length > 0 && activeContainers === 0 && totalContainers === 0) {
+            totalContainers = currentContainers.length;
+            activeContainers = currentContainers.filter(c => (c.status || '').toLowerCase() === 'running').length;
+        } else if (lastContainerStatsSnapshot && activeContainers === 0 && totalContainers === 0) {
+            activeContainers = lastContainerStatsSnapshot.activeContainers;
+            totalContainers = lastContainerStatsSnapshot.totalContainers;
+        }
+        lastContainerStatsSnapshot = { activeContainers, totalContainers };
 
         document.getElementById('stat_active_containers').innerHTML = `${activeContainers} <span class="stat-sub">running / ${totalContainers} total</span>`;
         document.getElementById('stat_ram').innerHTML = `${ramUsed.toFixed(1)} GB <span class="stat-sub">/ ${ramTotal.toFixed(1)} GB (${ramPercent.toFixed(1)}%)</span>`;
@@ -720,6 +730,7 @@ async function updateStats() {
 function updateActiveContainersStat(containers) {
     const total = containers.length;
     const running = containers.filter(c => (c.status || '').toLowerCase() === 'running').length;
+    lastContainerStatsSnapshot = { activeContainers: running, totalContainers: total };
     document.getElementById('stat_active_containers').innerHTML = `${running} <span class="stat-sub">running / ${total} total</span>`;
 }
 

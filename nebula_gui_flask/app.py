@@ -156,6 +156,8 @@ deploy_jobs_lock = threading.Lock()
 metrics_cache = {}
 metrics_cache_lock = threading.Lock()
 METRICS_CACHE_TTL = 2.5
+dashboard_streams = {}
+dashboard_streams_lock = threading.Lock()
 error_quotes_lock = threading.Lock()
 error_quotes_cache = []
 error_quotes_mtime = None
@@ -507,22 +509,284 @@ def _update_deploy_job(job_id: str, **updates):
         job["updated_at"] = time.time()
 
 
-def _core_request_with_session(method: str, endpoint: str, core_session: str, params=None, json_data=None):
+def _core_request_with_session(method: str, endpoint: str, core_session: str, params=None, json_data=None, timeout: float = 20.0):
     url = f"{bridge.core_url}{endpoint}"
     cookies = {"nebula_session": core_session}
-    r = requests.request(
-        method=method,
-        url=url,
-        params=params,
-        json=json_data,
-        cookies=cookies,
-        timeout=20
-    )
+    try:
+        r = requests.request(
+            method=method,
+            url=url,
+            params=params,
+            json=json_data,
+            cookies=cookies,
+            timeout=timeout
+        )
+    except requests.RequestException as exc:
+        logging.getLogger("nebula_gui_flask.core").debug(
+            "Core request failed %s %s: %s", method, endpoint, exc
+        )
+        return {"detail": str(exc), "error": "core_request_failed"}, 504
     try:
         body = r.json()
     except Exception:
         body = {"detail": r.text}
     return body, r.status_code
+
+
+def _dashboard_stream_sleep_seconds() -> float:
+    return 3.0
+
+
+def _preserve_overview_counts(current_overview: dict | None, previous_overview: dict | None = None) -> dict:
+    current = dict(current_overview or {})
+    previous = dict(previous_overview or {})
+    if previous:
+        current_containers = _to_float(current.get("containers"))
+        current_active = _to_float(current.get("active_containers"))
+        previous_containers = _to_float(previous.get("containers"))
+        previous_active = _to_float(previous.get("active_containers"))
+        if (current_containers in (None, 0.0)) and (previous_containers or 0.0) > 0.0:
+            current["containers"] = int(previous_containers)
+        if (current_active in (None, 0.0)) and (previous_active or 0.0) > 0.0:
+            current["active_containers"] = int(previous_active)
+    return current
+
+
+def _build_staff_dashboard_fast_payload(core_session: str, previous_payload: dict | None = None):
+    metrics_body, metrics_code = _core_request_with_session("GET", "/metrics/current", core_session, timeout=1.8)
+    summary_body, summary_code = _core_request_with_session("GET", "/containers/summary", core_session, timeout=1.8)
+
+    metrics = metrics_body if metrics_code < 400 and isinstance(metrics_body, dict) else {}
+    summary = summary_body if summary_code < 400 and isinstance(summary_body, dict) else {}
+    summary_valid = "total_containers" in summary or "running_containers" in summary
+    previous_overview = {}
+    if previous_payload and isinstance(previous_payload.get("overview"), dict):
+        previous_overview = previous_payload["overview"]
+
+    cpu_percent = _to_float(metrics.get("cpu_percent") or metrics.get("cpu")) or _to_float(previous_overview.get("cpu_percent")) or 0.0
+    ram_percent = _to_float(metrics.get("ram_percent_value") or metrics.get("ram_percent")) or _to_float(previous_overview.get("ram_percent")) or 0.0
+    disk_percent = _to_float(metrics.get("disk_percent_value") or metrics.get("disk_percent")) or _to_float(previous_overview.get("disk_percent")) or 0.0
+    network_sent = _to_float(metrics.get("network_sent_mb")) or _to_float(previous_overview.get("network_sent_mb")) or 0.0
+    network_recv = _to_float(metrics.get("network_recv_mb")) or _to_float(previous_overview.get("network_recv_mb")) or 0.0
+    ram_used_gb = _to_float(metrics.get("ram_used_gb")) or _to_float(previous_overview.get("ram_used_gb")) or 0.0
+    ram_total_gb = _to_float(metrics.get("ram_total_gb")) or _to_float(previous_overview.get("ram_total_gb")) or 0.0
+    disk_used_gb = _to_float(metrics.get("disk_used_gb")) or _to_float(previous_overview.get("disk_used_gb")) or 0.0
+    disk_total_gb = _to_float(metrics.get("disk_total_gb")) or _to_float(previous_overview.get("disk_total_gb")) or 0.0
+    cpu_cores_total = psutil.cpu_count(logical=True) or 1
+    cpu_cores_active = round((float(cpu_percent or 0.0)) * cpu_cores_total / 100.0, 1)
+
+    overview = {
+        "cpu": f"{float(cpu_percent or 0.0):.1f}%",
+        "ram": f"{float(ram_percent or 0.0):.1f}%",
+        "disk": f"{float(disk_percent or 0.0):.1f}%",
+        "network": f"↑ {float(network_sent or 0.0):.2f} MB/s  ↓ {float(network_recv or 0.0):.2f} MB/s",
+        "cpu_percent": float(cpu_percent or 0.0),
+        "ram_percent": float(ram_percent or 0.0),
+        "disk_percent": float(disk_percent or 0.0),
+        "network_sent_mb": float(network_sent or 0.0),
+        "network_recv_mb": float(network_recv or 0.0),
+        "ram_used_gb": round(float(ram_used_gb or 0.0), 2),
+        "ram_total_gb": round(float(ram_total_gb or 0.0), 2),
+        "disk_used_gb": round(float(disk_used_gb or 0.0), 2),
+        "disk_total_gb": round(float(disk_total_gb or 0.0), 2),
+        "cpu_cores_total": cpu_cores_total,
+        "cpu_cores_active": cpu_cores_active,
+        "containers": int(summary.get("total_containers")) if summary_valid and summary.get("total_containers") is not None else None,
+        "active_containers": int(summary.get("running_containers")) if summary_valid and summary.get("running_containers") is not None else None,
+        "servers": 1,
+        "alerts": 0,
+        "tasks": 0,
+        "health_status": _health_status_from_pressure(float(cpu_percent or 0.0), float(ram_percent or 0.0), float(disk_percent or 0.0)),
+    }
+    overview = _preserve_overview_counts(overview, previous_overview)
+    return {
+        "scope": "admin_server",
+        "overview": overview,
+        "ram": None,
+        "network": None,
+        "containers_memory": previous_payload.get("containers_memory") if isinstance(previous_payload, dict) else None,
+        "disks": previous_payload.get("disks") if isinstance(previous_payload, dict) else None,
+        "included": {"containers": False, "disks": False},
+        "loading": {"telemetry": True, "containers": True, "disks": True, "counts": not summary_valid},
+        "updated_at": int(time.time()),
+    }
+
+
+def _build_staff_dashboard_stream_payload(core_session: str, include_containers: bool, include_disks: bool, previous_payload: dict | None = None):
+    params = {
+        "include_containers": "1" if include_containers else "0",
+        "include_disks": "1" if include_disks else "0",
+    }
+    payload, code = _core_request_with_session("GET", "/metrics/admin/dashboard", core_session, params=params, timeout=5.0)
+    if code >= 400 or not isinstance(payload, dict):
+        if not isinstance(previous_payload, dict):
+            return None
+        fallback_payload = dict(previous_payload)
+        fallback_payload["included"] = {"containers": False, "disks": False}
+        fallback_payload["loading"] = {
+            "telemetry": True,
+            "containers": not bool(previous_payload.get("containers_memory")),
+            "disks": not bool(previous_payload.get("disks")),
+            "counts": previous_payload.get("overview", {}).get("containers") is None or previous_payload.get("overview", {}).get("active_containers") is None,
+        }
+        fallback_payload["updated_at"] = int(time.time())
+        return fallback_payload
+
+    if previous_payload and isinstance(previous_payload, dict):
+        previous_overview = previous_payload.get("overview") if isinstance(previous_payload.get("overview"), dict) else {}
+        current_overview = payload.get("overview") if isinstance(payload.get("overview"), dict) else {}
+        payload["overview"] = _preserve_overview_counts(current_overview, previous_overview)
+        if (not payload.get("containers_memory")) and previous_payload.get("containers_memory"):
+            payload["containers_memory"] = previous_payload.get("containers_memory")
+        if (not payload.get("disks")) and previous_payload.get("disks"):
+            payload["disks"] = previous_payload.get("disks")
+    payload["loading"] = {
+        "telemetry": not bool(payload.get("ram")) or not bool(payload.get("network")),
+        "containers": not bool(payload.get("containers_memory")),
+        "disks": not bool(payload.get("disks")),
+        "counts": payload.get("overview", {}).get("containers") is None or payload.get("overview", {}).get("active_containers") is None,
+    }
+    return payload
+
+
+def _build_user_dashboard_stream_payload(core_session: str, previous_payload: dict | None = None):
+    summary, summary_code = _core_request_with_session("GET", "/containers/summary", core_session, timeout=2.0)
+    summary = summary if summary_code < 400 and isinstance(summary, dict) else {}
+    summary_valid = "total_containers" in summary or "running_containers" in summary
+
+    previous_overview = {}
+    if previous_payload and isinstance(previous_payload.get("overview"), dict):
+        previous_overview = previous_payload["overview"]
+
+    cpu_percent = _to_float(summary.get("cpu_percent"))
+    ram_percent = _to_float(summary.get("memory_percent"))
+    network_sent = _to_float(summary.get("network_tx_mbps"))
+    network_recv = _to_float(summary.get("network_rx_mbps"))
+    containers_count = summary.get("total_containers")
+    active_containers = summary.get("running_containers")
+
+    if cpu_percent is None:
+        cpu_percent = _to_float(previous_overview.get("cpu_percent")) or 0.0
+    if ram_percent is None:
+        ram_percent = _to_float(previous_overview.get("ram_percent")) or 0.0
+    if network_sent is None:
+        network_sent = _to_float(previous_overview.get("network_sent_mb")) or 0.0
+    if network_recv is None:
+        network_recv = _to_float(previous_overview.get("network_recv_mb")) or 0.0
+    if containers_count is None:
+        containers_count = previous_overview.get("containers")
+    if active_containers is None:
+        active_containers = previous_overview.get("active_containers")
+
+    cpu_cores_total = psutil.cpu_count(logical=True) or 1
+    cpu_cores_active = round((float(cpu_percent or 0.0)) * cpu_cores_total / 100.0, 1)
+    ram_used_gb = (_to_float(summary.get("memory_used_mb")) or _to_float(previous_overview.get("ram_used_gb")) or 0.0)
+    ram_total_gb = (_to_float(summary.get("memory_limit_mb")) or (_to_float(previous_overview.get("ram_total_gb")) or 0.0) * 1024.0)
+    if summary.get("memory_used_mb") is not None:
+        ram_used_gb = float(ram_used_gb) / 1024.0
+    if summary.get("memory_limit_mb") is not None:
+        ram_total_gb = float(ram_total_gb) / 1024.0
+
+    overview = {
+        "scope": "user_containers",
+        "cpu": f"{float(cpu_percent or 0.0):.1f}%",
+        "ram": f"{float(ram_percent or 0.0):.1f}%",
+        "disk": "—",
+        "network": f"↑ {float(network_sent or 0.0):.2f} MB/s  ↓ {float(network_recv or 0.0):.2f} MB/s",
+        "cpu_percent": float(cpu_percent or 0.0),
+        "ram_percent": float(ram_percent or 0.0),
+        "disk_percent": 0.0,
+        "network_sent_mb": float(network_sent or 0.0),
+        "network_recv_mb": float(network_recv or 0.0),
+        "ram_used_gb": round(float(ram_used_gb or 0.0), 2),
+        "ram_total_gb": round(float(ram_total_gb or 0.0), 2),
+        "cpu_cores_total": cpu_cores_total,
+        "cpu_cores_active": cpu_cores_active,
+        "health_status": _health_status_from_pressure(float(cpu_percent or 0.0), float(ram_percent or 0.0), 0.0),
+        "containers": int(containers_count) if containers_count is not None else None,
+        "active_containers": int(active_containers) if active_containers is not None else None,
+        "servers": 0,
+        "alerts": 0,
+        "tasks": 0,
+    }
+    overview = _preserve_overview_counts(overview, previous_overview)
+    return {
+        "scope": "user_containers",
+        "overview": overview,
+        "ram": None,
+        "network": None,
+        "containers_memory": None,
+        "disks": None,
+        "included": {"containers": False, "disks": False},
+        "loading": {"telemetry": False, "containers": True, "disks": True, "counts": not summary_valid},
+        "updated_at": int(time.time()),
+    }
+
+
+def _dashboard_placeholder_payload(is_staff: bool) -> dict:
+    return {
+        "scope": "admin_server" if is_staff else "user_containers",
+        "overview": {
+            "cpu": "—",
+            "ram": "—",
+            "disk": "—",
+            "containers": None,
+            "active_containers": None,
+            "servers": 1 if is_staff else 0,
+            "alerts": 0,
+            "tasks": 0,
+        },
+        "ram": None,
+        "network": None,
+        "containers_memory": None,
+        "disks": None,
+        "included": {"containers": False, "disks": False},
+        "loading": {"telemetry": True, "containers": True, "disks": True, "counts": True},
+        "updated_at": int(time.time()),
+    }
+
+
+def _dashboard_stream_worker(sid: str, core_session: str, is_staff: bool):
+    last_payload = None
+    last_containers_sync_at = 0.0
+    last_disks_sync_at = 0.0
+    first_payload_sent = False
+    while True:
+        with dashboard_streams_lock:
+            state = dict(dashboard_streams.get(sid) or {})
+        if not state.get("active"):
+            break
+
+        include_containers = first_payload_sent and is_staff and ((time.time() - last_containers_sync_at) >= 12.0)
+        include_disks = first_payload_sent and is_staff and ((time.time() - last_disks_sync_at) >= 45.0)
+
+        try:
+            if is_staff:
+                if not first_payload_sent:
+                    payload = _build_staff_dashboard_fast_payload(core_session, previous_payload=last_payload)
+                else:
+                    payload = _build_staff_dashboard_stream_payload(core_session, include_containers, include_disks, previous_payload=last_payload)
+            else:
+                payload = _build_user_dashboard_stream_payload(core_session, previous_payload=last_payload)
+
+            if payload:
+                if payload.get("included", {}).get("containers"):
+                    last_containers_sync_at = time.time()
+                if payload.get("included", {}).get("disks"):
+                    last_disks_sync_at = time.time()
+                last_payload = payload
+                first_payload_sent = True
+                with dashboard_streams_lock:
+                    if sid in dashboard_streams:
+                        dashboard_streams[sid]["last_payload"] = payload
+                socketio.emit("dashboard_update", payload, to=sid)
+            else:
+                socketio.emit("dashboard_status", {"state": "sync_delayed"}, to=sid)
+        except Exception as exc:
+            logging.getLogger("nebula_gui_flask.dashboard").warning("Dashboard stream error for %s: %s", sid, exc)
+            socketio.emit("dashboard_status", {"state": "sync_delayed"}, to=sid)
+
+        socketio.sleep(0.25 if is_staff and last_payload and last_payload.get("loading", {}).get("telemetry") else _dashboard_stream_sleep_seconds())
 
 
 def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: str):
@@ -657,11 +921,7 @@ def admin_login():
         username = request.form.get('username')
         password = request.form.get('password')
         otp = (request.form.get('otp') or '').strip()
-        # Always drop previous GUI session before a new login attempt to
-        # prevent stale identity reuse after failed authentication.
         session.clear()
-        # 1) Try staff auth path first.
-        # 2) Fallback to user auth with Core-side safe auto-db discovery.
         success, error = bridge.admin_auth(username, password, otp=otp)
         if not success:
             success, error = bridge.user_auth(username, password, "auto", otp=otp)
@@ -767,31 +1027,33 @@ def api_roles_create():
     res, code = bridge.proxy_request("POST", "/roles/create", json_data=request.json)
     return jsonify(res), code
 
-@app.route('/api/metrics')
-@bridge.login_required
-def api_metrics():
-    def _to_float(value):
-        if value is None:
-            return None
-        if isinstance(value, (int, float)):
-            return float(value)
-        text = str(value).strip().replace('%', '')
-        try:
-            return float(text)
-        except ValueError:
-            return None
 
-    cache_key = f"{session.get('core_session', '')}:{session.get('user_id', '')}:{int(bool(session.get('is_staff')))}"
-    now = time.time()
-    with metrics_cache_lock:
-        cached = metrics_cache.get(cache_key)
-        if cached and (now - cached["ts"]) <= METRICS_CACHE_TTL:
-            return jsonify(cached["payload"])
+def _to_float(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace('%', '')
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
+
+def _health_status_from_pressure(cpu_percent: float, ram_percent: float, disk_percent: float) -> str:
+    max_pressure = max(cpu_percent or 0.0, ram_percent or 0.0, disk_percent or 0.0)
+    if max_pressure >= 90:
+        return "critical"
+    if max_pressure >= 75:
+        return "elevated"
+    if max_pressure >= 55:
+        return "stable"
+    return "optimal"
+
+
+def _build_metrics_payload(summary: dict | None = None):
     is_staff = bool(session.get('is_staff'))
-    summary, summary_code = bridge.proxy_request("GET", "/containers/summary", timeout=2.5)
-    if summary_code >= 400:
-        summary = {}
+    summary = summary if isinstance(summary, dict) else {}
 
     if not is_staff:
         cpu_percent = _to_float(summary.get("cpu_percent")) or 0.0
@@ -806,17 +1068,7 @@ def api_metrics():
         cpu_cores_total = psutil.cpu_count(logical=True) or 1
         cpu_cores_active = round((cpu_percent or 0.0) * cpu_cores_total / 100.0, 1)
 
-        max_pressure = max(cpu_percent, ram_percent)
-        if max_pressure >= 90:
-            health_status = "critical"
-        elif max_pressure >= 75:
-            health_status = "elevated"
-        elif max_pressure >= 55:
-            health_status = "stable"
-        else:
-            health_status = "optimal"
-
-        payload = {
+        return {
             "scope": "user_containers",
             "cpu": f"{cpu_percent:.1f}%",
             "ram": f"{ram_percent:.1f}%",
@@ -831,16 +1083,13 @@ def api_metrics():
             "ram_total_gb": ram_total_gb,
             "cpu_cores_total": cpu_cores_total,
             "cpu_cores_active": cpu_cores_active,
-            "health_status": health_status,
+            "health_status": _health_status_from_pressure(cpu_percent, ram_percent, disk_percent),
             "containers": containers_count,
             "active_containers": active_containers,
             "servers": 0,
             "alerts": 0,
-            "tasks": 0
-        }
-        with metrics_cache_lock:
-            metrics_cache[cache_key] = {"ts": now, "payload": payload}
-        return jsonify(payload)
+            "tasks": 0,
+        }, None
 
     data = None
     core_metrics, core_metrics_code = bridge.proxy_request("GET", "/metrics/current", timeout=2.5)
@@ -851,11 +1100,11 @@ def api_metrics():
     if isinstance(data, dict) and isinstance(data.get("system"), dict):
         data = data.get("system")
     if not data:
-        return jsonify({"error": "Core offline", "status": "offline"}), 503
+        return None, ({"error": "Core offline", "status": "offline"}, 503)
 
     cpu_raw = data.get("cpu") or data.get("cpu_percent") or data.get("cpu_usage")
-    ram_raw = data.get("ram_percent") or data.get("memory") or data.get("mem_percent")
-    disk_raw = data.get("disk_percent") or data.get("disk") or 0
+    ram_raw = data.get("ram_percent") or data.get("ram_percent_value") or data.get("memory") or data.get("mem_percent")
+    disk_raw = data.get("disk_percent") or data.get("disk_percent_value") or data.get("disk") or 0
     network_sent = _to_float(data.get("network_sent_mb") or data.get("sent")) or 0.0
     network_recv = _to_float(data.get("network_recv_mb") or data.get("recv")) or 0.0
     containers_count = int(summary.get("total_containers") or data.get("containers_count") or data.get("containers") or 0)
@@ -870,17 +1119,7 @@ def api_metrics():
     cpu_cores_total = psutil.cpu_count(logical=True) or 1
     cpu_cores_active = round((cpu_percent or 0.0) * cpu_cores_total / 100.0, 1)
 
-    max_pressure = max(cpu_percent or 0.0, ram_percent or 0.0, disk_percent)
-    if max_pressure >= 90:
-        health_status = "critical"
-    elif max_pressure >= 75:
-        health_status = "elevated"
-    elif max_pressure >= 55:
-        health_status = "stable"
-    else:
-        health_status = "optimal"
-
-    payload = {
+    return {
         "scope": "server",
         "cpu": f"{cpu_percent:.1f}%" if cpu_percent is not None else "—",
         "ram": f"{ram_percent:.1f}%" if ram_percent is not None else "—",
@@ -895,16 +1134,66 @@ def api_metrics():
         "ram_total_gb": ram_total_gb,
         "cpu_cores_total": cpu_cores_total,
         "cpu_cores_active": cpu_cores_active,
-        "health_status": health_status,
+        "health_status": _health_status_from_pressure(cpu_percent, ram_percent, disk_percent),
         "containers": containers_count,
         "active_containers": active_containers,
         "servers": 1,
         "alerts": 0,
-        "tasks": 0
-    }
+        "tasks": 0,
+    }, None
+
+@app.route('/api/metrics')
+@bridge.login_required
+def api_metrics():
+    cache_key = f"{session.get('core_session', '')}:{session.get('user_id', '')}:{int(bool(session.get('is_staff')))}"
+    now = time.time()
+    with metrics_cache_lock:
+        cached = metrics_cache.get(cache_key)
+        if cached and (now - cached["ts"]) <= METRICS_CACHE_TTL:
+            return jsonify(cached["payload"])
+
+    summary, summary_code = bridge.proxy_request("GET", "/containers/summary", timeout=2.5)
+    if summary_code >= 400:
+        summary = {}
+    payload, error = _build_metrics_payload(summary=summary)
+    if error:
+        body, status = error
+        return jsonify(body), status
     with metrics_cache_lock:
         metrics_cache[cache_key] = {"ts": now, "payload": payload}
     return jsonify(payload)
+
+@app.route('/api/dashboard/payload')
+@bridge.login_required
+def api_dashboard_payload():
+    include_containers = str(request.args.get("include_containers", "1")).strip().lower() in {"1", "true", "yes", "on"}
+    include_disks = str(request.args.get("include_disks", "1")).strip().lower() in {"1", "true", "yes", "on"}
+
+    if not session.get('is_staff'):
+        summary, summary_code = bridge.proxy_request("GET", "/containers/summary", timeout=2.5)
+        if summary_code >= 400:
+            summary = {}
+        overview, error = _build_metrics_payload(summary=summary)
+        if error:
+            body, status = error
+            return jsonify(body), status
+        return jsonify({
+            "scope": overview.get("scope"),
+            "overview": overview,
+            "ram": None,
+            "network": None,
+            "containers_memory": None,
+            "disks": None,
+            "included": {"containers": False, "disks": False},
+            "updated_at": int(time.time()),
+        })
+
+    params = {
+        "include_containers": "1" if include_containers else "0",
+        "include_disks": "1" if include_disks else "0",
+    }
+    res, code = bridge.proxy_request("GET", "/metrics/admin/dashboard", params=params, timeout=4.0)
+    return jsonify(res), code
 
 @app.route('/api/admin/dashboard-metrics')
 @bridge.login_required
@@ -1046,6 +1335,33 @@ eventlet.spawn(core_log_listener)
 def handle_socket_connect():
     if session.get('is_staff'):
         join_room("staff")
+
+
+@socketio.on('subscribe_dashboard')
+def handle_dashboard_subscribe(_payload=None):
+    core_session = session.get("core_session")
+    if not core_session:
+        return
+    sid = request.sid
+    is_staff = bool(session.get("is_staff"))
+    with dashboard_streams_lock:
+        dashboard_streams[sid] = {
+            "active": True,
+            "is_staff": is_staff,
+            "core_session": core_session,
+            "last_payload": None,
+        }
+    socketio.emit("dashboard_update", _dashboard_placeholder_payload(is_staff), to=sid)
+    socketio.start_background_task(_dashboard_stream_worker, sid, core_session, is_staff)
+
+
+@socketio.on('disconnect')
+def handle_socket_disconnect():
+    sid = request.sid
+    with dashboard_streams_lock:
+        if sid in dashboard_streams:
+            dashboard_streams[sid]["active"] = False
+            dashboard_streams.pop(sid, None)
 
 
 @app.errorhandler(HTTPException)

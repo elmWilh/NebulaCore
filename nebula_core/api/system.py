@@ -3,6 +3,7 @@
 # Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
 import os
 import sqlite3
+import asyncio
 from fastapi import APIRouter, Query, Depends
 from ..core.system_info import get_system_info
 from ..db import SYSTEM_DB, CLIENTS_DIR, get_connection
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/system", tags=["System"])
 
 @router.get("/status")
 async def system_status():
-    return {"status": "ok", "system": get_system_info()}
+    return {"status": "ok", "system": await asyncio.to_thread(get_system_info)}
 
 @router.get("/lookup")
 async def resolve_user_location(

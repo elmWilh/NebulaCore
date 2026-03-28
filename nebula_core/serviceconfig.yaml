@@ -4,7 +4,7 @@ services:
     interval: 3
   metrics:
     enabled: true
-    interval: 5
+    interval: 3
   server:
     host: "127.0.0.1"
     port: 8080

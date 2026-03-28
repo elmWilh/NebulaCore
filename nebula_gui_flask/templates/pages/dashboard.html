@@ -9,10 +9,12 @@
 {% endblock %}
 {% block extra_js %}
 <script nonce="{{ csp_nonce }}" src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script nonce="{{ csp_nonce }}" src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
 {% endblock %}
 
 {% block page_content %}
+<div id="dashboard-page-root" hidden></div>
 <div class="grid">
   <div class="card">
     <div class="card-title">CPU Usage</div>
@@ -63,7 +65,11 @@
         <h3>RAM Usage Timeline</h3>
         <span id="ram-quick">—</span>
       </div>
-      <div class="chart-box chart-box-line">
+      <div id="ram-chart-box" class="chart-box chart-box-line is-loading">
+        <div class="chart-loader">
+          <div class="chart-loader-wave"></div>
+          <div class="chart-loader-label">Loading RAM telemetry...</div>
+        </div>
         <canvas id="ramTimelineChart"></canvas>
       </div>
     </section>
@@ -73,7 +79,11 @@
         <h3>Network Throughput</h3>
         <span id="network-quick">—</span>
       </div>
-      <div class="chart-box chart-box-line">
+      <div id="network-chart-box" class="chart-box chart-box-line is-loading">
+        <div class="chart-loader">
+          <div class="chart-loader-wave"></div>
+          <div class="chart-loader-label">Loading network telemetry...</div>
+        </div>
         <canvas id="networkTimelineChart"></canvas>
       </div>
     </section>
@@ -83,7 +93,11 @@
         <h3>Container RAM Distribution</h3>
         <span id="containers-mem-total">—</span>
       </div>
-      <div class="chart-box chart-box-donut">
+      <div id="container-memory-box" class="chart-box chart-box-donut is-loading">
+        <div class="chart-loader">
+          <div class="chart-loader-orbit"></div>
+          <div class="chart-loader-label">Loading container memory map...</div>
+        </div>
         <canvas id="containerMemoryChart"></canvas>
       </div>
     </section>
@@ -93,7 +107,11 @@
         <h3>Container Disk Distribution</h3>
         <span id="containers-disk-total">—</span>
       </div>
-      <div class="chart-box chart-box-donut">
+      <div id="container-disk-box" class="chart-box chart-box-donut is-loading">
+        <div class="chart-loader">
+          <div class="chart-loader-orbit"></div>
+          <div class="chart-loader-label">Loading container disk map...</div>
+        </div>
         <canvas id="containerDiskChart"></canvas>
       </div>
     </section>

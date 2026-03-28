@@ -10,25 +10,29 @@
 {% endblock %}
 
 {% block page_content %}
-<div class="container-fluid" style="padding: 24px;">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; gap: 16px;">
-        <div>
-            <h2 style="font-weight: 700; color: white; margin: 0;">Project Management</h2>
-            <div class="project-tabs" style="margin-top: 20px;">
+<div class="page-shell project-page">
+    <div class="page-header">
+        <div class="page-title-block">
+            <div class="page-kicker">Coordination Layer</div>
+            <h2 class="page-title">Project Management</h2>
+            <p class="page-subtitle">Group containers into coherent delivery tracks, inspect workload spread, and manage links without bouncing between sections.</p>
+            <div class="project-tabs">
                 <button type="button" id="tab_active" class="tab-item active" onclick="setProjectTab('active')"><i class="bi bi-lightning-charge"></i> Active</button>
                 <button type="button" id="tab_archived" class="tab-item" onclick="setProjectTab('archived')"><i class="bi bi-archive"></i> Archived</button>
                 <div class="tab-item is-disabled" title="Backups are not implemented yet"><i class="bi bi-cloud-download"></i> Backups</div>
             </div>
         </div>
         {% if session.get('is_staff') %}
-        <button onclick="openCreateProjectModal()" class="add-user-btn" style="border: none; cursor: pointer;">
+        <div class="toolbar-actions">
+        <button onclick="openCreateProjectModal()" class="add-user-btn project-create-btn">
             <i class="bi bi-plus-lg"></i> <span>Create Project</span>
         </button>
+        </div>
         {% endif %}
     </div>
 
-    <div class="table-card">
-        <div class="project-filter-bar project-filter-grid" style="padding: 14px 20px; border-bottom: 1px solid var(--border); display:grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 10px;">
+    <div class="table-card panel">
+        <div class="project-filter-bar project-filter-grid">
             <div class="input-wrapper">
                 <i class="bi bi-search"></i>
                 <input id="project_search" type="text" placeholder="Search project by name, description, tag..." oninput="onProjectFiltersChanged()">
