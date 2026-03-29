@@ -1,0 +1,26 @@
+[
+  {
+    "id": "nebula",
+    "title": "Nebula",
+    "description": "Cool blue default theme with a clear control-room feel.",
+    "file": "nebula.json"
+  },
+  {
+    "id": "ember",
+    "title": "Ember",
+    "description": "Warm amber theme for operators who prefer stronger contrast.",
+    "file": "ember.json"
+  },
+  {
+    "id": "tide",
+    "title": "Tide",
+    "description": "Teal and ocean accents with softer background gradients.",
+    "file": "tide.json"
+  },
+  {
+    "id": "graphite",
+    "title": "Graphite",
+    "description": "Neutral graphite theme with restrained, professional accents.",
+    "file": "graphite.json"
+  }
+]

@@ -53,6 +53,58 @@ def _health_status(cpu_percent: float, ram_percent: float, disk_percent: float) 
     return "optimal"
 
 
+def _build_admin_telemetry_payload(
+    username: str,
+    snapshot: dict,
+    dashboard_history: dict,
+    summary: dict | None = None,
+    *,
+    container_memory=None,
+    disks=None,
+    include_containers: bool = False,
+    include_disks: bool = False,
+):
+    summary = summary or {}
+    point_ts = int(snapshot.get("timestamp") or time.time())
+    cpu_percent = float(snapshot.get("cpu_percent") or 0.0)
+    ram_percent = float(snapshot.get("ram_percent_value") or 0.0)
+    disk_percent = float(snapshot.get("disk_percent_value") or 0.0)
+    return {
+        "scope": "admin_server",
+        "generated_by": username,
+        "overview": {
+            "cpu": snapshot.get("cpu", "0.0%"),
+            "ram": snapshot.get("ram_percent", "0.0%"),
+            "disk": snapshot.get("disk_percent", "0.0%"),
+            "network": f"↑ {float(snapshot.get('network_sent_mb') or 0.0):.2f} MB/s  ↓ {float(snapshot.get('network_recv_mb') or 0.0):.2f} MB/s",
+            "cpu_percent": cpu_percent,
+            "ram_percent": ram_percent,
+            "disk_percent": disk_percent,
+            "network_sent_mb": round(float(snapshot.get("network_sent_mb") or 0.0), 3),
+            "network_recv_mb": round(float(snapshot.get("network_recv_mb") or 0.0), 3),
+            "ram_used_gb": round(float(snapshot.get("ram_used_gb") or 0.0), 2),
+            "ram_total_gb": round(float(snapshot.get("ram_total_gb") or 0.0), 2),
+            "disk_used_gb": round(float(snapshot.get("disk_used_gb") or 0.0), 2),
+            "disk_total_gb": round(float(snapshot.get("disk_total_gb") or 0.0), 2),
+            "containers": int((summary or {}).get("total_containers") or 0),
+            "active_containers": int((summary or {}).get("running_containers") or 0),
+            "servers": 1,
+            "alerts": 0,
+            "tasks": 0,
+            "health_status": _health_status(cpu_percent, ram_percent, disk_percent),
+        },
+        "ram": dashboard_history["ram"],
+        "network": dashboard_history["network"],
+        "containers_memory": container_memory,
+        "disks": disks,
+        "included": {
+            "containers": bool(include_containers),
+            "disks": bool(include_disks),
+        },
+        "updated_at": point_ts,
+    }
+
+
 def _get_cached_admin_containers(username: str, db_name: str) -> tuple[dict, list]:
     now = time.time()
     with admin_cache_lock:
@@ -178,40 +230,25 @@ async def get_admin_dashboard_metrics(
             if not isinstance(result, Exception):
                 disks = result
 
-    cpu_percent = float(snapshot.get("cpu_percent") or 0.0)
-    ram_percent = float(snapshot.get("ram_percent_value") or 0.0)
-    disk_percent = float(snapshot.get("disk_percent_value") or 0.0)
-    return {
-        "scope": "admin_server",
-        "generated_by": username,
-        "overview": {
-            "cpu": snapshot.get("cpu", "0.0%"),
-            "ram": snapshot.get("ram_percent", "0.0%"),
-            "disk": snapshot.get("disk_percent", "0.0%"),
-            "network": f"↑ {float(snapshot.get('network_sent_mb') or 0.0):.2f} MB/s  ↓ {float(snapshot.get('network_recv_mb') or 0.0):.2f} MB/s",
-            "cpu_percent": cpu_percent,
-            "ram_percent": ram_percent,
-            "disk_percent": disk_percent,
-            "network_sent_mb": round(float(snapshot.get("network_sent_mb") or 0.0), 3),
-            "network_recv_mb": round(float(snapshot.get("network_recv_mb") or 0.0), 3),
-            "ram_used_gb": round(float(snapshot.get("ram_used_gb") or 0.0), 2),
-            "ram_total_gb": round(float(snapshot.get("ram_total_gb") or 0.0), 2),
-            "disk_used_gb": round(float(snapshot.get("disk_used_gb") or 0.0), 2),
-            "disk_total_gb": round(float(snapshot.get("disk_total_gb") or 0.0), 2),
-            "containers": int((summary or {}).get("total_containers") or 0),
-            "active_containers": int((summary or {}).get("running_containers") or 0),
-            "servers": 1,
-            "alerts": 0,
-            "tasks": 0,
-            "health_status": _health_status(cpu_percent, ram_percent, disk_percent),
-        },
-        "ram": dashboard_history["ram"],
-        "network": dashboard_history["network"],
-        "containers_memory": container_memory,
-        "disks": disks,
-        "included": {
-            "containers": bool(include_containers),
-            "disks": bool(include_disks),
-        },
-        "updated_at": point_ts,
-    }
+    return _build_admin_telemetry_payload(
+        username,
+        snapshot,
+        dashboard_history,
+        summary,
+        container_memory=container_memory,
+        disks=disks,
+        include_containers=include_containers,
+        include_disks=include_disks,
+    )
+
+
+@router.get("/admin/telemetry")
+async def get_admin_telemetry_metrics(request: Request):
+    username, db_name, is_staff = require_session(request)
+    if not is_staff:
+        raise HTTPException(status_code=403, detail="Staff clearance required")
+
+    snapshot = await collect_current_metrics()
+    dashboard_history = metrics_service.get_dashboard_history()
+    summary = await asyncio.to_thread(_get_cached_admin_summary, username, db_name)
+    return _build_admin_telemetry_payload(username, snapshot, dashboard_history, summary)

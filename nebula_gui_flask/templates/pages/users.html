@@ -28,6 +28,26 @@
         </a>
     </div>
 
+    <div class="users-toolbar">
+        <div class="users-toolbar-summary">
+            <div class="users-toolbar-label">Directory snapshot</div>
+            <div id="users_summary_text" class="users-toolbar-value">Waiting for database selection...</div>
+        </div>
+        <div class="users-toolbar-controls">
+            <div style="position: relative;">
+                <i class="bi bi-sort-down" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.9rem;"></i>
+                <select id="users_sort" class="premium-select users-sort-select">
+                    <option value="pinned">Pinned first</option>
+                    <option value="name_asc">Name A-Z</option>
+                    <option value="name_desc">Name Z-A</option>
+                    <option value="role">Role priority</option>
+                    <option value="staff_first">Staff first</option>
+                </select>
+                <i class="bi bi-chevron-down" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem; pointer-events: none;"></i>
+            </div>
+        </div>
+    </div>
+
     <div class="table-shell">
         <div class="table-card">
             <table class="user-table" style="width: 100%; border-collapse: collapse; text-align: left;">

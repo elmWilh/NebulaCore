@@ -4,6 +4,8 @@
 
 const containersContext = window.NebulaContainers || {};
 const isStaff = !!containersContext.isStaff;
+const CONTAINERS_SORT_STORAGE_KEY = 'nebula-containers-sort-v1';
+const PINNED_CONTAINERS_STORAGE_KEY = 'nebula-pinned-containers-v1';
 let assignableUsers = [];
 let selectedUsers = new Map();
 let rolePermissionMatrix = {};
@@ -92,8 +94,63 @@ let projectsMapCacheTs = 0;
 let editContainerId = null;
 let editSelectedUsers = new Map();
 let editRolePermissionMatrix = {};
+let editAvailablePortRules = [];
 
 let containerPresets = {};
+
+function getContainerSortMode() {
+    return localStorage.getItem(CONTAINERS_SORT_STORAGE_KEY) || 'pinned';
+}
+
+function setContainerSortMode(value) {
+    localStorage.setItem(CONTAINERS_SORT_STORAGE_KEY, value || 'pinned');
+}
+
+function normalizePinnedContainer(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = String(raw.id || '').trim();
+    const name = String(raw.name || '').trim();
+    if (!id && !name) return null;
+    return {
+        id,
+        name,
+        image: String(raw.image || '').trim(),
+    };
+}
+
+function loadPinnedContainers() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(PINNED_CONTAINERS_STORAGE_KEY) || '[]');
+        return (Array.isArray(parsed) ? parsed : []).map(normalizePinnedContainer).filter(Boolean);
+    } catch (_) {
+        return [];
+    }
+}
+
+function savePinnedContainers(items) {
+    localStorage.setItem(PINNED_CONTAINERS_STORAGE_KEY, JSON.stringify(items));
+}
+
+function pinnedContainerKey(container) {
+    return `${String(container?.id || '').trim()}::${String(container?.name || '').trim()}`;
+}
+
+function isPinnedContainer(container) {
+    const key = pinnedContainerKey(container);
+    return loadPinnedContainers().some((item) => pinnedContainerKey(item) === key);
+}
+
+function togglePinnedContainer(container) {
+    const normalized = normalizePinnedContainer(container);
+    if (!normalized) return;
+    const key = pinnedContainerKey(normalized);
+    const current = loadPinnedContainers();
+    const next = current.some((item) => pinnedContainerKey(item) === key)
+        ? current.filter((item) => pinnedContainerKey(item) !== key)
+        : [normalized, ...current.filter((item) => pinnedContainerKey(item) !== key)];
+    savePinnedContainers(next);
+    renderContainersTable(currentContainers);
+}
 
 function getMetricsPollIntervalMs() {
     return document.hidden ? 15000 : 4000;
@@ -141,6 +198,50 @@ function buildProjectsByContainerMap(projects) {
     return map;
 }
 
+function containerProjects(container) {
+    return [
+        ...(projectsByContainerId[String(container?.id || '')] || []),
+        ...(projectsByContainerId[String(container?.full_id || '')] || []),
+        ...(projectsByContainerId[String(container?.name || '')] || []),
+    ];
+}
+
+function compareContainers(a, b, mode) {
+    const pinnedDelta = Number(isPinnedContainer(b)) - Number(isPinnedContainer(a));
+    if (pinnedDelta !== 0) return pinnedDelta;
+
+    const nameCompare = String(a?.name || a?.id || '').localeCompare(String(b?.name || b?.id || ''));
+    if (mode === 'name_desc') return -nameCompare;
+    if (mode === 'status') {
+        const rank = { running: 0, paused: 1, restarting: 2, created: 3, exited: 4, dead: 5, unknown: 6 };
+        const delta = (rank[String(a?.status || 'unknown').toLowerCase()] ?? 99) - (rank[String(b?.status || 'unknown').toLowerCase()] ?? 99);
+        return delta !== 0 ? delta : nameCompare;
+    }
+    if (mode === 'projects') {
+        const delta = containerProjects(b).length - containerProjects(a).length;
+        return delta !== 0 ? delta : nameCompare;
+    }
+    if (mode === 'users') {
+        const delta = (Array.isArray(b?.users) ? b.users.length : 0) - (Array.isArray(a?.users) ? a.users.length : 0);
+        return delta !== 0 ? delta : nameCompare;
+    }
+    return nameCompare;
+}
+
+function getSortedContainers(containers) {
+    const mode = getContainerSortMode();
+    return [...(Array.isArray(containers) ? containers : [])].sort((a, b) => compareContainers(a, b, mode));
+}
+
+function updateContainersSummary(containers) {
+    const summaryEl = document.getElementById('containers_summary_text');
+    if (!summaryEl) return;
+    const running = containers.filter((c) => String(c?.status || '').toLowerCase() === 'running').length;
+    const pinned = containers.filter((c) => isPinnedContainer(c)).length;
+    const unassigned = containers.filter((c) => containerProjects(c).length === 0).length;
+    summaryEl.textContent = `${containers.length} total, ${running} running, ${pinned} pinned, ${unassigned} without project`;
+}
+
 async function refreshContainerProjectsMap(force = false) {
     const now = Date.now();
     if (!force && projectsMapCacheTs && (now - projectsMapCacheTs) < 15000) {
@@ -174,6 +275,123 @@ function cloneRoleMatrix(source) {
         });
     });
     return out;
+}
+
+function roleOptionsMarkup(selectedRole) {
+    const roles = (roleCatalog.length ? roleCatalog : ['user']).slice();
+    if (!roles.includes(selectedRole)) roles.push(selectedRole || 'user');
+    return roles
+        .sort((a, b) => String(a).localeCompare(String(b)))
+        .map((role) => `<option value="${escapeAttr(role)}"${role === selectedRole ? ' selected' : ''}>${escapeHtml(role)}</option>`)
+        .join('');
+}
+
+function describePortRule(rule) {
+    const raw = String(rule || '').trim();
+    if (!raw) return 'Unknown route';
+    const parts = raw.split(':');
+    const target = parts[parts.length - 1] || raw;
+    const source = parts.length > 1 ? parts[parts.length - 2] : target;
+    const protocol = raw.includes('/udp') ? 'UDP' : 'TCP';
+    return `${protocol} ${source} -> ${target}`;
+}
+
+function renderSettingsModalAccessChips(matrix = editRolePermissionMatrix) {
+    const host = document.getElementById('settings_modal_access_chips');
+    if (!host) return;
+    const rows = Object.entries(matrix || {});
+    if (!rows.length) {
+        host.innerHTML = '<span class="access-chip"><i class="bi bi-shield"></i> Default access model</span>';
+        return;
+    }
+    const chipDefs = [
+        { key: 'allow_explorer', label: 'Explorer' },
+        { key: 'allow_shell', label: 'Shell' },
+        { key: 'allow_settings', label: 'Settings' },
+        { key: 'allow_edit_files', label: 'Edit Files' },
+        { key: 'allow_edit_ports', label: 'Edit Ports' }
+    ];
+    host.innerHTML = chipDefs.map((item) => {
+        const roles = rows.filter(([, policy]) => policy && policy[item.key]).map(([role]) => role);
+        const label = roles.length ? `${item.label}: ${roles.join(', ')}` : `${item.label}: none`;
+        return `<span class="access-chip"><i class="bi bi-shield-check"></i>${escapeHtml(label)}</span>`;
+    }).join('');
+}
+
+function syncEditPortsInputFromSelection() {
+    const selected = Array.from(document.querySelectorAll('#edit_ports_selection input[type="checkbox"]:checked'))
+        .map((node) => node.value);
+    const input = document.getElementById('edit_cont_ports');
+    if (input) input.value = selected.join(', ');
+    document.querySelectorAll('#edit_ports_selection .port-selection-card').forEach((card) => {
+        const node = card.querySelector('input[type="checkbox"]');
+        card.classList.toggle('is-selected', !!node?.checked);
+    });
+    const meta = document.getElementById('edit_ports_selection_meta');
+    const summary = document.getElementById('edit_ports_summary');
+    const total = document.querySelectorAll('#edit_ports_selection .port-selection-card').length;
+    if (meta) meta.textContent = total ? `Selected ${selected.length} of ${total} published routes.` : 'No published routes found for this container.';
+    if (summary) {
+        summary.textContent = selected.length
+            ? `${selected.length} route(s) will stay active after save.`
+            : 'No route selected. You can still type manual mappings above if needed.';
+    }
+}
+
+function filterEditPortsSelection() {
+    const filter = String(document.getElementById('edit_ports_search')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('#edit_ports_selection .port-selection-card').forEach((card) => {
+        const text = String(card.dataset.rule || '').toLowerCase();
+        card.style.display = !filter || text.includes(filter) ? '' : 'none';
+    });
+}
+
+function setAllEditPortsSelection(enabled) {
+    document.querySelectorAll('#edit_ports_selection .port-selection-card input[type="checkbox"]').forEach((node) => {
+        if (node.closest('.port-selection-card')?.style.display === 'none') return;
+        node.checked = !!enabled;
+    });
+    syncEditPortsInputFromSelection();
+}
+
+function renderEditPortsSelection(rules = [], selectedRules = []) {
+    const host = document.getElementById('edit_ports_selection');
+    const meta = document.getElementById('edit_ports_selection_meta');
+    if (!host || !meta) return;
+    host.innerHTML = '';
+    const selected = new Set(Array.isArray(selectedRules) ? selectedRules : []);
+    if (!rules.length) {
+        meta.textContent = 'No published routes detected for this container.';
+        host.innerHTML = '<div class="input-hint">Run or recreate the container with exposed ports to manage them here.</div>';
+        syncEditPortsInputFromSelection();
+        return;
+    }
+    rules.forEach((rule) => {
+        const id = `edit-port-${safeDomId(rule)}`;
+        const card = document.createElement('label');
+        card.className = 'port-selection-card';
+        card.dataset.rule = rule;
+        card.setAttribute('for', id);
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.id = id;
+        input.value = rule;
+        input.checked = selected.size ? selected.has(rule) : true;
+        input.addEventListener('change', syncEditPortsInputFromSelection);
+
+        card.innerHTML = `
+            <span class="port-selection-icon"><i class="bi bi-diagram-3"></i></span>
+            <span class="port-selection-text">
+                <strong>${escapeHtml(rule)}</strong>
+                <small>${escapeHtml(describePortRule(rule))}</small>
+            </span>
+        `;
+        card.prepend(input);
+        host.appendChild(card);
+    });
+    syncEditPortsInputFromSelection();
+    filterEditPortsSelection();
 }
 
 async function loadRoleCatalog() {
@@ -274,6 +492,7 @@ function renderEditRolePermissionMatrix() {
     });
     html += '</tbody></table>';
     host.innerHTML = html;
+    renderSettingsModalAccessChips(editRolePermissionMatrix);
 }
 
 function onEditRolePermissionToggle(el) {
@@ -282,6 +501,7 @@ function onEditRolePermissionToggle(el) {
     if (!role || !key) return;
     if (!editRolePermissionMatrix[role]) editRolePermissionMatrix[role] = {};
     editRolePermissionMatrix[role][key] = !!el.checked;
+    renderSettingsModalAccessChips(editRolePermissionMatrix);
 }
 
 async function loadContainerPresets() {
@@ -470,10 +690,36 @@ function renderSelectedUsers() {
     Array.from(selectedUsers.values())
         .sort((a, b) => `${a.username}:${a.db}`.localeCompare(`${b.username}:${b.db}`))
         .forEach(u => {
-        const chip = document.createElement('span');
-        chip.className = 'user-chip';
-        chip.textContent = `${u.username} [${u.db}] (${u.role_tag || 'user'})`;
-        target.appendChild(chip);
+        const card = document.createElement('div');
+        card.className = 'user-assignment-card';
+        card.innerHTML = `
+            <div class="user-assignment-meta">
+                <span class="user-assignment-name">${escapeHtml(u.username)}</span>
+                <span class="user-assignment-db">${escapeHtml(u.db || 'system.db')}</span>
+            </div>
+            <select class="user-role-select" data-user-key="${escapeAttr(selectedUserKey(u))}">
+                ${roleOptionsMarkup(u.role_tag || 'user')}
+            </select>
+            <button type="button" class="assignment-remove-btn" data-remove-user="${escapeAttr(selectedUserKey(u))}">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        `;
+        const select = card.querySelector('select');
+        if (select) {
+            select.addEventListener('change', (event) => {
+                const item = selectedUsers.get(selectedUserKey(u));
+                if (!item) return;
+                item.role_tag = String(event.target.value || 'user');
+            });
+        }
+        const removeBtn = card.querySelector('[data-remove-user]');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                selectedUsers.delete(selectedUserKey(u));
+                renderUserPicker(document.getElementById('cont_user_search')?.value || '');
+            });
+        }
+        target.appendChild(card);
     });
 }
 
@@ -526,10 +772,36 @@ function renderEditSelectedUsers() {
     Array.from(editSelectedUsers.values())
         .sort((a, b) => `${a.username}:${a.db}`.localeCompare(`${b.username}:${b.db}`))
         .forEach(u => {
-            const chip = document.createElement('span');
-            chip.className = 'user-chip';
-            chip.textContent = `${u.username} [${u.db}] (${u.role_tag || 'user'})`;
-            target.appendChild(chip);
+            const card = document.createElement('div');
+            card.className = 'user-assignment-card';
+            card.innerHTML = `
+                <div class="user-assignment-meta">
+                    <span class="user-assignment-name">${escapeHtml(u.username)}</span>
+                    <span class="user-assignment-db">${escapeHtml(u.db || 'system.db')}</span>
+                </div>
+                <select class="user-role-select" data-edit-user-key="${escapeAttr(selectedUserKey(u))}">
+                    ${roleOptionsMarkup(u.role_tag || 'user')}
+                </select>
+                <button type="button" class="assignment-remove-btn" data-edit-remove-user="${escapeAttr(selectedUserKey(u))}">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            `;
+            const select = card.querySelector('select');
+            if (select) {
+                select.addEventListener('change', (event) => {
+                    const item = editSelectedUsers.get(selectedUserKey(u));
+                    if (!item) return;
+                    item.role_tag = String(event.target.value || 'user');
+                });
+            }
+            const removeBtn = card.querySelector('[data-edit-remove-user]');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => {
+                    editSelectedUsers.delete(selectedUserKey(u));
+                    renderEditUserPicker(document.getElementById('edit_user_search')?.value || '');
+                });
+            }
+            target.appendChild(card);
         });
 }
 
@@ -638,6 +910,14 @@ function normalizeNode(raw) {
 async function initPage() {
     try {
         bindContainerTableActions();
+        const sortSelect = document.getElementById('containers_sort');
+        if (sortSelect) {
+            sortSelect.value = getContainerSortMode();
+            sortSelect.addEventListener('change', () => {
+                setContainerSortMode(sortSelect.value);
+                renderContainersTable(currentContainers);
+            });
+        }
         startLiveTelemetry();
 
         if (isStaff) {
@@ -777,6 +1057,10 @@ function bindContainerTableActions() {
             openContainerSettingsModal(containerId);
             return;
         }
+        if (action === 'pin') {
+            togglePinnedContainer({ id: containerId, name: containerName });
+            return;
+        }
         if (action === 'delete') {
             deleteContainer(containerId);
         }
@@ -788,6 +1072,112 @@ function onNodeChanged() {
     hasContainerTableRendered = false;
     lastContainersSignature = '';
     fetchContainers(true);
+}
+
+function renderContainersTable(containers) {
+    const tbody = document.getElementById('container_table_body');
+    if (!tbody) return;
+
+    if (!Array.isArray(containers) || containers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">No active containers on this node</td></tr>';
+        updateActiveContainersStat([]);
+        updateContainersSummary([]);
+        hasContainerTableRendered = true;
+        return;
+    }
+
+    updateActiveContainersStat(containers);
+    updateContainersSummary(containers);
+    tbody.innerHTML = '';
+
+    getSortedContainers(containers).forEach((cont) => {
+        const row = document.createElement('tr');
+        const pinned = isPinnedContainer(cont);
+        row.className = `table-row-hover${pinned ? ' is-pinned-row' : ''}`;
+        row.style.borderBottom = '1px solid var(--border)';
+        row.style.cursor = 'pointer';
+        const containerId = String(cont.id ?? '');
+        const containerName = String(cont.name || containerId);
+        const containerStatus = String(cont.status || 'unknown').toLowerCase();
+        const containerImage = String(cont.image || 'unknown');
+        const containerIdPath = encodeURIComponent(containerId);
+        const menuId = `drop-${safeDomId(containerId)}`;
+        const color = containerStatus === 'running' ? '#4ade80' : '#ff4f4f';
+        const usersHtml = (cont.users || []).map((u, i) => {
+            const username = String(u || '');
+            const displayLetter = escapeHtml((username[0] || '?').toUpperCase());
+            return `<div class="user-avatar-mini" style="margin-left: ${i === 0 ? '0' : '-8px'}; background: ${stringToColor(username)}" title="${escapeAttr(username)}">${displayLetter}</div>`;
+        }).join('');
+        const projectItems = containerProjects(cont);
+        const seenProjects = new Set();
+        const dedupProjects = projectItems.filter((p) => {
+            if (!p?.id || seenProjects.has(p.id)) return false;
+            seenProjects.add(p.id);
+            return true;
+        });
+        const projectsHtml = dedupProjects.length
+            ? dedupProjects.map((p) => `<span class="badge badge-user" title="${escapeAttr(p.name)}">${escapeHtml(p.name)}</span>`).join(' ')
+            : '<span style="color:var(--text-muted); font-size:0.78rem;">Unassigned</span>';
+        row.onclick = (event) => {
+            if (event.target.closest('.dropdown') || event.target.closest('a') || event.target.closest('button')) return;
+            window.location.href = `/containers/view/${containerIdPath}`;
+        };
+
+        row.innerHTML = `
+            <td style="padding: 18px 24px;">
+                <div style="display:flex; align-items:center; gap:16px;">
+                    <div class="container-icon-bg"><i class="bi bi-box-seam" style="color:var(--accent);"></i></div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <div style="font-weight:700; color:white; font-size:0.9rem;">
+                                <a href="/containers/view/${containerIdPath}" style="color:inherit; text-decoration:none;">${escapeHtml(containerName)}</a>
+                            </div>
+                            ${pinned ? '<span class="pin-chip"><i class="bi bi-pin-angle-fill"></i> Pinned</span>' : ''}
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">ID: ${escapeHtml(containerId)}</div>
+                    </div>
+                </div>
+            </td>
+            <td style="padding: 18px 24px;">
+                <span class="badge badge-user">${escapeHtml(containerImage)}</span>
+            </td>
+            <td style="padding: 18px 24px;">
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">${projectsHtml}</div>
+            </td>
+            <td style="padding: 18px 24px;">
+                <div style="display:flex;">${usersHtml}</div>
+            </td>
+            <td style="padding: 18px 24px;">
+                <div style="display:flex; align-items:center; gap:10px; color:${color}; font-size:0.8rem; font-weight:700;">
+                    <div class="pulse-dot" style="background:${color}"></div>
+                    ${escapeHtml(containerStatus.toUpperCase())}
+                </div>
+            </td>
+            <td style="padding: 18px 24px; text-align: right;">
+                <div class="dropdown">
+                    <button class="action-btn" data-menu-id="${escapeAttr(menuId)}" aria-label="Container actions">
+                        <i class="bi bi-three-dots"></i>
+                    </button>
+                    <div id="${menuId}" class="dropdown-content">
+                        <a href="/containers/view/${containerIdPath}"><i class="bi bi-window-sidebar"></i> Container Mode</a>
+                        <a href="#" data-menu-action="console" data-container-id="${escapeAttr(containerId)}" data-container-name="${escapeAttr(containerName)}"><i class="bi bi-terminal"></i> Console</a>
+                        <a href="#" data-menu-action="pin" data-container-id="${escapeAttr(containerId)}" data-container-name="${escapeAttr(containerName)}"><i class="bi ${pinned ? 'bi-pin-angle-fill' : 'bi-pin-angle'}"></i> ${pinned ? 'Unpin from Focus' : 'Pin to Focus'}</a>
+                        <a href="#" data-menu-action="start" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-play-fill"></i> Start</a>
+                        <a href="#" data-menu-action="stop" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-stop-fill"></i> Stop</a>
+                        <a href="#" data-menu-action="restart" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-arrow-clockwise"></i> Restart</a>
+                        ${isStaff ? `
+                        <a href="#" data-menu-action="settings" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-sliders"></i> Container Settings</a>
+                        <hr style="border:0; border-top:1px solid var(--border); margin:6px 0;">
+                        <a href="#" style="color:#ff6b6b;" data-menu-action="delete" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-trash3"></i> Delete</a>
+                        ` : ''}
+                    </div>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    hasContainerTableRendered = true;
 }
 
 async function fetchContainers(showLoader = false) {
@@ -812,112 +1202,23 @@ async function fetchContainers(showLoader = false) {
             return;
         }
 
-        if (!Array.isArray(containers) || containers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">No active containers on this node</td></tr>';
-            hasContainerTableRendered = true;
+        if (!Array.isArray(containers)) {
             currentContainers = [];
             lastContainersSignature = '[]';
-            updateActiveContainersStat([]);
+            renderContainersTable([]);
             return;
         }
 
-        updateActiveContainersStat(containers);
         const signature = JSON.stringify(containers.map(c => [c.id, c.name, c.status, c.image, (c.users || []).join(',')]));
-        if (signature === lastContainersSignature && hasContainerTableRendered) {
+        const renderStateKey = `${signature}|${getContainerSortMode()}|${loadPinnedContainers().map(pinnedContainerKey).join(',')}`;
+        if (renderStateKey === lastContainersSignature && hasContainerTableRendered) {
             currentContainers = containers;
             return;
         }
 
         currentContainers = containers;
-        lastContainersSignature = signature;
-        tbody.innerHTML = '';
-
-        containers.forEach(cont => {
-            const row = document.createElement('tr');
-            row.className = "table-row-hover";
-            row.style.borderBottom = '1px solid var(--border)';
-            row.style.cursor = 'pointer';
-            const containerId = String(cont.id ?? '');
-            const containerName = String(cont.name || containerId);
-            const containerStatus = String(cont.status || 'unknown').toLowerCase();
-            const containerImage = String(cont.image || 'unknown');
-            const containerIdPath = encodeURIComponent(containerId);
-            const menuId = `drop-${safeDomId(containerId)}`;
-            const color = containerStatus === 'running' ? '#4ade80' : '#ff4f4f';
-            const usersHtml = (cont.users || []).map((u, i) => {
-                const username = String(u || '');
-                const displayLetter = escapeHtml((username[0] || '?').toUpperCase());
-                return `<div class="user-avatar-mini" style="margin-left: ${i === 0 ? '0' : '-8px'}; background: ${stringToColor(username)}" title="${escapeAttr(username)}">${displayLetter}</div>`;
-            }).join('');
-            const projectItems = [
-                ...(projectsByContainerId[String(containerId)] || []),
-                ...(projectsByContainerId[String(cont.full_id || '')] || []),
-                ...(projectsByContainerId[String(containerName)] || []),
-            ];
-            const seenProjects = new Set();
-            const dedupProjects = projectItems.filter(p => {
-                if (!p?.id || seenProjects.has(p.id)) return false;
-                seenProjects.add(p.id);
-                return true;
-            });
-            const projectsHtml = dedupProjects.length
-                ? dedupProjects.map(p => `<span class="badge badge-user" title="${escapeAttr(p.name)}">${escapeHtml(p.name)}</span>`).join(' ')
-                : '<span style="color:var(--text-muted); font-size:0.78rem;">Unassigned</span>';
-            row.onclick = (event) => {
-                if (event.target.closest('.dropdown') || event.target.closest('a') || event.target.closest('button')) return;
-                window.location.href = `/containers/view/${containerIdPath}`;
-            };
-
-            row.innerHTML = `
-                <td style="padding: 18px 24px;">
-                    <div style="display:flex; align-items:center; gap:16px;">
-                        <div class="container-icon-bg"><i class="bi bi-box-seam" style="color:var(--accent);"></i></div>
-                        <div>
-                            <div style="font-weight:700; color:white; font-size:0.9rem;">
-                                <a href="/containers/view/${containerIdPath}" style="color:inherit; text-decoration:none;">${escapeHtml(containerName)}</a>
-                            </div>
-                            <div style="font-size:0.75rem; color:var(--text-muted);">ID: ${escapeHtml(containerId)}</div>
-                        </div>
-                    </div>
-                </td>
-                <td style="padding: 18px 24px;">
-                    <span class="badge badge-user">${escapeHtml(containerImage)}</span>
-                </td>
-                <td style="padding: 18px 24px;">
-                    <div style="display:flex; flex-wrap:wrap; gap:6px;">${projectsHtml}</div>
-                </td>
-                <td style="padding: 18px 24px;">
-                    <div style="display:flex;">${usersHtml}</div>
-                </td>
-                <td style="padding: 18px 24px;">
-                    <div style="display:flex; align-items:center; gap:10px; color:${color}; font-size:0.8rem; font-weight:700;">
-                        <div class="pulse-dot" style="background:${color}"></div> 
-                        ${escapeHtml(containerStatus.toUpperCase())}
-                    </div>
-                </td>
-                <td style="padding: 18px 24px; text-align: right;">
-                    <div class="dropdown">
-                        <button class="action-btn" data-menu-id="${escapeAttr(menuId)}" aria-label="Container actions">
-                            <i class="bi bi-three-dots"></i>
-                        </button>
-                        <div id="${menuId}" class="dropdown-content">
-                            <a href="/containers/view/${containerIdPath}"><i class="bi bi-window-sidebar"></i> Container Mode</a>
-                            <a href="#" data-menu-action="console" data-container-id="${escapeAttr(containerId)}" data-container-name="${escapeAttr(containerName)}"><i class="bi bi-terminal"></i> Console</a>
-                            <a href="#" data-menu-action="start" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-play-fill"></i> Start</a>
-                            <a href="#" data-menu-action="stop" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-stop-fill"></i> Stop</a>
-                            <a href="#" data-menu-action="restart" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-arrow-clockwise"></i> Restart</a>
-                            ${isStaff ? `
-                            <a href="#" data-menu-action="settings" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-sliders"></i> Container Settings</a>
-                            <hr style="border:0; border-top:1px solid var(--border); margin:6px 0;">
-                            <a href="#" style="color:#ff6b6b;" data-menu-action="delete" data-container-id="${escapeAttr(containerId)}"><i class="bi bi-trash3"></i> Delete</a>
-                            ` : ''}
-                        </div>
-                    </div>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
-        hasContainerTableRendered = true;
+        lastContainersSignature = renderStateKey;
+        renderContainersTable(containers);
     } catch (e) {
         if (e && e.name === 'AbortError') return;
         if (!hasContainerTableRendered) {
@@ -1200,13 +1501,16 @@ async function openContainerSettingsModal(containerId) {
     if (!modal) return;
     modal.style.display = 'flex';
 
-    document.getElementById('settingsModalTitle').textContent = 'Container Settings';
+    document.getElementById('settingsModalTitle').textContent = 'Environment Settings';
     document.getElementById('settingsModalSub').textContent = 'Loading current settings...';
     document.getElementById('edit_cont_name').value = '';
     document.getElementById('edit_cont_id').value = id;
     document.getElementById('edit_cont_image').value = '';
     document.getElementById('edit_cont_command').value = '';
     document.getElementById('edit_cont_ports').value = '';
+    document.getElementById('edit_ports_search').value = '';
+    editAvailablePortRules = [];
+    renderEditPortsSelection([], []);
     document.getElementById('edit_restart_policy').value = 'no';
     document.getElementById('edit_restart_retries').value = '0';
     editSelectedUsers = new Map();
@@ -1228,13 +1532,15 @@ async function openContainerSettingsModal(containerId) {
 
         editContainerId = String(detail.full_id || detail.id || id);
         const containerName = String(detail.name || detail.id || id);
-        document.getElementById('settingsModalTitle').textContent = `Container Settings: ${containerName}`;
-        document.getElementById('settingsModalSub').textContent = `Edit runtime settings and access policies for ${editContainerId}`;
+        document.getElementById('settingsModalTitle').textContent = `Environment Settings: ${containerName}`;
+        document.getElementById('settingsModalSub').textContent = `Edit runtime behavior, network exposure and access policies for ${editContainerId}`;
         document.getElementById('edit_cont_name').value = containerName;
         document.getElementById('edit_cont_id').value = editContainerId;
         document.getElementById('edit_cont_image').value = String(detail.image || 'unknown');
         document.getElementById('edit_cont_command').value = String(settings.startup_command || '');
         document.getElementById('edit_cont_ports').value = String(settings.allowed_ports || '');
+        editAvailablePortRules = Array.isArray(settings.available_ports) ? settings.available_ports.map(v => String(v || '').trim()).filter(Boolean) : [];
+        renderEditPortsSelection(editAvailablePortRules, String(settings.allowed_ports || '').split(',').map(v => v.trim()).filter(Boolean));
         document.getElementById('edit_restart_policy').value = String(policy.restart_policy || 'no');
         document.getElementById('edit_restart_retries').value = String(asNumber(policy.maximum_retry_count, 0));
 
@@ -1262,6 +1568,7 @@ async function openContainerSettingsModal(containerId) {
             });
         }
         renderEditUserPicker('');
+        renderSettingsModalAccessChips(editRolePermissionMatrix);
     } catch (e) {
         editContainerId = null;
         alert(`Failed to load container settings: ${e.message}`);
@@ -1286,7 +1593,8 @@ async function saveContainerSettingsModal() {
     try {
         const settingsPayload = {
             startup_command: String(document.getElementById('edit_cont_command').value || ''),
-            allowed_ports: String(document.getElementById('edit_cont_ports').value || '')
+            allowed_ports: Array.from(document.querySelectorAll('#edit_ports_selection input[type="checkbox"]:checked')).map(node => node.value).join(', ')
+                || String(document.getElementById('edit_cont_ports').value || '')
         };
         const policyPayload = {
             restart_policy: String(document.getElementById('edit_restart_policy').value || 'no'),

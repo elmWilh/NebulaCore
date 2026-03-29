@@ -9,6 +9,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nebula Panel</title>
   <meta name="theme-color" content="#0b1020">
+  <script nonce="{{ csp_nonce }}">
+    window.NebulaRuntime = {
+      userId: {{ session.get('user_id')|tojson }},
+      roleTag: {{ session.get('role_tag')|tojson }},
+      isStaff: {{ 'true' if session.get('is_staff') else 'false' }}
+    };
+  </script>
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/favicon/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon/favicon-32x32.png') }}">
   <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon/favicon-16x16.png') }}">
@@ -72,7 +79,7 @@
               <i class="bi bi-chevron-down arrow"></i>
             </div>
             <div class="nav-links">
-              <a href="/" class="nav-link {{ 'active' if request.path == '/' else '' }}">
+              <a href="/?skip_default_page=1" class="nav-link {{ 'active' if request.path == '/' else '' }}">
                 <i class="bi bi-speedometer2"></i> Dashboard
               </a>
               <a href="/containers" class="nav-link {{ 'active' if request.path == '/containers' else '' }}">
@@ -83,6 +90,19 @@
               </a>
               <a href="/databases" class="nav-link {{ 'active' if request.path == '/databases' else '' }}">
                 <i class="bi bi-database"></i> Databases
+              </a>
+            </div>
+          </div>
+
+          <div class="nav-section" data-id="prefs">
+            <div class="nav-section-title" onclick="toggleSection(this)">
+              <i class="bi bi-sliders"></i>
+              <span>Preferences</span>
+              <i class="bi bi-chevron-down arrow"></i>
+            </div>
+            <div class="nav-links">
+              <a href="/settings" class="nav-link {{ 'active' if request.path == '/settings' else '' }}">
+                <i class="bi bi-gear-wide-connected"></i> Settings
               </a>
             </div>
           </div>
@@ -141,7 +161,6 @@
               <a href="/fault-sentinel" class="nav-link {{ 'active' if request.path == '/fault-sentinel' else '' }}">
                 <i class="bi bi-activity"></i> Fault Sentinel
               </a>
-              <a href="#" class="nav-link"><i class="bi bi-sliders"></i> Settings</a>
             </div>
           </div>
           {% endif %}
@@ -169,6 +188,7 @@
     </div>
   </div>
 
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/i18n.js') }}"></script>
   <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/layout.js') }}"></script>
   {% block extra_js %}{% endblock %}
   <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/main.js') }}"></script>

@@ -46,6 +46,58 @@
   </div>
 </div>
 
+<div class="ops-brief">
+  <div class="ops-brief-header">
+    <div>
+      <h2>Operations Brief</h2>
+      <p>Actionable context for server health, headroom, and quick reporting.</p>
+    </div>
+    <div class="ops-brief-stamp" id="ops-report-stamp">Waiting for live telemetry...</div>
+  </div>
+  <div class="ops-brief-grid">
+    <section class="brief-card">
+      <div class="brief-label">Pressure</div>
+      <div class="brief-value" id="brief-pressure">—</div>
+      <div class="brief-sub" id="brief-pressure-sub">Assessing current load...</div>
+    </section>
+    <section class="brief-card">
+      <div class="brief-label">Capacity Headroom</div>
+      <div class="brief-value" id="brief-headroom">—</div>
+      <div class="brief-sub" id="brief-headroom-sub">Collecting RAM and storage margins...</div>
+    </section>
+    <section class="brief-card">
+      <div class="brief-label">Service Availability</div>
+      <div class="brief-value" id="brief-availability">—</div>
+      <div class="brief-sub" id="brief-availability-sub">Checking running workload footprint...</div>
+    </section>
+    <section class="brief-card">
+      <div class="brief-label">Network Pulse</div>
+      <div class="brief-value" id="brief-network">—</div>
+      <div class="brief-sub" id="brief-network-sub">Waiting for traffic sample...</div>
+    </section>
+  </div>
+  <div class="ops-feed-grid">
+    <section class="ops-feed-card">
+      <div class="ops-feed-head">
+        <h3>Priority Watchlist</h3>
+        <span id="ops-watchlist-count">0 signals</span>
+      </div>
+      <div id="ops_watchlist" class="ops-watchlist">
+        <div class="ops-watch-item ops-watch-empty">No actionable signals yet.</div>
+      </div>
+    </section>
+    <section class="ops-feed-card">
+      <div class="ops-feed-head">
+        <h3>Pinned Focus</h3>
+        <span id="pinned-focus-count">0 pinned</span>
+      </div>
+      <div id="pinned_focus" class="pinned-focus-grid">
+        <div class="pin-focus-empty">Pin users or containers to keep them visible here.</div>
+      </div>
+    </section>
+  </div>
+</div>
+
 {% if session.get('is_staff') %}
 <div class="admin-observatory">
   <div class="observatory-header">

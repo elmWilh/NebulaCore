@@ -12,12 +12,16 @@ let lastContainersSyncAt = 0;
 let lastDisksSyncAt = 0;
 let dashboardFallbackTimer = null;
 let dashboardLiveWatchdogTimer = null;
+let pinnedFocusTimer = null;
 let hasTelemetryData = false;
 let hasContainersData = false;
 let hasDisksData = false;
 let hasReceivedDashboardPayload = false;
 let lastDashboardCounts = { containers: null, activeContainers: null };
+let latestDashboardPayload = null;
 const dashboardSocket = (typeof window.io === 'function') ? window.io() : null;
+const dashboardContainerFocusKey = 'nebula-pinned-containers-v1';
+const dashboardUserFocusKey = 'nebula-pinned-users-v1';
 window.__nebulaDashboardManaged = true;
 
 function formatTimePoint(ts) {
@@ -42,6 +46,10 @@ function disksIntervalMs() {
   return document.hidden ? 60000 : 45000;
 }
 
+function pinnedFocusIntervalMs() {
+  return document.hidden ? 30000 : 15000;
+}
+
 function setCardValue(id, value, fallback = '—') {
   const el = document.getElementById(id);
   if (el) el.textContent = value !== undefined && value !== null ? value : fallback;
@@ -61,6 +69,15 @@ function diskUsageValue(container) {
     return safeNumber(container.disk_used_mb);
   }
   return safeNumber(container.disk_rw_mb);
+}
+
+function readStoredPins(storageKey) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
 }
 
 function ensureLineChart(canvasId, label, color, fillColor, showLegend = false, secondDataset = null) {
@@ -303,8 +320,174 @@ function payloadHasMeaningfulDashboardData(data) {
   return hasTelemetry || hasContainersBreakdown || hasDisksBreakdown;
 }
 
+function setBriefValue(id, value, subValue) {
+  setCardValue(id, value);
+  setCardValue(`${id}-sub`, subValue);
+}
+
+function renderOperationsBrief(overview, payload) {
+  const cpu = safeNumber(overview?.cpu_percent);
+  const ram = safeNumber(overview?.ram_percent);
+  const disk = safeNumber(overview?.disk_percent);
+  const netUp = safeNumber(overview?.network_sent_mb);
+  const netDown = safeNumber(overview?.network_recv_mb);
+  const health = String(overview?.health_status || 'optimal').toLowerCase();
+  const pressure = Math.max(cpu, ram, disk);
+  const totalContainers = safeNumber(overview?.containers);
+  const activeContainers = safeNumber(overview?.active_containers);
+  const stoppedContainers = Math.max(0, totalContainers - activeContainers);
+  const ramHeadroom = Math.max(0, safeNumber(overview?.ram_total_gb) - safeNumber(overview?.ram_used_gb));
+  const diskHeadroom = Math.max(0, safeNumber(overview?.disk_total_gb) - safeNumber(overview?.disk_used_gb));
+  const trafficTotal = netUp + netDown;
+  const reportStamp = document.getElementById('ops-report-stamp');
+  if (reportStamp) {
+    reportStamp.textContent = `Updated ${new Date().toLocaleTimeString()} • ${health}`;
+  }
+
+  setBriefValue('brief-pressure', `${pressure.toFixed(1)}%`, `${health[0].toUpperCase()}${health.slice(1)} pressure based on CPU/RAM/disk ceiling`);
+  const headroomPieces = [];
+  if (ramHeadroom > 0) headroomPieces.push(`${ramHeadroom.toFixed(1)} GB RAM free`);
+  if (diskHeadroom > 0) headroomPieces.push(`${diskHeadroom.toFixed(1)} GB disk free`);
+  setBriefValue('brief-headroom', headroomPieces[0] || 'Unknown', headroomPieces[1] || 'Capacity headroom updates as telemetry arrives');
+
+  if (totalContainers > 0) {
+    setBriefValue('brief-availability', `${activeContainers}/${totalContainers}`, stoppedContainers > 0 ? `${stoppedContainers} container(s) need attention` : 'All visible containers are online');
+  } else {
+    setBriefValue('brief-availability', '0', 'No visible containers in current scope');
+  }
+
+  setBriefValue('brief-network', `${trafficTotal.toFixed(2)} MB/s`, `${netUp >= netDown ? 'Outbound' : 'Inbound'} traffic dominant right now`);
+
+  renderPriorityWatchlist(overview, payload);
+}
+
+function renderPriorityWatchlist(overview, payload) {
+  const host = document.getElementById('ops_watchlist');
+  const countEl = document.getElementById('ops-watchlist-count');
+  if (!host || !countEl) return;
+
+  const items = [];
+  const totalContainers = safeNumber(overview?.containers);
+  const activeContainers = safeNumber(overview?.active_containers);
+  const stoppedContainers = Math.max(0, totalContainers - activeContainers);
+  const cpu = safeNumber(overview?.cpu_percent);
+  const ram = safeNumber(overview?.ram_percent);
+  const disk = safeNumber(overview?.disk_percent);
+
+  if (disk >= 85) items.push({ level: 'critical', title: 'Disk pressure is high', sub: `${disk.toFixed(1)}% used on the host storage footprint.` });
+  if (ram >= 80) items.push({ level: 'elevated', title: 'RAM headroom is shrinking', sub: `${ram.toFixed(1)}% memory utilization may affect new workloads.` });
+  if (cpu >= 75) items.push({ level: 'elevated', title: 'CPU contention detected', sub: `${cpu.toFixed(1)}% current processor load across the node.` });
+  if (stoppedContainers > 0) items.push({ level: 'warning', title: 'Stopped workloads detected', sub: `${stoppedContainers} visible container(s) are not running.` });
+
+  const hotContainer = Array.isArray(payload?.containers_memory) ? payload.containers_memory[0] : null;
+  if (hotContainer) {
+    items.push({
+      level: 'info',
+      title: `Top memory consumer: ${hotContainer.name}`,
+      sub: `${safeNumber(hotContainer.memory_used_mb).toFixed(0)} MB RAM, ${safeNumber(hotContainer.disk_used_mb || hotContainer.disk_rw_mb).toFixed(0)} MB disk.`,
+    });
+  }
+
+  const stressedDisk = Array.isArray(payload?.disks) ? payload.disks.find((diskItem) => safeNumber(diskItem.percent) >= 80) : null;
+  if (stressedDisk) {
+    items.push({
+      level: 'warning',
+      title: `Disk mount nearing saturation: ${stressedDisk.mountpoint}`,
+      sub: `${safeNumber(stressedDisk.percent).toFixed(1)}% used on ${stressedDisk.device}.`,
+    });
+  }
+
+  const uniqueItems = items.slice(0, 5);
+  countEl.textContent = `${uniqueItems.length} signal${uniqueItems.length === 1 ? '' : 's'}`;
+  if (uniqueItems.length === 0) {
+    host.innerHTML = '<div class="ops-watch-item ops-watch-empty">No actionable signals yet.</div>';
+    return;
+  }
+  host.innerHTML = uniqueItems.map((item) => `
+    <div class="ops-watch-item level-${item.level}">
+      <div class="ops-watch-title">${item.title}</div>
+      <div class="ops-watch-sub">${item.sub}</div>
+    </div>
+  `).join('');
+}
+
+async function renderPinnedFocus() {
+  const host = document.getElementById('pinned_focus');
+  const countEl = document.getElementById('pinned-focus-count');
+  if (!host || !countEl) return;
+
+  const pinnedContainers = readStoredPins(dashboardContainerFocusKey);
+  const pinnedUsers = readStoredPins(dashboardUserFocusKey);
+  const items = [];
+
+  if (pinnedContainers.length > 0) {
+    try {
+      const res = await fetch('/api/containers/list', { cache: 'no-store' });
+      const containers = await res.json().catch(() => []);
+      const visible = Array.isArray(containers) ? containers : [];
+      pinnedContainers.forEach((pinned) => {
+        const match = visible.find((cont) => String(cont.id || '').trim() === String(pinned.id || '').trim()
+          || String(cont.name || '').trim() === String(pinned.name || '').trim());
+        const label = String(match?.name || pinned.name || pinned.id || 'Container');
+        const status = String(match?.status || 'missing').toLowerCase();
+        items.push({
+          type: 'container',
+          title: label,
+          sub: match ? `${status.toUpperCase()} • ${String(match.image || 'unknown')}` : 'Not visible in current scope',
+          href: match ? `/containers/view/${encodeURIComponent(String(match.id || pinned.id || ''))}` : '/containers',
+          state: status,
+        });
+      });
+    } catch (_) {
+      pinnedContainers.forEach((pinned) => {
+        items.push({
+          type: 'container',
+          title: String(pinned.name || pinned.id || 'Container'),
+          sub: 'Pinned container status unavailable',
+          href: '/containers',
+          state: 'missing',
+        });
+      });
+    }
+  }
+
+  pinnedUsers.forEach((pinned) => {
+    const username = String(pinned.username || '').trim();
+    if (!username) return;
+    const dbName = String(pinned.db || pinned.db_name || 'system.db').trim() || 'system.db';
+    items.push({
+      type: 'user',
+      title: username,
+      sub: `${String(pinned.role_tag || 'user').toUpperCase()} • ${dbName}`,
+      href: `/users/view/${encodeURIComponent(username)}?db_name=${encodeURIComponent(dbName)}`,
+      state: 'user',
+    });
+  });
+
+  countEl.textContent = `${items.length} pinned`;
+  if (items.length === 0) {
+    host.innerHTML = '<div class="pin-focus-empty">Pin users or containers to keep them visible here.</div>';
+    return;
+  }
+
+  host.innerHTML = items.slice(0, 8).map((item) => `
+    <a class="pin-focus-card state-${item.state}" href="${item.href}">
+      <div class="pin-focus-meta">${item.type}</div>
+      <div class="pin-focus-title">${item.title}</div>
+      <div class="pin-focus-sub">${item.sub}</div>
+    </a>
+  `).join('');
+}
+
+function schedulePinnedFocus() {
+  if (pinnedFocusTimer) clearInterval(pinnedFocusTimer);
+  renderPinnedFocus();
+  pinnedFocusTimer = setInterval(renderPinnedFocus, pinnedFocusIntervalMs());
+}
+
 function applyDashboardPayload(data) {
   if (!data || typeof data !== 'object') return;
+  latestDashboardPayload = data;
   const hasMeaningfulData = payloadHasMeaningfulDashboardData(data);
   if (hasMeaningfulData) {
     hasReceivedDashboardPayload = true;
@@ -313,6 +496,7 @@ function applyDashboardPayload(data) {
   }
   dashboardFailures = 0;
   updateOverviewCards(data.overview || data);
+  renderOperationsBrief(data.overview || data, data);
   if (data.ram && Array.isArray(data.ram.history) && data.network) {
     updateTelemetry(data);
     hasTelemetryData = data.ram.history.length > 0;
@@ -381,6 +565,7 @@ async function updateDashboard() {
       if (fallbackResponse.ok) {
         const fallbackData = await fallbackResponse.json();
         updateOverviewCards(fallbackData);
+        renderOperationsBrief(fallbackData, latestDashboardPayload || {});
       }
     } catch (_) {
       // Keep status text below; fallback is best-effort.
@@ -426,6 +611,8 @@ function disarmLiveWatchdog() {
 
 document.addEventListener('DOMContentLoaded', () => {
   refreshChartLoadingState();
+  renderOperationsBrief({}, {});
+  schedulePinnedFocus();
   updateDashboard();
   if (dashboardSocket) {
     dashboardSocket.on('connect', () => {
@@ -450,14 +637,21 @@ document.addEventListener('DOMContentLoaded', () => {
     scheduleDashboardLoop();
   }
   document.addEventListener('visibilitychange', () => {
+    schedulePinnedFocus();
     if (!dashboardSocket || !dashboardSocket.connected) {
       scheduleDashboardLoop();
     }
     if (!document.hidden) {
       updateDashboard();
+      renderPinnedFocus();
       if (dashboardSocket && dashboardSocket.connected) {
         armLiveWatchdog();
       }
+    }
+  });
+  window.addEventListener('storage', (event) => {
+    if (event.key === dashboardContainerFocusKey || event.key === dashboardUserFocusKey) {
+      renderPinnedFocus();
     }
   });
 });

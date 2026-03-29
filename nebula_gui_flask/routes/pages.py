@@ -1,16 +1,62 @@
 # nebula_gui_flask/routes/pages.py
 # Copyright (c) 2026 Monolink Systems
 # Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
-from flask import render_template, session
+import json
+from pathlib import Path
+
+from flask import jsonify, render_template, session
 
 
 def register_pages_routes(app, bridge):
+    def _discover_locales():
+        locales_dir = Path(app.static_folder) / "locales"
+        catalog = []
+        if not locales_dir.exists():
+            return catalog
+
+        for locale_path in sorted(locales_dir.glob("*.json")):
+            try:
+                payload = json.loads(locale_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            meta = payload.get("_meta") if isinstance(payload, dict) else {}
+            if not isinstance(meta, dict):
+                meta = {}
+
+            code = str(meta.get("code") or locale_path.stem).strip().lower()
+            if not code:
+                continue
+
+            catalog.append(
+                {
+                    "code": code,
+                    "name": str(meta.get("name") or code.upper()),
+                    "native_name": str(meta.get("native_name") or meta.get("name") or code.upper()),
+                    "crowdin_locale": str(meta.get("crowdin_locale") or code),
+                    "is_default": bool(meta.get("is_default")),
+                    "path": f"/static/locales/{locale_path.name}",
+                }
+            )
+
+        return catalog
+
     def _render_module_page(title: str, description: str, icon: str):
         return render_template(
             'pages/module_stub.html',
             module_title=title,
             module_description=description,
             module_icon=icon,
+        )
+
+    @app.route('/api/i18n/catalog')
+    def i18n_catalog():
+        locales = _discover_locales()
+        return jsonify(
+            {
+                "default_locale": next((item["code"] for item in locales if item.get("is_default")), "en"),
+                "locales": locales,
+            }
         )
 
     @app.route('/')
@@ -59,6 +105,16 @@ def register_pages_routes(app, bridge):
     @bridge.login_required
     def projects_page():
         return render_template('pages/projects.html')
+
+    @app.route('/settings')
+    @bridge.login_required
+    def settings_page():
+        return render_template(
+            'pages/settings.html',
+            settings_user_id=session.get('user_id'),
+            settings_is_staff=bool(session.get('is_staff')),
+            settings_role_tag=session.get('role_tag') or 'user',
+        )
 
     @app.route('/databases')
     @bridge.login_required

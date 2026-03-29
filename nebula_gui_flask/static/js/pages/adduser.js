@@ -4,6 +4,10 @@
 
 let roleCatalog = [];
 
+function t(key, params = {}, fallback = '') {
+    return window.NebulaI18n?.t(key, params, fallback) || fallback || key;
+}
+
 function normalizeDbName(raw) {
     const cleaned = String(raw || '').trim();
     if (!cleaned) return '';
@@ -14,7 +18,7 @@ async function loadDatabases() {
     const res = await fetch('/api/users/databases');
     const data = await res.json();
     const select = document.getElementById('target_db');
-    select.innerHTML = '<option value="">-- New Database --</option>';
+    select.innerHTML = `<option value="">${t('adduser.new_database')}</option>`;
     (data.databases || []).forEach(db => {
         const opt = document.createElement('option');
         opt.value = db;
@@ -44,13 +48,13 @@ async function loadRoles() {
 function updateRoleDescription() {
     const selected = document.getElementById('role_select').value;
     const role = roleCatalog.find(r => r.name === selected);
-    document.getElementById('role_desc').textContent = role?.description || 'No role description.';
+    document.getElementById('role_desc').textContent = role?.description || t('adduser.no_role_description');
 }
 
 async function createRole() {
     const name = String(document.getElementById('new_role_name').value || '').trim();
     if (!name) {
-        alert('Role name is required');
+        alert(t('adduser.role_name_required'));
         return;
     }
     const payload = {
@@ -65,7 +69,7 @@ async function createRole() {
     });
     const out = await res.json();
     if (!res.ok) {
-        alert(out.detail || 'Failed to create role');
+        alert(out.detail || t('adduser.failed_create_role'));
         return;
     }
     document.getElementById('new_role_name').value = '';
@@ -83,14 +87,14 @@ document.getElementById('createUserForm').onsubmit = async (e) => {
     const password = document.getElementById('password').value;
     const confirmPassword = document.getElementById('confirm_password').value;
     if (password !== confirmPassword) {
-        alert('Passwords do not match');
+        alert(t('adduser.passwords_mismatch'));
         return;
     }
     const selectedDb = document.getElementById('target_db').value;
     const newDbName = normalizeDbName(document.getElementById('new_db_name').value);
     const dbToUse = newDbName || selectedDb;
     if (!dbToUse) {
-        alert('Select DB or enter new DB name');
+        alert(t('adduser.select_db'));
         return;
     }
     const roleTag = document.getElementById('role_select').value || 'user';
@@ -107,7 +111,7 @@ document.getElementById('createUserForm').onsubmit = async (e) => {
     });
     const out = await res.json();
     if (!res.ok) {
-        alert(out.detail || 'Failed to create user');
+        alert(out.detail || t('adduser.failed_create_user'));
         return;
     }
     window.location.href = '/users';
@@ -117,4 +121,3 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadDatabases();
     await loadRoles();
 });
-

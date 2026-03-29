@@ -12,6 +12,7 @@ import shutil
 import json
 import io
 import tarfile
+import threading
 from ..db import get_connection, SYSTEM_DB
 from ..core.context import context
 
@@ -20,6 +21,8 @@ from ..core.context import context
 # and provide clear errors from methods when called.
 
 class DockerService:
+    _SCHEMA_LOCK = threading.Lock()
+    _SCHEMA_READY = False
     WORKSPACES_BASE_DIR = os.path.join("storage", "container_workspaces")
     PRESETS_BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "containers", "presets"))
     DEFAULT_WORKSPACE_MOUNT_PATH = "/data"
@@ -165,6 +168,33 @@ class DockerService:
         self._workspace_usage_cache = {}
         self._workspace_usage_cache_ttl = 15.0
         os.makedirs(self.PRESETS_BASE_DIR, exist_ok=True)
+        self._ensure_container_schema()
+
+    @classmethod
+    def _ensure_container_schema(cls):
+        if cls._SCHEMA_READY:
+            return
+        with cls._SCHEMA_LOCK:
+            if cls._SCHEMA_READY:
+                return
+            with get_connection(SYSTEM_DB) as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS container_audit_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        container_id TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        actor TEXT NOT NULL,
+                        actor_db TEXT NOT NULL DEFAULT 'system.db',
+                        details_json TEXT NOT NULL DEFAULT '{}',
+                        created_at INTEGER NOT NULL
+                    )
+                    """
+                )
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_container_audit_container ON container_audit_log(container_id, created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_container_audit_actor ON container_audit_log(actor, created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_container_audit_action ON container_audit_log(action, created_at DESC)")
+            cls._SCHEMA_READY = True
 
     @staticmethod
     def _normalize_role_tag(role_tag: str) -> str:
@@ -391,6 +421,59 @@ class DockerService:
             for row in rows
             if str(row["username"] or "").strip()
         ]
+
+    def append_container_audit_log(self, container_id: str, action: str, actor: str, actor_db: str, details: dict | None = None):
+        self._ensure_container_schema()
+        full_id = self.resolve_container_id(container_id)
+        payload = details if isinstance(details, dict) else {}
+        with get_connection(SYSTEM_DB) as conn:
+            conn.execute(
+                """
+                INSERT INTO container_audit_log (container_id, action, actor, actor_db, details_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    full_id,
+                    str(action or "container.event"),
+                    str(actor or "system"),
+                    str(actor_db or "system.db"),
+                    json.dumps(payload, ensure_ascii=True),
+                    int(time.time()),
+                ),
+            )
+        return {"status": "logged", "container_id": full_id}
+
+    def list_container_audit_log(self, container_id: str, limit: int = 25):
+        self._ensure_container_schema()
+        full_id = self.resolve_container_id(container_id)
+        capped = max(1, min(int(limit or 25), 200))
+        with get_connection(SYSTEM_DB) as conn:
+            rows = conn.execute(
+                """
+                SELECT id, container_id, action, actor, actor_db, details_json, created_at
+                FROM container_audit_log
+                WHERE container_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (full_id, capped),
+            ).fetchall()
+        entries = []
+        for row in rows:
+            try:
+                details = json.loads(row["details_json"] or "{}")
+            except Exception:
+                details = {}
+            entries.append({
+                "id": int(row["id"]),
+                "container_id": full_id,
+                "action": str(row["action"] or "container.event"),
+                "actor": str(row["actor"] or "system"),
+                "actor_db": str(row["actor_db"] or "system.db"),
+                "details": details if isinstance(details, dict) else {},
+                "created_at": int(row["created_at"] or 0),
+            })
+        return {"container_id": full_id, "entries": entries}
 
     def set_container_access_policies(self, container_id: str, role_policies: dict, user_assignments: list, updated_by: str):
         full_id = self.resolve_container_id(container_id)
@@ -1752,6 +1835,10 @@ class DockerService:
             )
             conn.execute(
                 "DELETE FROM container_role_permissions WHERE container_id = ?",
+                (full_id,)
+            )
+            conn.execute(
+                "DELETE FROM container_audit_log WHERE container_id = ?",
                 (full_id,)
             )
 

@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "code": "pl",
+    "name": "Polish",
+    "native_name": "Polski",
+    "crowdin_locale": "pl",
+    "is_default": false
+  },
+  "messages": {}
+}

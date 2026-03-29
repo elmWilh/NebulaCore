@@ -182,6 +182,13 @@ def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, ru
         res, code = bridge.proxy_request("GET", f"/containers/workspace-roots/{container_id}")
         return jsonify(res), code
 
+    @app.route('/api/containers/audit/<container_id>')
+    @bridge.login_required
+    def api_container_audit(container_id):
+        limit = request.args.get("limit", "25")
+        res, code = bridge.proxy_request("GET", f"/containers/audit/{container_id}", params={"limit": limit})
+        return jsonify(res), code
+
     @app.route('/api/containers/file-content/<container_id>')
     @bridge.login_required
     def api_container_file_content(container_id):

@@ -61,6 +61,27 @@ window.NebulaContainers = {
         </div>
     </div>
 
+    <div class="containers-toolbar">
+        <div class="containers-toolbar-summary">
+            <div class="containers-toolbar-label">Fleet posture</div>
+            <div id="containers_summary_text" class="containers-toolbar-value">Waiting for container sync...</div>
+        </div>
+        <div class="containers-toolbar-controls">
+            <div style="position: relative;">
+                <i class="bi bi-sort-down" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.9rem;"></i>
+                <select id="containers_sort" class="premium-select containers-sort-select">
+                    <option value="pinned">Pinned first</option>
+                    <option value="status">Status priority</option>
+                    <option value="name_asc">Name A-Z</option>
+                    <option value="name_desc">Name Z-A</option>
+                    <option value="projects">Project load</option>
+                    <option value="users">Assigned users</option>
+                </select>
+                <i class="bi bi-chevron-down" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.8rem; pointer-events: none;"></i>
+            </div>
+        </div>
+    </div>
+
     <div class="table-card">
         <table style="width: 100%; border-collapse: collapse; text-align: left;">
             <thead>
@@ -314,12 +335,21 @@ window.NebulaContainers = {
     <div class="modal-content" style="width: 920px;">
         <div class="modal-header">
             <div>
-                <h3 id="settingsModalTitle" style="margin: 0; font-weight: 700; color: white;">Container Settings</h3>
-                <p id="settingsModalSub" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Update container access and runtime settings</p>
+                <h3 id="settingsModalTitle" style="margin: 0; font-weight: 700; color: white;">Environment Settings</h3>
+                <p id="settingsModalSub" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Update runtime behavior, network routing and access policies</p>
             </div>
             <button onclick="closeContainerSettingsModal()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
         </div>
         <div style="padding: 24px 28px; max-height: 72vh; overflow-y: auto;">
+            <div class="settings-hero">
+                <div class="settings-hero-copy">
+                    <span class="settings-hero-kicker">Container Governance</span>
+                    <h4>Environment-level controls for runtime, ports and workspace access</h4>
+                    <p>Use this panel to define what users can do in the workspace, how the service starts, and which published routes remain active.</p>
+                </div>
+                <div id="settings_modal_access_chips" class="settings-hero-chips"></div>
+            </div>
+
             <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px;">
                 <div class="input-field">
                     <label>Container Name</label>
@@ -353,12 +383,24 @@ window.NebulaContainers = {
                     </div>
                 </div>
                 <div class="input-field">
-                    <label>Allowed Ports</label>
+                    <label>Published Ports</label>
                     <div class="input-wrapper">
                         <i class="bi bi-ethernet"></i>
                         <input type="text" id="edit_cont_ports" placeholder="8080:80, 8443:443, 27015:27015/udp">
                     </div>
+                    <span id="edit_ports_summary" class="input-hint">Select routed ports below to avoid malformed mappings.</span>
                 </div>
+            </div>
+
+            <div class="input-field" style="margin-top: 14px;">
+                <label>Port Routing Builder</label>
+                <div id="edit_ports_selection_meta" class="port-builder-meta">Loading published routes...</div>
+                <div class="ports-builder-toolbar">
+                    <input id="edit_ports_search" type="text" placeholder="Filter routes (e.g. 25565, udp, 127.0.0.1)" oninput="filterEditPortsSelection()">
+                    <button type="button" class="btn-secondary btn-inline-compact" onclick="setAllEditPortsSelection(true)">Select All</button>
+                    <button type="button" class="btn-secondary btn-inline-compact" onclick="setAllEditPortsSelection(false)">Clear</button>
+                </div>
+                <div id="edit_ports_selection" class="port-selection-grid"></div>
             </div>
 
             <div style="margin-top: 14px; display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
@@ -393,11 +435,13 @@ window.NebulaContainers = {
                     <div id="edit_users_list" class="users-list"></div>
                     <div id="edit_users_selected" class="selected-users"></div>
                 </div>
+                <span class="input-hint">Each assigned user can now receive a container-specific role override without changing their global system rank.</span>
             </div>
 
             <div class="input-field" style="margin-top: 16px;">
                 <label>Role Permissions</label>
                 <div id="edit_role_permissions_grid" style="border:1px solid var(--border); border-radius: 12px; overflow:auto; background:#07070b;"></div>
+                <span class="input-hint">Matrix defines what each rank can do inside the workspace, explorer and environment settings.</span>
             </div>
         </div>
         <div class="modal-footer">

@@ -16,6 +16,167 @@
     line-height: 1.15;
     word-break: break-word;
   }
+  .ops-brief {
+    margin-top: 24px;
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--hero-surface) 94%, transparent), color-mix(in srgb, var(--card) 92%, transparent));
+    box-shadow: var(--shadow-lg);
+  }
+  .ops-brief-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .ops-brief-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #f3f5ff;
+  }
+  .ops-brief-header p {
+    margin: 4px 0 0;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+  }
+  .ops-brief-stamp {
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: #d7ddf5;
+    font-size: 0.8rem;
+    background: var(--glass-bg);
+    white-space: nowrap;
+  }
+  .ops-brief-grid,
+  .ops-feed-grid {
+    display: grid;
+    gap: 14px;
+  }
+  .ops-brief-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .ops-feed-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 14px;
+  }
+  .brief-card,
+  .ops-feed-card {
+    min-width: 0;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--glass-bg) 80%, transparent);
+    padding: 16px;
+  }
+  .brief-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-muted);
+    font-weight: 700;
+  }
+  .brief-value {
+    margin-top: 8px;
+    font-size: clamp(1.2rem, 2vw, 1.8rem);
+    font-weight: 800;
+    color: #ffffff;
+  }
+  .brief-sub {
+    margin-top: 8px;
+    color: #aeb7d7;
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .ops-feed-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .ops-feed-head h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #edf1ff;
+  }
+  .ops-feed-head span {
+    font-size: 0.78rem;
+    color: #b8c2e2;
+  }
+  .ops-watchlist {
+    display: grid;
+    gap: 10px;
+  }
+  .ops-watch-item {
+    padding: 12px 13px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--glass-bg) 62%, transparent);
+  }
+  .ops-watch-item.level-critical { border-color: rgba(239, 68, 68, 0.35); }
+  .ops-watch-item.level-warning,
+  .ops-watch-item.level-elevated { border-color: rgba(245, 158, 11, 0.35); }
+  .ops-watch-item.level-info { border-color: rgba(88, 101, 255, 0.28); }
+  .ops-watch-empty { color: #98a0bc; text-align: center; }
+  .ops-watch-title {
+    color: #f3f5ff;
+    font-weight: 700;
+    font-size: 0.84rem;
+  }
+  .ops-watch-sub {
+    margin-top: 4px;
+    color: #a8b1ce;
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+  .pinned-focus-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .pin-focus-card {
+    display: block;
+    padding: 13px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--glass-bg) 82%, transparent);
+    text-decoration: none;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  }
+  .pin-focus-card:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    background: color-mix(in srgb, var(--accent-wash) 92%, transparent);
+  }
+  .pin-focus-meta {
+    color: color-mix(in srgb, var(--accent) 60%, white);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+  }
+  .pin-focus-title {
+    margin-top: 7px;
+    color: #f8faff;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  .pin-focus-sub {
+    margin-top: 5px;
+    color: #b2bbd7;
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+  .pin-focus-empty {
+    color: #98a0bc;
+    text-align: center;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px dashed rgba(255,255,255,0.14);
+  }
 
   .admin-observatory {
     margin-top: 24px;
@@ -26,9 +187,7 @@
     border-radius: 18px;
     border: 1px solid var(--border);
     background:
-      radial-gradient(980px 280px at 0% -10%, rgba(88, 101, 255, 0.16), transparent 55%),
-      radial-gradient(860px 220px at 100% 0%, rgba(88, 101, 255, 0.08), transparent 55%),
-      linear-gradient(165deg, rgba(18, 19, 26, 0.96), rgba(14, 15, 20, 0.92));
+      linear-gradient(165deg, color-mix(in srgb, var(--hero-surface) 96%, transparent), color-mix(in srgb, var(--card) 94%, transparent));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 34px rgba(0, 0, 0, 0.28);
   }
   .observatory-header {
@@ -53,7 +212,7 @@
     gap: 8px;
     font-size: 0.85rem;
     color: #c8cde5;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--glass-bg);
     border: 1px solid var(--border);
     border-radius: 999px;
     padding: 6px 12px;
@@ -62,8 +221,8 @@
     width: 8px;
     height: 8px;
     border-radius: 999px;
-    background: #6c7bff;
-    box-shadow: 0 0 0 6px rgba(88, 101, 255, 0.2);
+    background: var(--accent);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-wash) 90%, transparent);
   }
   .observatory-grid {
     display: grid;
@@ -74,7 +233,7 @@
   .obs-card {
     grid-column: span 6;
     min-width: 0;
-    background: linear-gradient(165deg, rgba(15, 17, 24, 0.9), rgba(12, 13, 19, 0.86));
+    background: linear-gradient(165deg, color-mix(in srgb, var(--card-strong) 94%, transparent), color-mix(in srgb, var(--card) 86%, transparent));
     border: 1px solid var(--border);
     border-radius: 14px;
     padding: 14px;
@@ -117,7 +276,7 @@
   .disk-row {
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.02);
+    background: color-mix(in srgb, var(--glass-bg) 62%, transparent);
     padding: 10px;
   }
   .disk-main {
@@ -152,7 +311,7 @@
   .disk-fill {
     height: 100%;
     border-radius: 999px;
-    background: linear-gradient(90deg, #5865ff, #8793ff);
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   }
   .disk-empty {
     color: #98a0bc;
@@ -236,6 +395,10 @@
     to { transform: rotate(360deg); }
   }
   @media (max-width: 1024px) {
+    .ops-brief-grid,
+    .ops-feed-grid {
+      grid-template-columns: 1fr 1fr;
+    }
     .obs-card,
     .obs-card-third,
     .obs-card-wide {
@@ -244,6 +407,18 @@
     }
   }
   @media (max-width: 640px) {
+    .ops-brief {
+      padding: 14px;
+    }
+    .ops-brief-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .ops-brief-grid,
+    .ops-feed-grid,
+    .pinned-focus-grid {
+      grid-template-columns: 1fr;
+    }
     .admin-observatory {
       padding: 14px;
     }

@@ -47,23 +47,23 @@
 }
 
 .plugins-btn-secondary {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--glass-bg);
     border-color: rgba(172, 186, 218, 0.32);
 }
 
 .plugins-btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--glass-bg-strong);
     border-color: rgba(192, 204, 231, 0.48);
 }
 
 .plugins-btn-primary {
-    background: rgba(89, 120, 255, 0.16);
-    border-color: rgba(102, 132, 255, 0.5);
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    border-color: transparent;
 }
 
 .plugins-btn-primary:hover {
-    background: rgba(102, 132, 255, 0.26);
-    border-color: rgba(122, 147, 255, 0.64);
+    background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+    border-color: transparent;
 }
 
 .plugins-alert {
@@ -71,7 +71,7 @@
     padding: 12px 14px;
     border-radius: 10px;
     border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--glass-bg);
     color: #d7e6ff;
     font-size: 0.85rem;
 }
@@ -86,7 +86,7 @@
 .plugins-kpi {
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: #0d0e14;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--card-strong) 95%, transparent), color-mix(in srgb, var(--card) 92%, transparent));
     padding: 12px;
 }
 
@@ -113,8 +113,9 @@
 .plugin-card {
     border: 1px solid var(--border);
     border-radius: 14px;
-    background: linear-gradient(160deg, #0d0f19 0%, #101524 100%);
+    background: linear-gradient(160deg, color-mix(in srgb, var(--card-strong) 95%, transparent) 0%, color-mix(in srgb, var(--card) 92%, transparent) 100%);
     overflow: hidden;
+    box-shadow: 0 18px 44px rgba(0,0,0,0.22);
 }
 
 .plugin-card-head {
@@ -174,7 +175,7 @@
 .plugin-runtime-item {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 9px;
-    background: rgba(255, 255, 255, 0.03);
+    background: color-mix(in srgb, var(--glass-bg) 76%, transparent);
     padding: 8px;
 }
 
@@ -232,18 +233,18 @@
 }
 
 .btn-plugin-neutral {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--glass-bg);
     color: #d8e2fb;
     border-color: rgba(160, 175, 211, 0.35);
 }
 
 .btn-plugin-neutral:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--glass-bg-strong);
     border-color: rgba(188, 201, 231, 0.5);
 }
 
 .btn-plugin-accent {
-    background: rgba(89, 120, 255, 0.14);
+    background: color-mix(in srgb, var(--accent-wash) 92%, transparent);
     color: #dbe4ff;
     border-color: rgba(102, 132, 255, 0.45);
 }
@@ -291,22 +292,25 @@
 .plugins-modal {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(4, 6, 10, 0.62);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1200;
+    backdrop-filter: blur(18px) saturate(135%);
 }
 
 .plugins-modal-content {
     width: min(960px, 92vw);
     max-height: 80vh;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: #0b0d15;
+    border: 1px solid var(--border-strong);
+    border-radius: 18px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--card-strong) 96%, transparent), color-mix(in srgb, var(--card) 92%, transparent));
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    box-shadow: 0 32px 56px rgba(0,0,0,0.48);
+    backdrop-filter: blur(20px) saturate(150%);
 }
 
 .plugins-modal-head {
@@ -315,6 +319,7 @@
     align-items: center;
     padding: 12px 14px;
     border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--glass-bg) 86%, transparent), transparent);
 }
 
 .plugins-modal-head h3 {
@@ -330,7 +335,7 @@
     font-size: 0.79rem;
     color: #dce5ff;
     line-height: 1.5;
-    background: #06080e;
+    background: color-mix(in srgb, var(--bg) 94%, #06080e);
 }
 
 @media (max-width: 920px) {

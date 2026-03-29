@@ -1,0 +1,815 @@
+{% extends "layout.html" %}
+{#
+  nebula_gui_flask/templates/pages/settings.html
+  Copyright (c) 2026 Monolink Systems
+  Licensed under AGPLv3 (Nebula Open Source Edition, non-corporate)
+#}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/settings.css') }}">
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}">
+window.NebulaSettings = {
+    userId: {{ settings_user_id|tojson }},
+    isStaff: {{ 'true' if settings_is_staff else 'false' }},
+    roleTag: {{ settings_role_tag|tojson }}
+};
+</script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/settings.js') }}"></script>
+{% endblock %}
+
+{% block page_content %}
+<div class="settings-page">
+    <section class="settings-hero-panel">
+        <div class="settings-hero-copy">
+            <span class="settings-kicker">Control Plane</span>
+            <h2>Panel Settings</h2>
+            <p>Shape your workspace the way you like it. This page brings together personal appearance preferences, language, security, mail, infrastructure, and platform policy controls in one place.</p>
+            <div class="settings-identity-row">
+                <span class="identity-pill"><i class="bi bi-person"></i> {{ settings_user_id }}</span>
+                <span class="identity-pill"><i class="bi bi-shield-check"></i> {{ 'staff' if settings_is_staff else settings_role_tag }}</span>
+                <span class="identity-pill"><i class="bi bi-layers"></i> Personal profile scope</span>
+            </div>
+        </div>
+        <div class="settings-hero-meta">
+            <div class="meta-stat-card">
+                <span class="meta-label">Sections</span>
+                <strong>11</strong>
+                <small>Workspace preferences, security, mail, ports, performance, certificates, and observability.</small>
+            </div>
+            <div class="meta-stat-card">
+                <span class="meta-label">Audience</span>
+                <strong>{{ 'Staff and user profile controls' if settings_is_staff else 'User profile controls' }}</strong>
+                <small>Personal workspace preferences stay tied to your own profile and browser session.</small>
+            </div>
+            <div class="meta-stat-card">
+                <span class="meta-label">Profile</span>
+                <strong>{{ 'Administrator' if settings_is_staff else (settings_role_tag|upper) }}</strong>
+                <small>Settings shown here adapt to the access level of the current profile.</small>
+            </div>
+        </div>
+    </section>
+
+    <section class="settings-toolbar">
+        <div class="settings-anchor-row">
+            <a href="#section-personal" class="anchor-chip">Personal</a>
+            <a href="#section-language" class="anchor-chip">Language</a>
+            <a href="#section-security" class="anchor-chip">Security</a>
+            <a href="#section-mail" class="anchor-chip">Mail</a>
+            <a href="#section-unique-mail" class="anchor-chip">Unique Mail</a>
+            <a href="#section-ports" class="anchor-chip">Ports</a>
+            <a href="#section-core" class="anchor-chip">Core</a>
+            <a href="#section-performance" class="anchor-chip">Performance</a>
+            <a href="#section-limits" class="anchor-chip">Limits</a>
+            <a href="#section-certs" class="anchor-chip">Certificates</a>
+            <a href="#section-observability" class="anchor-chip">Observability</a>
+        </div>
+        <div class="settings-actions-row">
+            <button type="button" class="btn-secondary" onclick="resetSettingsDraft()"><i class="bi bi-arrow-counterclockwise"></i> Reset Draft</button>
+            <button type="button" class="btn-primary" onclick="saveSettingsDraft()"><i class="bi bi-floppy"></i> Save Draft</button>
+        </div>
+    </section>
+
+    <div class="settings-shell">
+        <aside class="settings-sidebar">
+            <div class="sidebar-card">
+                <div class="sidebar-card-head">
+                    <h3>About Settings</h3>
+                    <span class="scope-badge">Current profile</span>
+                </div>
+                <p id="settings-draft-status" class="sidebar-copy">Choose how your workspace looks and behaves for this profile.</p>
+                <div class="sidebar-capability-head">
+                    <span class="sidebar-mini-label">Available for your profile</span>
+                    <strong id="settings-profile-label">{{ 'Administrator profile' if settings_is_staff else (settings_role_tag|upper ~ ' profile') }}</strong>
+                </div>
+                <div id="settings-profile-capabilities" class="sidebar-checklist"></div>
+            </div>
+        </aside>
+
+        <div class="settings-content">
+            <section id="section-personal" class="settings-section" data-availability="available">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Current user</span>
+                        <h3>Personal Workspace Preferences</h3>
+                        <p>Adjust the workspace for yourself without changing how the panel looks for anyone else.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-scope">Per-user</span>
+                    </div>
+                </div>
+                <div class="settings-grid two-col">
+                    <label class="setting-field">
+                        <span>Default landing page</span>
+                        <select data-setting-key="personal.default_page" data-default="dashboard">
+                            <option value="dashboard">Dashboard</option>
+                            <option value="containers">Containers</option>
+                            <option value="projects">Projects</option>
+                            <option value="databases">Databases</option>
+                            <option value="settings">Settings</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Panel theme</span>
+                        <select id="personal-theme-select" data-setting-key="personal.theme_id" data-default="nebula">
+                            <option value="nebula">Loading themes...</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Workspace width</span>
+                        <select data-setting-key="personal.content_width" data-default="default">
+                            <option value="default">Balanced</option>
+                            <option value="narrow">Narrow</option>
+                            <option value="wide">Wide</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Selected theme</span>
+                        <div id="personal-theme-description" class="setting-readonly">Choose a theme to preview its style direction.</div>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="personal.compact_tables" data-default="true">
+                        <span>Use compact tables across the panel</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="personal.remember_open_sections" data-default="true">
+                        <span>Remember expanded groups in the sidebar</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="personal.reduce_motion" data-default="false">
+                        <span>Reduce interface motion and animation</span>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-language" class="settings-section" data-availability="available">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Current user</span>
+                        <h3>Language, Regional And Time Format</h3>
+                        <p>Localize text, dates, number formatting and timezone behavior for the current user.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-scope">Per-user</span>
+                    </div>
+                </div>
+                <div class="settings-grid three-col">
+                    <label class="setting-field">
+                        <span>Panel language</span>
+                        <select id="language-panel-select" data-setting-key="language.panel_language" data-default="en">
+                            <option value="en">Loading languages...</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Timezone source</span>
+                        <select data-setting-key="language.timezone_source" data-default="browser">
+                            <option value="browser">Browser timezone</option>
+                            <option value="account">Account timezone</option>
+                            <option value="panel">Panel default timezone</option>
+                            <option value="utc">Force UTC</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Date format</span>
+                        <select data-setting-key="language.date_format" data-default="yyyy-mm-dd">
+                            <option value="yyyy-mm-dd">YYYY-MM-DD</option>
+                            <option value="dd-mm-yyyy">DD-MM-YYYY</option>
+                            <option value="mm-dd-yyyy">MM-DD-YYYY</option>
+                            <option value="long">Long localized</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Time format</span>
+                        <select data-setting-key="language.time_format" data-default="24h">
+                            <option value="24h">24-hour</option>
+                            <option value="12h">12-hour</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Number separator style</span>
+                        <select data-setting-key="language.number_format" data-default="locale">
+                            <option value="locale">Locale-aware</option>
+                            <option value="space">1 000 000</option>
+                            <option value="comma">1,000,000</option>
+                            <option value="dot">1.000.000</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Fallback translation strategy</span>
+                        <select data-setting-key="language.fallback_mode" data-default="english">
+                            <option value="english">Fallback to English</option>
+                            <option value="source">Show source key</option>
+                            <option value="blank">Leave untranslated</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-security" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Panel policy</span>
+                        <h3>Security Baseline And Account Protection</h3>
+                        <p>Shape authentication expectations, sensitive action safeguards, and baseline account protection rules.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Panel-wide</span>
+                    </div>
+                </div>
+                <div class="settings-grid two-col">
+                    <label class="setting-toggle emphasized">
+                        <input type="checkbox" data-setting-key="security.require_2fa_for_non_2fa_users" data-default="false">
+                        <span>Require every user without 2FA to enable 2FA before continuing</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="security.enforce_step_up_on_sensitive_actions" data-default="true">
+                        <span>Require step-up authentication for destructive actions</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="security.alert_on_new_device" data-default="true">
+                        <span>Alert users about new device or browser sign-ins</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="security.block_password_reuse" data-default="true">
+                        <span>Block recent password reuse</span>
+                    </label>
+                    <label class="setting-field">
+                        <span>Idle session timeout</span>
+                        <select data-setting-key="security.session_timeout" data-default="30m">
+                            <option value="15m">15 minutes</option>
+                            <option value="30m">30 minutes</option>
+                            <option value="1h">1 hour</option>
+                            <option value="4h">4 hours</option>
+                            <option value="never">Do not expire automatically</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Failed login lock window</span>
+                        <select data-setting-key="security.lock_window" data-default="15m">
+                            <option value="5m">5 minutes</option>
+                            <option value="15m">15 minutes</option>
+                            <option value="30m">30 minutes</option>
+                            <option value="1h">1 hour</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Failed login threshold</span>
+                        <input type="number" min="3" max="20" step="1" data-setting-key="security.lock_threshold" data-default="5">
+                    </label>
+                    <label class="setting-field">
+                        <span>Admin confirmation mode</span>
+                        <select data-setting-key="security.admin_confirmation_mode" data-default="password_or_2fa">
+                            <option value="password_or_2fa">Password or 2FA</option>
+                            <option value="2fa_only">2FA only</option>
+                            <option value="password_only">Password only</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-mail" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Mail gateway</span>
+                        <h3>Mail Delivery, Filtering And Outbound Policy</h3>
+                        <p>Control outbound delivery style, queue behavior, filtering rules, and inbound safety checks.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Service policy</span>
+                    </div>
+                </div>
+                <div class="settings-grid three-col">
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="mail.outbound_enabled" data-default="true">
+                        <span>Enable outbound panel mail delivery</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="mail.require_spf_dkim_alignment" data-default="true">
+                        <span>Prefer aligned SPF and DKIM for outgoing mail</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="mail.quarantine_suspicious_messages" data-default="true">
+                        <span>Quarantine suspicious messages before forwarding</span>
+                    </label>
+                    <label class="setting-field">
+                        <span>Notification sender display name</span>
+                        <input type="text" data-setting-key="mail.sender_name" data-default="Nebula Panel">
+                    </label>
+                    <label class="setting-field">
+                        <span>Outbound rate strategy</span>
+                        <select data-setting-key="mail.rate_strategy" data-default="adaptive">
+                            <option value="adaptive">Adaptive</option>
+                            <option value="steady">Steady queue</option>
+                            <option value="burst">Burst delivery</option>
+                            <option value="strict">Strict throttling</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Maximum queued messages per user</span>
+                        <input type="number" min="10" max="10000" step="10" data-setting-key="mail.queue_limit_per_user" data-default="250">
+                    </label>
+                    <label class="setting-field">
+                        <span>Inbound spam score threshold</span>
+                        <input type="number" min="1" max="20" step="0.5" data-setting-key="mail.spam_score_threshold" data-default="6.5">
+                    </label>
+                    <label class="setting-field">
+                        <span>Attachment policy</span>
+                        <select data-setting-key="mail.attachment_policy" data-default="safe_types">
+                            <option value="safe_types">Safe types only</option>
+                            <option value="all_with_scan">All with scan</option>
+                            <option value="metadata_only">Metadata only</option>
+                            <option value="blocked">Block all attachments</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Bounce handling mode</span>
+                        <select data-setting-key="mail.bounce_mode" data-default="auto_pause">
+                            <option value="auto_pause">Auto-pause destination</option>
+                            <option value="retry_then_pause">Retry then pause</option>
+                            <option value="warn_only">Warn only</option>
+                            <option value="ignore">Ignore</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-unique-mail" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Future feature</span>
+                        <h3>Unique Panel Mail Address System</h3>
+                        <p>Configure how personal relay addresses should be created, routed, filtered, and protected.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Panel-wide</span>
+                    </div>
+                </div>
+                <div class="settings-grid two-col">
+                    <label class="setting-toggle emphasized">
+                        <input type="checkbox" data-setting-key="alias.enabled" data-default="false">
+                        <span>Enable unique panel mail addresses for users</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="alias.allow_user_opt_out" data-default="true">
+                        <span>Allow users to opt out of public alias routing</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="alias.store_message_headers" data-default="true">
+                        <span>Store message headers for troubleshooting and abuse review</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="alias.strip_tracking_pixels" data-default="true">
+                        <span>Strip known tracking pixels and remote beacons</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="alias.reply_from_alias" data-default="true">
+                        <span>Reply through alias instead of exposing the real mailbox</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="alias.block_unknown_senders_by_default" data-default="false">
+                        <span>Block unknown senders until the user explicitly allows them</span>
+                    </label>
+                    <label class="setting-field">
+                        <span>Alias domain</span>
+                        <input type="text" data-setting-key="alias.domain" data-default="relay.nebula.local">
+                    </label>
+                    <label class="setting-field">
+                        <span>Alias format</span>
+                        <select data-setting-key="alias.format" data-default="username-random">
+                            <option value="username-random">username+random</option>
+                            <option value="uuid">UUID alias</option>
+                            <option value="project-slug">project-slug</option>
+                            <option value="short-code">Short code</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Inbound size limit (MB)</span>
+                        <input type="number" min="1" max="200" step="1" data-setting-key="alias.inbound_size_limit_mb" data-default="25">
+                    </label>
+                    <label class="setting-field">
+                        <span>Alias rotation policy</span>
+                        <select data-setting-key="alias.rotation_policy" data-default="manual">
+                            <option value="manual">Manual only</option>
+                            <option value="monthly">Monthly rotate</option>
+                            <option value="on_abuse">Rotate on abuse</option>
+                            <option value="per_project">Per project / workspace</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Forwarding behavior</span>
+                        <select data-setting-key="alias.forwarding_behavior" data-default="instant">
+                            <option value="instant">Instant relay</option>
+                            <option value="batched_5m">Batch every 5 min</option>
+                            <option value="batched_30m">Batch every 30 min</option>
+                            <option value="digest_only">Digest only</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Header redaction level</span>
+                        <select data-setting-key="alias.header_redaction" data-default="standard">
+                            <option value="minimal">Minimal</option>
+                            <option value="standard">Standard</option>
+                            <option value="aggressive">Aggressive</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-ports" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Networking</span>
+                        <h3>Panel Ports, Endpoints And Edge Routing</h3>
+                        <p>Define listener ports, ingress behavior, trusted proxy handling, and edge routing preferences.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Infrastructure</span>
+                    </div>
+                </div>
+                <div class="settings-grid three-col">
+                    <label class="setting-field">
+                        <span>Primary HTTPS port</span>
+                        <input type="number" min="1" max="65535" step="1" data-setting-key="ports.https_port" data-default="443">
+                    </label>
+                    <label class="setting-field">
+                        <span>Fallback HTTP port</span>
+                        <input type="number" min="1" max="65535" step="1" data-setting-key="ports.http_port" data-default="80">
+                    </label>
+                    <label class="setting-field">
+                        <span>Panel bind address</span>
+                        <input type="text" data-setting-key="ports.bind_address" data-default="0.0.0.0">
+                    </label>
+                    <label class="setting-field">
+                        <span>Websocket endpoint port</span>
+                        <input type="number" min="1" max="65535" step="1" data-setting-key="ports.websocket_port" data-default="9443">
+                    </label>
+                    <label class="setting-field">
+                        <span>Trusted proxy chain depth</span>
+                        <input type="number" min="0" max="10" step="1" data-setting-key="ports.trusted_proxy_depth" data-default="1">
+                    </label>
+                    <label class="setting-field">
+                        <span>Ingress mode</span>
+                        <select data-setting-key="ports.ingress_mode" data-default="reverse_proxy">
+                            <option value="reverse_proxy">Reverse proxy</option>
+                            <option value="direct_bind">Direct bind</option>
+                            <option value="hybrid">Hybrid edge</option>
+                            <option value="internal_only">Internal only</option>
+                        </select>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="ports.force_https_redirect" data-default="true">
+                        <span>Force HTTP to HTTPS redirects</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="ports.enable_ipv6_listener" data-default="false">
+                        <span>Enable IPv6 listener alongside IPv4</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="ports.reserve_admin_port" data-default="true">
+                        <span>Reserve dedicated admin control port for future separation</span>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-core" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Backend transport</span>
+                        <h3>Core Connectivity, Health And Sync</h3>
+                        <p>Configure how the panel connects to Nebula Core, retries requests, validates transport, and handles degraded states.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Service policy</span>
+                    </div>
+                </div>
+                <div class="settings-grid three-col">
+                    <label class="setting-field">
+                        <span>Core API host</span>
+                        <input type="text" data-setting-key="core.host" data-default="127.0.0.1">
+                    </label>
+                    <label class="setting-field">
+                        <span>Core API port</span>
+                        <input type="number" min="1" max="65535" step="1" data-setting-key="core.port" data-default="8081">
+                    </label>
+                    <label class="setting-field">
+                        <span>Transport mode</span>
+                        <select data-setting-key="core.transport_mode" data-default="https">
+                            <option value="https">HTTPS</option>
+                            <option value="http">HTTP</option>
+                            <option value="unix_socket">UNIX socket</option>
+                            <option value="internal_bus">Internal bus</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Request timeout (ms)</span>
+                        <input type="number" min="100" max="60000" step="100" data-setting-key="core.request_timeout_ms" data-default="5000">
+                    </label>
+                    <label class="setting-field">
+                        <span>Retry attempts</span>
+                        <input type="number" min="0" max="20" step="1" data-setting-key="core.retry_attempts" data-default="3">
+                    </label>
+                    <label class="setting-field">
+                        <span>Health check interval</span>
+                        <select data-setting-key="core.healthcheck_interval" data-default="15s">
+                            <option value="5s">5 seconds</option>
+                            <option value="15s">15 seconds</option>
+                            <option value="30s">30 seconds</option>
+                            <option value="60s">60 seconds</option>
+                        </select>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="core.verify_tls" data-default="true">
+                        <span>Verify Nebula Core TLS certificates</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="core.enable_response_compression" data-default="true">
+                        <span>Enable compressed API responses when available</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="core.fail_open_readonly_mode" data-default="false">
+                        <span>Fail open in read-only panel mode when core is degraded</span>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-performance" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Runtime behavior</span>
+                        <h3>Panel Speed, Refresh And Responsiveness</h3>
+                        <p>Control refresh cadence, client caching, chart retention, and how aggressively the panel follows live data.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Mixed scope</span>
+                    </div>
+                </div>
+                <div class="settings-grid three-col">
+                    <label class="setting-field">
+                        <span>Dashboard refresh interval</span>
+                        <select data-setting-key="performance.dashboard_refresh" data-default="4s">
+                            <option value="2s">2 seconds</option>
+                            <option value="4s">4 seconds</option>
+                            <option value="10s">10 seconds</option>
+                            <option value="manual">Manual only</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Container list refresh interval</span>
+                        <select data-setting-key="performance.container_refresh" data-default="15s">
+                            <option value="5s">5 seconds</option>
+                            <option value="15s">15 seconds</option>
+                            <option value="30s">30 seconds</option>
+                            <option value="manual">Manual only</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Log tail default</span>
+                        <input type="number" min="50" max="5000" step="50" data-setting-key="performance.log_tail_default" data-default="300">
+                    </label>
+                    <label class="setting-field">
+                        <span>Chart history retention (points)</span>
+                        <input type="number" min="10" max="1000" step="10" data-setting-key="performance.chart_points" data-default="120">
+                    </label>
+                    <label class="setting-field">
+                        <span>Client cache TTL (seconds)</span>
+                        <input type="number" min="0" max="600" step="5" data-setting-key="performance.cache_ttl_seconds" data-default="15">
+                    </label>
+                    <label class="setting-field">
+                        <span>Parallel fetch budget</span>
+                        <select data-setting-key="performance.parallel_fetch_budget" data-default="balanced">
+                            <option value="low">Low</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="aggressive">Aggressive</option>
+                        </select>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="performance.lazy_load_heavy_modules" data-default="true">
+                        <span>Lazy load heavy modules and charts</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="performance.defer_noncritical_widgets" data-default="true">
+                        <span>Defer non-critical dashboard widgets until idle</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="performance.pause_background_polls" data-default="true">
+                        <span>Pause aggressive polling when the tab is hidden</span>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-limits" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Guard rails</span>
+                        <h3>Operational Limits, Quotas And Safety Caps</h3>
+                        <p>Define the ceilings for uploads, log volume, file editing, mail relay, concurrency, and recovery guard rails.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Panel-wide</span>
+                    </div>
+                </div>
+                <div class="settings-grid three-col">
+                    <label class="setting-field">
+                        <span>Max concurrent deployments</span>
+                        <input type="number" min="1" max="100" step="1" data-setting-key="limits.concurrent_deployments" data-default="4">
+                    </label>
+                    <label class="setting-field">
+                        <span>Max file preview size (KB)</span>
+                        <input type="number" min="32" max="4096" step="32" data-setting-key="limits.file_preview_kb" data-default="200">
+                    </label>
+                    <label class="setting-field">
+                        <span>Max editable file size (KB)</span>
+                        <input type="number" min="32" max="8192" step="32" data-setting-key="limits.file_edit_kb" data-default="500">
+                    </label>
+                    <label class="setting-field">
+                        <span>Command length limit</span>
+                        <input type="number" min="32" max="10000" step="32" data-setting-key="limits.command_length" data-default="512">
+                    </label>
+                    <label class="setting-field">
+                        <span>Daily mail relay quota per user</span>
+                        <input type="number" min="1" max="100000" step="10" data-setting-key="limits.mail_quota_daily" data-default="500">
+                    </label>
+                    <label class="setting-field">
+                        <span>Audit retention (days)</span>
+                        <input type="number" min="1" max="3650" step="1" data-setting-key="limits.audit_retention_days" data-default="180">
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="limits.enable_rate_limits" data-default="true">
+                        <span>Enable global API rate limits</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="limits.block_large_inbound_mail" data-default="true">
+                        <span>Block oversized inbound relayed mail before forwarding</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="limits.force_readonly_under_pressure" data-default="false">
+                        <span>Force read-only mode under critical panel pressure</span>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-certs" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">TLS and trust</span>
+                        <h3>Certificates, Renewal And Edge Security</h3>
+                        <p>Manage certificate source, renewal strategy, TLS posture, trust chains, and client-certificate expectations.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Infrastructure</span>
+                    </div>
+                </div>
+                <div class="settings-grid three-col">
+                    <label class="setting-field">
+                        <span>Certificate source</span>
+                        <select data-setting-key="certs.source" data-default="acme">
+                            <option value="acme">ACME / Let's Encrypt</option>
+                            <option value="custom_upload">Custom upload</option>
+                            <option value="internal_ca">Internal CA</option>
+                            <option value="vault">Secret vault</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Auto-renew lead time (days)</span>
+                        <input type="number" min="1" max="90" step="1" data-setting-key="certs.renew_lead_days" data-default="21">
+                    </label>
+                    <label class="setting-field">
+                        <span>Minimum TLS version</span>
+                        <select data-setting-key="certs.min_tls_version" data-default="1.2">
+                            <option value="1.2">TLS 1.2</option>
+                            <option value="1.3">TLS 1.3</option>
+                        </select>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="certs.enable_hsts" data-default="true">
+                        <span>Enable HSTS with preload-ready defaults</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="certs.enable_ocsp" data-default="true">
+                        <span>Enable OCSP stapling when supported</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="certs.redirect_expired_clients" data-default="false">
+                        <span>Redirect expired-certificate clients to maintenance page</span>
+                    </label>
+                    <label class="setting-field">
+                        <span>Preferred chain</span>
+                        <select data-setting-key="certs.preferred_chain" data-default="default">
+                            <option value="default">Default chain</option>
+                            <option value="modern">Modern compatibility</option>
+                            <option value="legacy">Legacy compatibility</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Client certificate mode</span>
+                        <select data-setting-key="certs.client_cert_mode" data-default="disabled">
+                            <option value="disabled">Disabled</option>
+                            <option value="optional">Optional</option>
+                            <option value="admins_only">Admins only</option>
+                            <option value="required">Required for all</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Renewal retry strategy</span>
+                        <select data-setting-key="certs.renew_retry_strategy" data-default="adaptive">
+                            <option value="adaptive">Adaptive</option>
+                            <option value="strict_daily">Strict daily</option>
+                            <option value="manual_only">Manual only</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section id="section-observability" class="settings-section" data-availability="planned">
+                <div class="section-head">
+                    <div>
+                        <span class="section-kicker">Telemetry</span>
+                        <h3>Audit, Metrics, Notifications And Recovery Signals</h3>
+                        <p>Shape what the panel records, which signals it sends, and how deeply it watches operational behavior.</p>
+                    </div>
+                    <div class="section-head-meta">
+                        <span class="section-status unavailable"><i class="bi bi-slash-circle"></i> Unavailable</span>
+                        <span class="section-scope">Mixed scope</span>
+                    </div>
+                </div>
+                <div class="settings-grid two-col">
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="observability.realtime_admin_alerts" data-default="true">
+                        <span>Send real-time alerts for critical admin and security events</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="observability.log_mail_delivery_metrics" data-default="true">
+                        <span>Track mail relay latency, bounce and queue telemetry</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="observability.anonymize_low_value_ips" data-default="false">
+                        <span>Anonymize low-value client IP data in exports</span>
+                    </label>
+                    <label class="setting-toggle">
+                        <input type="checkbox" data-setting-key="observability.export_daily_health_snapshot" data-default="true">
+                        <span>Export daily panel health snapshots for later diagnostics</span>
+                    </label>
+                    <label class="setting-field">
+                        <span>Incident digest cadence</span>
+                        <select data-setting-key="observability.incident_digest" data-default="daily">
+                            <option value="hourly">Hourly</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="manual">Manual only</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Metric granularity</span>
+                        <select data-setting-key="observability.metric_granularity" data-default="balanced">
+                            <option value="coarse">Coarse</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="detailed">Detailed</option>
+                            <option value="forensics">Forensics mode</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Alert routing target</span>
+                        <select data-setting-key="observability.alert_target" data-default="panel_and_mail">
+                            <option value="panel_only">Panel only</option>
+                            <option value="mail_only">Mail only</option>
+                            <option value="panel_and_mail">Panel and mail</option>
+                            <option value="webhook">Webhook only</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Recovery checkpoint cadence</span>
+                        <select data-setting-key="observability.recovery_checkpoint" data-default="before_changes">
+                            <option value="before_changes">Before risky changes</option>
+                            <option value="hourly">Hourly</option>
+                            <option value="daily">Daily</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="settings-footer-bar">
+        <div>
+            <strong>Workspace Preferences</strong>
+            <p>Save your personal workspace choices for this browser and keep the panel consistent across visits.</p>
+        </div>
+        <div class="settings-actions-row">
+            <button type="button" class="btn-secondary" onclick="exportSettingsDraft()"><i class="bi bi-download"></i> Export Draft</button>
+            <button type="button" class="btn-primary" onclick="saveSettingsDraft()"><i class="bi bi-floppy"></i> Save Draft</button>
+        </div>
+    </div>
+
+    <div id="settings-toast-zone" class="settings-toast-zone" aria-live="polite" aria-atomic="true"></div>
+</div>
+{% endblock %}

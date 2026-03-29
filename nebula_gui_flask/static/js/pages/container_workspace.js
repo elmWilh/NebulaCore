@@ -18,6 +18,18 @@ let currentConsoleMode = 'console';
 let activePreviewPath = '';
 let previewEditMode = false;
 let previewDirty = false;
+let latestAuditEntries = [];
+
+const capabilityDefinitions = [
+    { key: 'allow_explorer', label: 'Explorer' },
+    { key: 'allow_root_explorer', label: 'Root Explorer' },
+    { key: 'allow_console', label: 'App Console' },
+    { key: 'allow_shell', label: 'Shell' },
+    { key: 'allow_settings', label: 'Environment Settings' },
+    { key: 'allow_edit_files', label: 'Edit Files' },
+    { key: 'allow_edit_startup', label: 'Edit Startup' },
+    { key: 'allow_edit_ports', label: 'Edit Ports' }
+];
 
 function canManageFileContent() {
     const isStaff = !!(profilePolicy && profilePolicy.is_staff);
@@ -50,6 +62,106 @@ function setStatus(text) {
     if (el) el.textContent = text;
 }
 
+function formatLocalDateTime(value) {
+    if (!value && value !== 0) return 'unknown time';
+    const num = Number(value);
+    const date = Number.isFinite(num) && String(value).length <= 13
+        ? new Date(num * 1000)
+        : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function renderCapabilitySummary(policy = accessPolicy || {}) {
+    const profileBadge = document.getElementById('ws-profile-badge');
+    const roleBadge = document.getElementById('ws-role-badge');
+    const title = document.getElementById('env-profile-title');
+    const summary = document.getElementById('env-permissions-summary');
+    const grid = document.getElementById('env-permissions-grid');
+    const explorerSummary = document.getElementById('explorer-access-summary');
+    const explorerNote = document.getElementById('explorer-access-note');
+
+    const profileName = (profilePolicy && (profilePolicy.label || profilePolicy.profile)) || 'Container profile';
+    const roleName = String(policy.role_tag || 'user');
+    if (profileBadge) profileBadge.textContent = `profile: ${profileName}`;
+    if (roleBadge) roleBadge.textContent = `role: ${roleName}`;
+    if (title) title.textContent = profileName;
+
+    const allowedCount = capabilityDefinitions.filter((cap) => policy[cap.key] === true).length;
+    const restrictedCount = capabilityDefinitions.length - allowedCount;
+    if (summary) {
+        summary.textContent = `${roleName} can use ${allowedCount} of ${capabilityDefinitions.length} environment capabilities. ${restrictedCount} actions remain restricted.`;
+    }
+    if (explorerSummary) {
+        explorerSummary.textContent = policy.allow_explorer === false
+            ? 'Explorer disabled'
+            : (policy.allow_edit_files ? 'Read/write explorer access' : 'Read-only explorer access');
+    }
+    if (explorerNote) {
+        explorerNote.textContent = policy.allow_explorer === false
+            ? 'Your role cannot browse this workspace.'
+            : (policy.allow_root_explorer ? 'Root-level workspace browsing is enabled for this role.' : 'Navigation stays inside approved workspace roots.');
+    }
+
+    if (!grid) return;
+    grid.innerHTML = '';
+    capabilityDefinitions.forEach((cap) => {
+        const item = document.createElement('span');
+        item.className = `capability-pill ${policy[cap.key] === true ? 'allowed' : 'restricted'}`;
+        item.innerHTML = `<i class="bi ${policy[cap.key] === true ? 'bi-check2-circle' : 'bi-slash-circle'}"></i><span>${cap.label}</span>`;
+        grid.appendChild(item);
+    });
+}
+
+function describeAuditEntry(entry) {
+    const action = String(entry?.action || 'container.event');
+    const details = entry?.details && typeof entry.details === 'object' ? entry.details : {};
+    const actor = String(entry?.actor || 'system');
+    const detailText = Object.entries(details)
+        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+        .slice(0, 3)
+        .map(([key, value]) => `${key}: ${String(value)}`)
+        .join(' • ');
+    return {
+        title: action.replaceAll('.', ' '),
+        meta: detailText || 'No additional metadata',
+        actor
+    };
+}
+
+function renderAuditLog() {
+    const host = document.getElementById('workspace-audit-list');
+    if (!host) return;
+    if (!Array.isArray(latestAuditEntries) || latestAuditEntries.length === 0) {
+        host.innerHTML = '<div class="audit-empty">No recent workspace activity recorded yet.</div>';
+        return;
+    }
+    host.innerHTML = '';
+    latestAuditEntries.forEach((entry) => {
+        const view = describeAuditEntry(entry);
+        const node = document.createElement('div');
+        node.className = 'audit-entry';
+        node.innerHTML = `
+            <div class="audit-entry-head">
+                <span></span>
+                <span>${formatLocalDateTime(entry.created_at || entry.createdAt || entry.timestamp)}</span>
+            </div>
+            <strong>${view.title}</strong>
+            <p>${view.meta}</p>
+            <p>Actor: ${view.actor}</p>
+        `;
+        const head = node.querySelector('.audit-entry-head span');
+        if (head) head.textContent = `Actor: ${view.actor}`;
+        host.appendChild(node);
+    });
+}
+
 function switchTab(tab) {
     if (tab === 'files' && accessPolicy && !accessPolicy.allow_explorer) {
         showToast('File explorer is disabled for your role.', 'warn');
@@ -78,6 +190,7 @@ function switchTab(tab) {
     } else if (tab === 'settings') {
         loadSettings();
         loadRestartPolicy();
+        loadAuditLog();
     }
 }
 
@@ -91,7 +204,7 @@ function refreshActiveTab() {
         return;
     }
     if (activeTab === 'settings') {
-        Promise.all([loadSettings(), loadRestartPolicy()]);
+        Promise.all([loadSettings(), loadRestartPolicy(), loadAuditLog()]);
         return;
     }
     loadContainerMeta();
@@ -285,9 +398,15 @@ function syncPortsInputFromSelection() {
         card.classList.toggle('is-selected', !!node?.checked);
     });
     const meta = document.getElementById('ports-selection-meta');
+    const summary = document.getElementById('ports-summary-text');
     const total = document.querySelectorAll('#ports-selection .port-toggle').length;
     if (meta && total > 0) {
         meta.textContent = `Selected ${selected.length} of ${total} available rules.`;
+    }
+    if (summary) {
+        summary.textContent = selected.length
+            ? `${selected.length} published route(s) will remain active after save.`
+            : 'No route selected. Manual mappings from the text field will be saved as entered.';
     }
 }
 
@@ -420,6 +539,7 @@ async function loadProfilePolicy() {
         configureToolbox(profileName);
         configureStartupCommandHint(profileName);
         applyWorkspacePermissions();
+        renderCapabilitySummary(accessPolicy || {});
 
         if (consoleAllowed) {
             configureConsoleMode('console', profileName);
@@ -456,7 +576,24 @@ function applyWorkspacePermissions() {
     if (runBtn && policy.allow_console === false && policy.allow_shell === false) {
         runBtn.disabled = true;
     }
+    renderCapabilitySummary(policy);
     updateFilePreviewActions();
+}
+
+async function loadAuditLog(showToastOnManual = false) {
+    const host = document.getElementById('workspace-audit-list');
+    if (host && !showToastOnManual) {
+        host.innerHTML = '<div class="audit-empty">Loading recent activity...</div>';
+    }
+    try {
+        const data = await apiJson(`/api/containers/audit/${containerId}?limit=25`);
+        latestAuditEntries = Array.isArray(data.entries) ? data.entries : [];
+        renderAuditLog();
+        if (showToastOnManual) showToast('Activity refreshed.', 'ok', 1400);
+    } catch (e) {
+        if (host) host.innerHTML = `<div class="audit-empty">${e.message}</div>`;
+        if (showToastOnManual) showToast(e.message, 'error');
+    }
 }
 
 async function containerAction(action) {
@@ -629,6 +766,8 @@ async function initWorkspaceRoots() {
         const data = await apiJson(`/api/containers/workspace-roots/${containerId}`);
         const roots = Array.isArray(data.roots) ? data.roots : [];
         activeWorkspaceRoot = data.preferred_path || '/data';
+        const activeRoot = document.getElementById('explorer-active-root');
+        if (activeRoot) activeRoot.textContent = activeWorkspaceRoot;
         if (activeWorkspaceRoot && activeWorkspaceRoot !== '/') {
             document.getElementById('files-path').value = activeWorkspaceRoot;
         }
@@ -920,6 +1059,7 @@ async function loadSettings() {
         } else {
             document.getElementById('settings-meta').textContent = 'No saved settings yet.';
         }
+        renderCapabilitySummary(accessPolicy || {});
     } catch (e) {
         document.getElementById('settings-meta').textContent = e.message;
     }
@@ -1058,5 +1198,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initWorkspaceRoots();
     await loadSettings();
     await loadRestartPolicy();
+    await loadAuditLog();
     switchTab('terminal');
 });

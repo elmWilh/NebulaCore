@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "code": "ru",
+    "name": "Russian",
+    "native_name": "Русский",
+    "crowdin_locale": "ru",
+    "is_default": false
+  },
+  "messages": {}
+}

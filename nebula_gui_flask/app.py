@@ -553,72 +553,36 @@ def _preserve_overview_counts(current_overview: dict | None, previous_overview: 
 
 
 def _build_staff_dashboard_fast_payload(core_session: str, previous_payload: dict | None = None):
-    metrics_body, metrics_code = _core_request_with_session("GET", "/metrics/current", core_session, timeout=1.8)
-    summary_body, summary_code = _core_request_with_session("GET", "/containers/summary", core_session, timeout=1.8)
-
-    metrics = metrics_body if metrics_code < 400 and isinstance(metrics_body, dict) else {}
-    summary = summary_body if summary_code < 400 and isinstance(summary_body, dict) else {}
-    summary_valid = "total_containers" in summary or "running_containers" in summary
+    telemetry_body, telemetry_code = _core_request_with_session("GET", "/metrics/admin/telemetry", core_session, timeout=2.2)
+    telemetry = telemetry_body if telemetry_code < 400 and isinstance(telemetry_body, dict) else {}
     previous_overview = {}
     if previous_payload and isinstance(previous_payload.get("overview"), dict):
         previous_overview = previous_payload["overview"]
 
-    cpu_percent = _to_float(metrics.get("cpu_percent") or metrics.get("cpu")) or _to_float(previous_overview.get("cpu_percent")) or 0.0
-    ram_percent = _to_float(metrics.get("ram_percent_value") or metrics.get("ram_percent")) or _to_float(previous_overview.get("ram_percent")) or 0.0
-    disk_percent = _to_float(metrics.get("disk_percent_value") or metrics.get("disk_percent")) or _to_float(previous_overview.get("disk_percent")) or 0.0
-    network_sent = _to_float(metrics.get("network_sent_mb")) or _to_float(previous_overview.get("network_sent_mb")) or 0.0
-    network_recv = _to_float(metrics.get("network_recv_mb")) or _to_float(previous_overview.get("network_recv_mb")) or 0.0
-    ram_used_gb = _to_float(metrics.get("ram_used_gb")) or _to_float(previous_overview.get("ram_used_gb")) or 0.0
-    ram_total_gb = _to_float(metrics.get("ram_total_gb")) or _to_float(previous_overview.get("ram_total_gb")) or 0.0
-    disk_used_gb = _to_float(metrics.get("disk_used_gb")) or _to_float(previous_overview.get("disk_used_gb")) or 0.0
-    disk_total_gb = _to_float(metrics.get("disk_total_gb")) or _to_float(previous_overview.get("disk_total_gb")) or 0.0
-    cpu_cores_total = psutil.cpu_count(logical=True) or 1
-    cpu_cores_active = round((float(cpu_percent or 0.0)) * cpu_cores_total / 100.0, 1)
-
-    overview = {
-        "cpu": f"{float(cpu_percent or 0.0):.1f}%",
-        "ram": f"{float(ram_percent or 0.0):.1f}%",
-        "disk": f"{float(disk_percent or 0.0):.1f}%",
-        "network": f"↑ {float(network_sent or 0.0):.2f} MB/s  ↓ {float(network_recv or 0.0):.2f} MB/s",
-        "cpu_percent": float(cpu_percent or 0.0),
-        "ram_percent": float(ram_percent or 0.0),
-        "disk_percent": float(disk_percent or 0.0),
-        "network_sent_mb": float(network_sent or 0.0),
-        "network_recv_mb": float(network_recv or 0.0),
-        "ram_used_gb": round(float(ram_used_gb or 0.0), 2),
-        "ram_total_gb": round(float(ram_total_gb or 0.0), 2),
-        "disk_used_gb": round(float(disk_used_gb or 0.0), 2),
-        "disk_total_gb": round(float(disk_total_gb or 0.0), 2),
-        "cpu_cores_total": cpu_cores_total,
-        "cpu_cores_active": cpu_cores_active,
-        "containers": int(summary.get("total_containers")) if summary_valid and summary.get("total_containers") is not None else None,
-        "active_containers": int(summary.get("running_containers")) if summary_valid and summary.get("running_containers") is not None else None,
-        "servers": 1,
-        "alerts": 0,
-        "tasks": 0,
-        "health_status": _health_status_from_pressure(float(cpu_percent or 0.0), float(ram_percent or 0.0), float(disk_percent or 0.0)),
-    }
+    overview = telemetry.get("overview") if isinstance(telemetry.get("overview"), dict) else {}
+    summary_valid = overview.get("containers") is not None or overview.get("active_containers") is not None
     overview = _preserve_overview_counts(overview, previous_overview)
     return {
         "scope": "admin_server",
         "overview": overview,
-        "ram": None,
-        "network": None,
+        "ram": telemetry.get("ram") if isinstance(telemetry.get("ram"), dict) else None,
+        "network": telemetry.get("network") if isinstance(telemetry.get("network"), dict) else None,
         "containers_memory": previous_payload.get("containers_memory") if isinstance(previous_payload, dict) else None,
         "disks": previous_payload.get("disks") if isinstance(previous_payload, dict) else None,
         "included": {"containers": False, "disks": False},
-        "loading": {"telemetry": True, "containers": True, "disks": True, "counts": not summary_valid},
+        "loading": {
+            "telemetry": not bool(telemetry.get("ram")) or not bool(telemetry.get("network")),
+            "containers": True,
+            "disks": True,
+            "counts": not summary_valid,
+        },
         "updated_at": int(time.time()),
     }
 
 
 def _build_staff_dashboard_stream_payload(core_session: str, include_containers: bool, include_disks: bool, previous_payload: dict | None = None):
-    params = {
-        "include_containers": "1" if include_containers else "0",
-        "include_disks": "1" if include_disks else "0",
-    }
-    payload, code = _core_request_with_session("GET", "/metrics/admin/dashboard", core_session, params=params, timeout=5.0)
-    if code >= 400 or not isinstance(payload, dict):
+    telemetry_payload, telemetry_code = _core_request_with_session("GET", "/metrics/admin/telemetry", core_session, timeout=2.5)
+    if telemetry_code >= 400 or not isinstance(telemetry_payload, dict):
         if not isinstance(previous_payload, dict):
             return None
         fallback_payload = dict(previous_payload)
@@ -631,6 +595,25 @@ def _build_staff_dashboard_stream_payload(core_session: str, include_containers:
         }
         fallback_payload["updated_at"] = int(time.time())
         return fallback_payload
+
+    payload = dict(telemetry_payload)
+    payload["containers_memory"] = previous_payload.get("containers_memory") if isinstance(previous_payload, dict) else None
+    payload["disks"] = previous_payload.get("disks") if isinstance(previous_payload, dict) else None
+    payload["included"] = {"containers": False, "disks": False}
+
+    if include_containers or include_disks:
+        params = {
+            "include_containers": "1" if include_containers else "0",
+            "include_disks": "1" if include_disks else "0",
+        }
+        heavy_payload, heavy_code = _core_request_with_session("GET", "/metrics/admin/dashboard", core_session, params=params, timeout=5.0)
+        if heavy_code < 400 and isinstance(heavy_payload, dict):
+            if include_containers:
+                payload["containers_memory"] = heavy_payload.get("containers_memory")
+                payload["included"]["containers"] = bool(heavy_payload.get("included", {}).get("containers"))
+            if include_disks:
+                payload["disks"] = heavy_payload.get("disks")
+                payload["included"]["disks"] = bool(heavy_payload.get("included", {}).get("disks"))
 
     if previous_payload and isinstance(previous_payload, dict):
         previous_overview = previous_payload.get("overview") if isinstance(previous_payload.get("overview"), dict) else {}

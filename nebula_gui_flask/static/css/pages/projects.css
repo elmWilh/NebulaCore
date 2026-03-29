@@ -3,9 +3,11 @@
 }
 
 .project-tabs {
-    display: flex; gap: 8px; background: rgba(255, 255, 255, 0.03);
+    display: flex; gap: 8px; background: var(--glass-bg);
     padding: 6px; border-radius: 14px; border: 1px solid var(--border);
     margin-top: 10px; width: fit-content;
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
 }
 
 .project-create-btn {
@@ -23,8 +25,8 @@
     border: none;
     background: transparent;
 }
-.tab-item:hover { color: white; background: rgba(255, 255, 255, 0.05); }
-.tab-item.active { background: var(--accent); color: white; box-shadow: 0 4px 15px rgba(88, 101, 255, 0.3); }
+.tab-item:hover { color: white; background: var(--glass-bg-strong); }
+.tab-item.active { background: linear-gradient(135deg, var(--accent), var(--accent-strong)); color: white; box-shadow: 0 10px 26px color-mix(in srgb, var(--accent-wash) 100%, transparent); }
 .tab-item.is-disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -37,32 +39,32 @@
     display: grid;
     grid-template-columns: 1.4fr 1fr 1fr;
     gap: 10px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--glass-bg) 84%, transparent), transparent);
 }
 
 .project-row { border-bottom: 1px solid var(--border); transition: 0.2s; cursor: pointer; }
-.project-row:hover { background: rgba(255, 255, 255, 0.02); }
+.project-row:hover { background: color-mix(in srgb, var(--glass-bg) 55%, transparent); }
     
 .action-btn {
     width: 36px; height: 36px; border-radius: 10px;
-    background: #16161a; border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border);
     color: var(--text-muted); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.action-btn:hover { transform: translateY(-2px); border-color: var(--accent); color: var(--accent); background: rgba(88, 101, 255, 0.1); }
+.action-btn:hover { transform: translateY(-2px); border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent-wash) 92%, transparent); }
 
-.project-details { display: none; background: #060609; }
+.project-details { display: none; background: color-mix(in srgb, var(--bg) 92%, #060609); }
 .project-details.active { display: table-row; }
 .details-container { padding: 30px 50px; border-left: 3px solid var(--accent); animation: fadeIn 0.3s ease; }
     
 .container-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
 
 .resource-card {
-    background: #0d0d12; border: 1px solid var(--border); padding: 16px;
+    background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); padding: 16px;
     border-radius: 12px; display: flex; justify-content: space-between;
     align-items: center; transition: all 0.2s ease; cursor: default;
 }
 .resource-card:hover {
-    background: #121218; border-color: var(--accent);
+    background: color-mix(in srgb, var(--card-strong) 94%, transparent); border-color: var(--accent);
     transform: scale(1.02); box-shadow: 0 8px 20px rgba(0,0,0,0.3);
 }
 
