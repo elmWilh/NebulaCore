@@ -1,89 +1,126 @@
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-Core%20API-009688?logo=fastapi&logoColor=white)
-![Flask](https://img.shields.io/badge/Flask-GUI-000000?logo=flask&logoColor=white)
-![gRPC](https://img.shields.io/badge/gRPC-Plugin%20Bridge-244C5A?logo=grpc&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Containers-2496ED?logo=docker&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-Storage-003B57?logo=sqlite&logoColor=white)
-![WebSocket](https://img.shields.io/badge/WebSocket-Live%20Logs-FF6A00?logo=socketdotio&logoColor=white)
-![RBAC](https://img.shields.io/badge/Auth-RBAC-5B4B8A)
-![2FA](https://img.shields.io/badge/Security-TOTP%202FA-2E8B57)
-![License: AGPLv3](https://img.shields.io/badge/License-AGPLv3-A42E2B)
+# NebulaCore
 
-# Nebula Panel
+NebulaCore is a pre-alpha control plane for single-host Docker environments. The repository combines:
 
-Nebula Panel is an experimental infrastructure management platform currently in pre-alpha stage.
+- `nebula_core`: FastAPI backend, runtime services, RBAC, plugin host, Docker orchestration.
+- `nebula_gui_flask`: Flask-based panel that proxies and visualizes the Core API.
+- `install/`: installer, first-run bootstrap, Docker helper, and `systemd` automation.
 
-The project explores a structured control layer over Docker-based environments, focusing on secure delegation, role-based access control, and modular core architecture.
+Nebula is not production-ready yet, but the codebase already contains a clear foundation for:
 
-Nebula is not intended for production use at this time.
-It is an actively evolving foundation aimed at building a secure and extensible infrastructure management system for small and medium-sized teams.
+- container lifecycle management
+- user and identity management
+- role-aware workspace permissions
+- plugin runtime with process isolation
+- multilingual GUI and switchable panel themes
+- telemetry, logs, and project grouping
 
-## Screenshots
+## Gallery
 
-![Nebula Panel Dashboard](docs/images/demo.png)
+![Nebula dashboard](docs/images/demo.jpg)
+![Nebula containers view](docs/images/demo1.jpg)
+![Nebula workspace view](docs/images/demo2.jpg)
+![Nebula settings view](docs/images/demo3.jpg)
 
+## What Is In This Repo
 
-## What Nebula Can Do Right Now
+### Core stack
 
-- Run a full Core + GUI stack:
-  - `nebula_core` (FastAPI): infrastructure API, Docker operations, RBAC/session security, metrics, plugins.
-  - `nebula_gui_flask` (Flask): web panel for admins and users.
-- Manage container lifecycle:
-  - deploy, start, stop, restart, delete;
-  - view container logs;
-  - read/edit selected runtime settings (with permission checks);
-  - configure restart policy.
-- Work with container presets:
-  - built-in preset catalog (`containers/presets/*.json`);
-  - create/update presets from API.
-- Delegate access per container with role-aware policies:
-  - shell access;
-  - app console access;
-  - file explorer access;
-  - settings access and granular edit rights.
-- Use in-container workspace tools:
-  - list files;
-  - read file content;
-  - detect workspace roots.
-- Operate user and identity management:
-  - login/logout via signed session cookie;
-  - per-user role tags (`identity_roles`, `user_identity_tags`);
-  - user create/update/move/delete across client databases;
-  - TOTP 2FA setup/confirm/disable.
-- Observe system state:
-  - host metrics (`/metrics/current`);
-  - admin dashboard metrics with RAM/network/disks/container memory breakdown;
-  - buffered logs and live log stream via WebSocket.
+- `nebula_core/main.py` starts FastAPI, CORS, runtime services, and internal gRPC observability.
+- `nebula_core/core/runtime.py` initializes the event bus, plugin manager, and background services.
+- `nebula_core/services/docker_service.py` is the main Docker integration layer.
+- `nebula_core/api/*.py` exposes HTTP and WebSocket endpoints for users, containers, projects, plugins, logs, and metrics.
 
-> [!IMPORTANT]
-> Nebula Core (`:8000`) should not be exposed directly to the public Internet. Put it behind a reverse proxy, HTTPS, and firewall rules.
+### GUI stack
 
-> [!IMPORTANT]
-> Set strong secrets before production: `NEBULA_SESSION_SECRET`, `NEBULA_INSTALLER_TOKEN`, and secure cookie mode (`NEBULA_COOKIE_SECURE=true`).
+- `nebula_gui_flask/app.py` starts the Flask panel, Socket.IO updates, CSP handling, session support, and UI helpers.
+- `nebula_gui_flask/core/bridge.py` authenticates against Core and proxies most panel requests to FastAPI.
+- `nebula_gui_flask/static/js/i18n.js` handles locale discovery, fallback chains, DOM translation, and locale persistence.
+- `nebula_gui_flask/static/panel_themes/*.json` define panel theme tokens.
 
-> [!IMPORTANT]
-> Nebula currently targets single-host Docker management. It is not a Kubernetes replacement and does not provide multi-node orchestration out of the box.
+### Data model
 
-## Data Layout
+- `storage/databases/system.db`: system users, admin accounts, identity roles, identity tags, container access metadata, projects.
+- `storage/databases/clients/*.db`: client/user databases for tenant-like user stores.
+- `containers/presets/*.json`: deployment presets and default role-permission matrices.
+- `storage/container_workspaces/`: managed container workspace directories when enabled by deployment profile.
 
-- `storage/databases/system.db`: system users, admin accounts, identity roles, global mappings.
-- `storage/databases/clients/*.db`: tenant/project user databases.
-- `containers/presets/*.json`: container deployment templates.
+## Important Reality Check
 
-## Quick Start (Ubuntu)
+Some parts are already substantial, and some are still unfinished:
 
-### 1. Install dependencies
+- Core + GUI startup works and is the main supported run path.
+- `systemd` automation is implemented and is the most complete service-management path today.
+- Plugin runtime is real and non-trivial, including per-process workers, gRPC, restart policy, and optional cgroup v2 isolation.
+- RBAC exists in multiple layers and is functional, but the model is still evolving.
+- `docker-compose.yml` is currently only a placeholder comment, not a ready-made stack definition.
 
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip curl
+That means the recommended way to run the project today is still:
+
+1. Python virtualenv
+2. manual Core + GUI startup for development
+3. optional `systemd` for Core on Linux hosts
+
+## Architecture At A Glance
+
+```text
+Browser
+  -> Flask GUI (`nebula_gui_flask`)
+     -> Core HTTP API (`nebula_core`)
+     -> Core internal gRPC observability
+  -> FastAPI Core
+     -> SQLite metadata (`system.db`, client DBs)
+     -> Docker Engine
+     -> Plugin Manager
+        -> isolated plugin worker processes
 ```
 
-### 2. Prepare project env
+## Security Model In Short
+
+- Authentication uses signed session cookies named `nebula_session`.
+- Staff users live in `system.db` and can access administrative routes.
+- Regular users authenticate either in `system.db` or a client DB.
+- Global identity metadata lives in `identity_roles` and `user_identity_tags`.
+- Container access is controlled separately via:
+  - explicit user-to-container assignments in `container_permissions`
+  - role capability matrices in `container_role_permissions`
+- Sensitive internal automation can also authenticate with `X-Nebula-Token: <NEBULA_INSTALLER_TOKEN>`.
+
+Detailed explanation: [RBAC model](docs/RBAC_MODEL.md).
+
+## Plugin System In Short
+
+Nebula supports a plugin runtime with two modes:
+
+- development-friendly in-process loading
+- recommended process runtime with one worker process per plugin
+
+The process runtime uses:
+
+- `plugin.json` manifest
+- `plugin.py` factory contract
+- gRPC over Unix socket
+- scoped plugin capabilities
+- timeout, health check, restart, and crash tracking
+- optional cgroup v2 resource isolation
+
+Detailed explanation: [Plugin system docs](docs/PLUGIN_MANAGER_API.md).
+
+## i18n And Theme System In Short
+
+- GUI locales live in `nebula_gui_flask/static/locales/*.json`.
+- `/api/i18n/catalog` is generated dynamically by scanning locale files and `_meta`.
+- English is the fallback locale.
+- Panel themes live in `nebula_gui_flask/static/panel_themes/*.json`.
+- Theme choice is persisted per user in browser storage and applied through CSS variables and `<meta name="theme-color">`.
+
+Detailed explanation: [GUI, i18n, and themes](docs/GUI_I18N_THEMES.md).
+
+## Quick Start
+
+### 1. Prepare Python environment
 
 ```bash
-export PROJECT_DIR=/opt/NebulaCore
-cd "$PROJECT_DIR"
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
@@ -91,93 +128,89 @@ pip install -r requirements.txt
 pip install -r nebula_gui_flask/requirements.txt
 ```
 
-### 3. Install Docker
+### 2. Ensure Docker is installed
 
-Option A:
+Interactive helper:
 
 ```bash
-cd "$PROJECT_DIR"
-source .venv/bin/activate
 python install/main.py
 ```
 
-Option B:
+Or install Docker manually and verify:
 
 ```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-rm get-docker.sh
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"
-newgrp docker
 docker info
 ```
 
-### 4. Start Core
+### 3. Start Nebula Core
 
 ```bash
-cd "$PROJECT_DIR"
 source .venv/bin/activate
 python -m nebula_core
 ```
 
-### 4.1 Optional: run Core as systemd service (recommended)
+### 4. Run first-time setup
+
+In another terminal:
 
 ```bash
-cd "$PROJECT_DIR"
-python3 install/main.py --core-service-install --core-service-name nebula-core
-```
-
-Quick terminal control:
-
-```bash
-./corectl.sh restart
-./corectl.sh status
-./corectl.sh logs
-```
-
-Detailed guide: `docs/CORE_SERVICE.md`.
-
-### 5. Run initial admin setup
-
-```bash
-cd "$PROJECT_DIR"
 source .venv/bin/activate
 python install/main.py
 ```
 
-Then select `Run First-Time Setup / Create Admin`.
+Choose `Run First-Time Setup / Create Admin`.
 
-### 6. Start GUI (second terminal)
+### 5. Start Flask GUI
 
 ```bash
-cd "$PROJECT_DIR/nebula_gui_flask"
+cd nebula_gui_flask
 source ../.venv/bin/activate
 python app.py
 ```
 
 Open `http://127.0.0.1:5000`.
 
-## Main URLs
+## systemd Service Flow
+
+On Linux, the best-supported service path today is Core-as-`systemd`:
+
+```bash
+python3 install/main.py --core-service-install --core-service-name nebula-core
+./corectl.sh restart
+./corectl.sh status
+./corectl.sh logs
+```
+
+See [Core service guide](docs/CORE_SERVICE.md).
+
+## Documentation Map
+
+- [Architecture overview](docs/ARCHITECTURE.md)
+- [RBAC and security model](docs/RBAC_MODEL.md)
+- [Plugin system and Plugin Manager API](docs/PLUGIN_MANAGER_API.md)
+- [GUI, i18n, and panel themes](docs/GUI_I18N_THEMES.md)
+- [Docker, runtime, and deployment notes](docs/DOCKER_RUNTIME.md)
+- [Core API reference](docs/API_DOCS.md)
+- [Installer and bootstrap API](docs/CORE_INSTALL_API.md)
+
+## Main Runtime URLs
 
 - GUI: `http://127.0.0.1:5000`
 - Core API: `http://127.0.0.1:8000`
+- Internal gRPC observability: `127.0.0.1:50051` by default
 
-## API Documentation
+## Environment Variables Worth Setting
 
-- `docs/API_DOCS.md`
-- `docs/CORE_INSTALL_API.md`
-- `docs/PLUGIN_MANAGER_API.md`
+- `NEBULA_SESSION_SECRET`
+- `NEBULA_INSTALLER_TOKEN`
+- `NEBULA_COOKIE_SECURE=true`
+- `NEBULA_GUI_SECRET_KEY`
+- `NEBULA_CORS_ORIGINS`
+- `NEBULA_GUI_CORS_ORIGINS`
+- `NEBULA_CORE_GRPC_PORT`
 
-## About Monolink Systems
+## License
 
-Monolink Systems is an independent infrastructure software initiative focused on building structured, project-oriented control platforms for modern containerized environments.
+Copyright (c) 2026 Monolink Systems
 
-## License & Copyright
-
-- Copyright (c) 2026 Monolink Systems
-- Nebula Open Source Edition (non-corporate)
-- Licensed under AGPLv3 (see `LICENSE`)
-
-Founded by elmWilh  
-GitHub: https://github.com/elmWilh
+Nebula Open Source Edition (non-corporate) is licensed under AGPLv3. See `LICENSE`.

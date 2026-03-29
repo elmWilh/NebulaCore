@@ -1,78 +1,104 @@
-# Core Install API
+# Core Install And Bootstrap API
 
-This document describes how Nebula Core is installed, initialized, and controlled through terminal automation and internal bootstrap endpoints.
+This document covers the parts of Nebula that are used to install, initialize, and operate the Core service.
 
-## 1. Installer CLI API
+It spans two surfaces:
 
-Installer entrypoint:
+- installer CLI in `install/main.py`
+- internal bootstrap endpoints under `/system/internal/core`
 
-- `python3 install/main.py`
+## 1. Installer CLI
 
-### 1.1 Health/check mode
+Main entrypoint:
 
-- Command: `python3 install/main.py --check`
-- Exit codes:
-  - `0`: `.env` and `storage/databases/system.db` exist
-  - `2`: setup artifacts missing
+```bash
+python3 install/main.py
+```
 
-### 1.2 Core service install/update (systemd)
+The interactive installer currently provides:
 
-- Command:
+- first-time admin setup
+- system status checks
+- Docker install/start helper
+- Core `systemd` install/update
+- Core service control
+
+## 2. Health Check Mode
+
+```bash
+python3 install/main.py --check
+```
+
+Exit codes:
+
+- `0`: `.env` and `storage/databases/system.db` exist
+- `2`: setup artifacts are missing
+
+## 3. Core systemd Install
 
 ```bash
 python3 install/main.py --core-service-install --core-service-name nebula-core
 ```
 
-- Optional args:
-  - `--core-service-user <user>`
-  - `--core-service-project-dir <path>`
-  - `--core-service-env <development|production>`
+Optional args:
+
+- `--core-service-user <user>`
+- `--core-service-project-dir <path>`
+- `--core-service-env <development|production>`
 
 Behavior:
+
 - writes `/etc/systemd/system/<service>.service`
-- runs `systemctl daemon-reload`
-- runs `systemctl enable <service>`
+- reloads `systemd`
+- enables the service
 
-### 1.3 Core service action API
-
-- Command:
+Recommended wrapper:
 
 ```bash
-python3 install/main.py --core-service-action <start|stop|restart|status|logs|enable|disable> --core-service-name nebula-core
+./corectl.sh install
 ```
 
-- Log tail size:
-  - `--core-service-log-lines 200`
+## 4. Core Service Control
 
-### 1.4 Convenience wrapper
+```bash
+python3 install/main.py --core-service-action restart --core-service-name nebula-core
+python3 install/main.py --core-service-action status --core-service-name nebula-core
+python3 install/main.py --core-service-action logs --core-service-name nebula-core --core-service-log-lines 200
+```
 
-- Script: `./corectl.sh`
-- Commands:
-  - `./corectl.sh install`
-  - `./corectl.sh start`
-  - `./corectl.sh stop`
-  - `./corectl.sh restart`
-  - `./corectl.sh status`
-  - `./corectl.sh logs`
+Wrapper shortcuts:
 
-## 2. Internal Bootstrap HTTP API
+```bash
+./corectl.sh start
+./corectl.sh stop
+./corectl.sh restart
+./corectl.sh status
+./corectl.sh logs
+```
+
+## 5. Internal Bootstrap HTTP API
 
 Base prefix:
 
 - `/system/internal/core`
 
-Auth model:
-- header `X-Nebula-Token: <NEBULA_INSTALLER_TOKEN>`
-- fallback default in development environments may be `LOCAL_DEV_KEY_2026`
+Authentication:
 
-Source: `nebula_core/api/admin.py`.
+```http
+X-Nebula-Token: <NEBULA_INSTALLER_TOKEN>
+```
 
-### 2.1 GET `/system/internal/core/status`
+Important note:
 
-Purpose:
-- installer health for system DB and admin count.
+- `admin.py` still contains a development fallback token string, but production docs should always assume you explicitly set `NEBULA_INSTALLER_TOKEN`.
 
-Response example:
+## 6. Endpoints
+
+### `GET /system/internal/core/status`
+
+Returns bootstrap status data.
+
+Example:
 
 ```json
 {
@@ -81,12 +107,11 @@ Response example:
 }
 ```
 
-### 2.2 POST `/system/internal/core/init-admin`
+### `POST /system/internal/core/init-admin`
 
-Purpose:
-- one-time first admin creation.
+Creates the first staff admin if none exists yet.
 
-Request:
+Request body:
 
 ```json
 {
@@ -96,23 +121,18 @@ Request:
 }
 ```
 
-Response:
+Responses:
 
-```json
-{ "status": "success" }
-```
+- success: `{ "status": "success" }`
+- `409`: already initialized
 
-Errors:
-- `409 Initialized` if staff admin already exists.
-- `403 Forbidden` if token invalid.
+### `POST /system/internal/core/modify-admin`
 
-### 2.3 POST `/system/internal/core/modify-admin`
+Updates an existing staff user.
 
-Purpose:
-- update admin password or active state.
+Query params:
 
-Notes:
-- endpoint expects `target_username` query parameter.
+- `target_username`
 
 Request body:
 
@@ -123,15 +143,26 @@ Request body:
 }
 ```
 
-### 2.4 POST `/system/internal/core/mail/test`
+### `POST /system/internal/core/login`
 
-Purpose:
-- verify SMTP configuration by sending a test email.
+Form-based login for the GUI admin flow.
 
-Auth:
-- `X-Nebula-Token` internal token required.
+Form fields:
 
-Request:
+- `admin_id`
+- `secure_key`
+- `otp` optional unless 2FA is enabled
+
+Response:
+
+- sets `nebula_session` cookie
+- returns authorization payload
+
+### `POST /system/internal/core/mail/test`
+
+Sends a test email using the configured mailer.
+
+Request body:
 
 ```json
 {
@@ -139,83 +170,29 @@ Request:
 }
 ```
 
-Response:
+## 7. Docker Helper Scope
 
-```json
-{
-  "status": "sent",
-  "email": "operator@example.com"
-}
-```
+The installer also includes helper logic for:
 
-## 3. Production install profile (recommended)
+- detecting whether Docker is installed
+- installing Docker with the official convenience script
+- starting and enabling Docker through `systemctl`
+- adding the current user to the `docker` group
 
-1. Create venv and install dependencies.
-2. Install systemd service via installer CLI.
-3. Set `plugins.environment: "production"` in `nebula_core/serviceconfig.yaml`.
-4. Enable process plugin runtime and cgroup backend.
-5. Restart core service.
+This is useful for local and lab setups, but still fairly operator-driven rather than fully declarative.
 
-Suggested plugin runtime settings:
+## 8. Recommended Production Path
 
-```yaml
-plugins:
-  process_runtime_enabled: true
-  in_process_enabled: false
-  cgroup_enabled: true
-  cgroup_required: true
-```
+1. create virtualenv
+2. install Python dependencies
+3. install Docker separately or with the helper
+4. set explicit secrets in environment
+5. install Core as a `systemd` service
+6. run first-time admin initialization
+7. run GUI behind a reverse proxy if needed
 
-## 4. Operational commands
+## 9. Related Docs
 
-```bash
-./corectl.sh restart
-./corectl.sh status
-./corectl.sh logs
-```
-
-For detailed systemd behavior, see `docs/CORE_SERVICE.md`.
-
-## 5. User password reset API (email code)
-
-Base prefix:
-
-- `/users`
-
-### 5.1 POST `/users/password-reset/request`
-
-Purpose:
-- request password reset code by username.
-- code is sent by email and expires in 2 minutes.
-
-Request form fields:
-- `username` (required)
-- `db_name` (optional)
-
-Response:
-
-```json
-{
-  "status": "sent_if_exists",
-  "ttl_sec": 120
-}
-```
-
-### 5.2 POST `/users/password-reset/confirm`
-
-Purpose:
-- confirm code and set a new password.
-
-Request form fields:
-- `username` (required)
-- `code` (required)
-- `new_password` (required, min length 10)
-- `db_name` (optional)
-
-Response:
-
-```json
-{
-  "status": "password_updated"
-}
-```
+- [Core service automation](./CORE_SERVICE.md)
+- [Docker and runtime notes](./DOCKER_RUNTIME.md)
+- [Core API reference](./API_DOCS.md)

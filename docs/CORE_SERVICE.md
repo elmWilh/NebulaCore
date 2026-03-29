@@ -1,29 +1,31 @@
-# Nebula Core Service Automation
+# Nebula Core Service Guide
 
-This guide sets up Nebula Core as a `systemd` service with fast terminal control.
+## Why Use systemd
 
-## What you get
+For Nebula today, `systemd` is the most complete service-management path on Linux.
 
-- Auto start on boot.
-- Fast restart after code/config changes.
-- `status`/`logs` from terminal.
-- `Delegate=yes` in unit for plugin cgroup v2 integration.
+It gives you:
 
-## 1. Install/update service
+- boot-time startup
+- supervised restarts
+- simple operational commands
+- a clean place to enable plugin cgroup delegation
 
-Run from project root:
+## Install Or Update Service
+
+From the project root:
 
 ```bash
 python3 install/main.py --core-service-install --core-service-name nebula-core
 ```
 
-Or use helper script:
+Or:
 
 ```bash
 ./corectl.sh install
 ```
 
-## 2. Basic control
+## Daily Operations
 
 ```bash
 ./corectl.sh start
@@ -33,53 +35,69 @@ Or use helper script:
 ./corectl.sh logs
 ```
 
-Without helper:
+Equivalent direct calls:
 
 ```bash
+python3 install/main.py --core-service-action start --core-service-name nebula-core
 python3 install/main.py --core-service-action restart --core-service-name nebula-core
 python3 install/main.py --core-service-action status --core-service-name nebula-core
 python3 install/main.py --core-service-action logs --core-service-name nebula-core --core-service-log-lines 200
 ```
 
-## 3. Interactive installer mode
+## What The Installer Configures
 
-```bash
-python3 install/main.py
-```
-
-Menu entries:
-
-- `Install / Update Core systemd service`
-- `Manage Core service (start/stop/restart/status/logs)`
-
-## 4. Unit details
-
-The installer writes `/etc/systemd/system/nebula-core.service` and configures:
+The generated unit is designed around:
 
 - `WorkingDirectory=<project_root>`
 - `ExecStart=<project_root>/.venv/bin/python -m nebula_core`
+- `Restart=on-failure`
 - `Environment=ENV=production`
 - `Delegate=yes`
-- `Restart=on-failure`
-- output logs in `storage/logs/core.stdout.log` and `storage/logs/core.stderr.log`
 
-## 4.1 Enable cgroup v2 backend for plugins
+`Delegate=yes` matters because the plugin process runtime can use cgroup v2 isolation beneath the service.
 
-In `nebula_core/serviceconfig.yaml` under `plugins`:
+## Plugin cgroup v2 Support
+
+If you want process-isolated plugins with cgroup limits, configure `nebula_core/serviceconfig.yaml`:
 
 ```yaml
-cgroup_enabled: true
-cgroup_required: true
-cgroup_root: "auto"
+plugins:
+  enabled: true
+  environment: "production"
+  process_runtime_enabled: true
+  in_process_enabled: false
+  cgroup_enabled: true
+  cgroup_required: true
+  cgroup_root: "auto"
 ```
 
-`auto` uses the delegated service cgroup subtree (requires `Delegate=yes` in systemd unit).
+`cgroup_root: "auto"` means the plugin manager will try to place workers inside the delegated service subtree.
 
-## 5. Typical dev cycle
+## Logs
+
+Use:
 
 ```bash
-# edit code
-./corectl.sh restart
-./corectl.sh status
 ./corectl.sh logs
 ```
+
+Nebula also maintains:
+
+- in-memory log history for `/logs/history`
+- plugin runtime log files under the configured plugin log directory
+
+## Recommended Host Layout
+
+- Core bound to localhost
+- GUI bound to localhost or reverse-proxied
+- Docker daemon available locally
+- explicit secrets via environment or `.env`
+
+## Compose Note
+
+Even though the repo contains `docker-compose.yml`, it is currently not a real deployment stack.
+
+So for now, the documented supported paths are:
+
+- direct Python startup for development
+- `systemd` for Core on Linux
