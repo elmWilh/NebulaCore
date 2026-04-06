@@ -17,7 +17,11 @@
     "ports": "8000:8000",
     "command": "python -m http.server 8000",
     "env": "APP_ENV=dev\nLOG_LEVEL=info",
-    "volumes": "/srv/python-app:/app:rw",
+    "volumes": "",
+    "workspace_mount": "/app",
+    "explorer_root": "/app",
+    "console_cwd": "/app",
+    "profile_name": "web-python-dev",
     "restart": true
   },
   "permissions": {

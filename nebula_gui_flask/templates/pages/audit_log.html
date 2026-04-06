@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/audit_log.css') }}">
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/audit_log.js') }}"></script>
+{% endblock %}
+{% block page_content %}
+<div class="audit-log-page">
+  <section class="audit-hero">
+    <div>
+      <div class="eyebrow">Security Ledger</div>
+      <h2>Audit Log</h2>
+      <p>Separated views for user actions and connection intelligence with CSV export, risk flags, and anomaly tracking.</p>
+    </div>
+    <div class="hero-actions">
+      <button type="button" class="btn-secondary" id="audit_refresh_btn">Refresh</button>
+      <button type="button" class="btn-primary" id="audit_export_users_btn">Export User Audit CSV</button>
+      <button type="button" class="btn-primary" id="audit_export_connections_btn">Export Connection Audit CSV</button>
+    </div>
+  </section>
+
+  <section class="audit-tabs">
+    <button class="audit-tab is-active" data-audit-tab="users" type="button">User Audit</button>
+    <button class="audit-tab" data-audit-tab="connections" type="button">Connection Audit</button>
+  </section>
+
+  <section class="audit-panels">
+    <div class="audit-panel is-active" id="audit_panel_users">
+      <div class="audit-toolbar">
+        <input type="search" id="audit_user_filter" placeholder="Filter by username">
+        <select id="audit_user_risk" class="premium-select">
+          <option value="">All risk levels</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="elevated">Elevated</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div id="audit_user_list" class="audit-list"></div>
+    </div>
+
+    <div class="audit-panel" id="audit_panel_connections">
+      <div class="audit-toolbar">
+        <input type="search" id="audit_connection_filter" placeholder="Filter by username">
+        <select id="audit_connection_risk" class="premium-select">
+          <option value="">All risk levels</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="elevated">Elevated</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+        <select id="audit_connection_service" class="premium-select">
+          <option value="">All services</option>
+          <option value="containers">Containers</option>
+          <option value="users">Users</option>
+          <option value="rbac">RBAC</option>
+          <option value="logs">Logs</option>
+          <option value="system">System</option>
+          <option value="projects">Projects</option>
+          <option value="core">Core</option>
+        </select>
+      </div>
+      <div id="audit_connection_list" class="audit-list"></div>
+    </div>
+  </section>
+</div>
+{% endblock %}

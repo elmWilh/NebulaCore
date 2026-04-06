@@ -138,6 +138,23 @@ window.NebulaWorkspace = {
                     </div>
                 </div>
 
+                <div class="explorer-summary remote-access-grid">
+                    <div class="summary-card remote-card">
+                        <span class="summary-label">Explorer Backend</span>
+                        <strong id="explorer-backend-mode">Loading workspace mode...</strong>
+                        <small id="explorer-backend-note">Nebula will choose the safest available workspace access path.</small>
+                    </div>
+                    <div class="summary-card remote-card">
+                        <span class="summary-label">SFTP Access</span>
+                        <strong id="sftp-target">Loading SFTP profile...</strong>
+                        <small id="sftp-note">Remote workspace connection details will appear here if available.</small>
+                        <div class="inline-actions" style="margin-top:8px;">
+                            <button class="chip-btn" type="button" onclick="copySftpCommand()"><i class="bi bi-clipboard"></i> Copy Command</button>
+                            <button class="chip-btn" type="button" onclick="copySftpPath()"><i class="bi bi-folder"></i> Copy Path</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="files-toolbar">
                     <div class="path-input-group">
                         <i class="bi bi-folder-symlink"></i>
@@ -145,12 +162,57 @@ window.NebulaWorkspace = {
                     </div>
                     <div class="button-group">
                         <button class="btn-ghost" onclick="goParentDir()"><i class="bi bi-arrow-up"></i> Up</button>
+                        <button class="btn-ghost" onclick="createFolder()"><i class="bi bi-folder-plus"></i> New Folder</button>
+                        <button class="btn-ghost" onclick="triggerUploadFiles(false)"><i class="bi bi-upload"></i> Upload Files</button>
+                        <button class="btn-ghost" onclick="triggerUploadFiles(true)"><i class="bi bi-folder-plus"></i> Upload Folder</button>
+                        <button id="explorer-select-mode-btn" class="btn-ghost" onclick="toggleExplorerSelectionMode()"><i class="bi bi-check2-square"></i> Select</button>
                         <button class="btn-primary" onclick="loadFiles()"><i class="bi bi-arrow-repeat"></i> Reload</button>
                     </div>
                 </div>
 
+                <div id="upload-status" class="workspace-upload-status">Browser upload is limited to 1 GB per request and stays inside the current workspace path.</div>
+                <div id="explorer-breadcrumbs" class="explorer-breadcrumbs" aria-label="Explorer breadcrumbs"></div>
+                <div id="explorer-batch-bar" class="explorer-batch-bar">
+                    <div class="explorer-batch-copy">
+                        <strong>Selection tools</strong>
+                        <span>Use this mode only when you want to move, archive, or remove multiple items.</span>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn-ghost" onclick="copySelectedPaths()"><i class="bi bi-copy"></i> Copy</button>
+                        <button class="btn-ghost" onclick="cutSelectedPaths()"><i class="bi bi-scissors"></i> Cut</button>
+                        <button class="btn-ghost" onclick="pasteClipboard()"><i class="bi bi-clipboard-check"></i> Paste</button>
+                        <button class="btn-ghost" onclick="renameSelectedPath()"><i class="bi bi-pencil-square"></i> Rename</button>
+                        <button class="btn-ghost" onclick="moveSelectedPath()"><i class="bi bi-arrows-move"></i> Move</button>
+                        <button class="btn-ghost" onclick="archiveSelectedPaths()"><i class="bi bi-file-earmark-zip"></i> Zip</button>
+                        <button class="btn-ghost" onclick="extractSelectedArchive()"><i class="bi bi-box-arrow-in-down"></i> Extract</button>
+                        <button class="btn-ghost" onclick="deleteSelectedPath()"><i class="bi bi-trash3"></i> Delete</button>
+                        <button class="btn-ghost" onclick="toggleExplorerSelectionMode(false)"><i class="bi bi-x-lg"></i> Done</button>
+                    </div>
+                </div>
+                <div id="explorer-selection-status" class="explorer-selection-status">No file selected. Double-click a folder to open it, or drop files here to upload.</div>
+
                 <div class="files-layout">
-                    <div id="files-list" class="files-list"></div>
+                    <div id="files-list" class="files-list" ondragenter="onExplorerDragEnter(event)" ondragover="onExplorerDragOver(event)" ondragleave="onExplorerDragLeave(event)" ondrop="onExplorerDrop(event)">
+                        <div class="dropzone-empty">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                            <strong>Drop files or folders here</strong>
+                            <span>Upload directly into the current workspace path.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="explorer-context-menu" class="explorer-context-menu" role="menu" aria-hidden="true">
+                    <button type="button" onclick="openSelectionFromContextMenu()"><i class="bi bi-box-arrow-in-right"></i> Open</button>
+                    <button type="button" onclick="previewSelectionFromContextMenu()"><i class="bi bi-eye"></i> Preview</button>
+                    <button type="button" onclick="downloadSelectionFromContextMenu()"><i class="bi bi-download"></i> Download</button>
+                    <button type="button" onclick="copySelectedPaths()"><i class="bi bi-copy"></i> Copy</button>
+                    <button type="button" onclick="cutSelectedPaths()"><i class="bi bi-scissors"></i> Cut</button>
+                    <button type="button" onclick="pasteClipboard()"><i class="bi bi-clipboard-check"></i> Paste</button>
+                    <button type="button" onclick="renameSelectedPath()"><i class="bi bi-pencil-square"></i> Rename</button>
+                    <button type="button" onclick="moveSelectedPath()"><i class="bi bi-arrows-move"></i> Move</button>
+                    <button type="button" onclick="archiveSelectedPaths()"><i class="bi bi-file-earmark-zip"></i> Compress to ZIP</button>
+                    <button type="button" onclick="extractSelectedArchive()"><i class="bi bi-box-arrow-in-down"></i> Extract ZIP</button>
+                    <button type="button" class="danger" onclick="deleteSelectedPath()"><i class="bi bi-trash3"></i> Delete</button>
                 </div>
             </div>
 
@@ -264,44 +326,165 @@ window.NebulaWorkspace = {
                 </div>
 
                 <div class="settings-card">
-                    <div class="form-group">
-                        <label>Published Port Rules</label>
-                        <input id="set-ports" type="text" placeholder="e.g. 25565:25565, 19132:19132/udp">
-                        <small id="ports-summary-text">Selected forwarding rules. Toggle published routes below to build this value safely.</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Available Port Routing</label>
-                        <div id="ports-selection-meta" class="ports-selection-meta">Loading available container ports...</div>
-                        <div class="ports-toolbar">
-                            <input id="ports-search" type="text" placeholder="Filter rules (e.g. 25565, udp, 127.0.0.1)" oninput="filterPortsSelection()">
-                            <button class="chip-btn" type="button" onclick="setAllPortsSelection(true)">Select All</button>
-                            <button class="chip-btn" type="button" onclick="setAllPortsSelection(false)">Clear</button>
+                    <div class="settings-compact-grid">
+                        <div class="settings-feature-card">
+                            <div class="feature-kicker">Project Bootstrap</div>
+                            <h4>Protocol & Dependency Flow</h4>
+                            <p>Pick a project protocol to prefill dependency install and autostart commands for common app stacks.</p>
                         </div>
-                        <div id="ports-selection" class="ports-selection"></div>
-                        <small>Only pre-allocated container ports can be enabled here.</small>
+                        <div class="settings-feature-card">
+                            <div class="feature-kicker">Launch Preview</div>
+                            <h4>Public Address & Domain</h4>
+                            <p>See current host routing, optional custom domain and the address users should open after startup.</p>
+                        </div>
+                    </div>
+
+                    <div class="settings-split-grid">
+                        <div class="settings-pane-block">
+                            <div class="form-group">
+                                <label>Project Protocol</label>
+                                <div class="inline-field-row">
+                                    <select id="set-project-protocol" onchange="onProjectProtocolChange()"></select>
+                                    <button class="chip-btn" type="button" onclick="onProjectProtocolChange(true)">
+                                        <i class="bi bi-magic"></i> Apply
+                                    </button>
+                                </div>
+                                <small id="protocol-hint">Select a protocol to prefill install/start commands.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Auto-Install Command</label>
+                                <div class="inline-field-row">
+                                    <input id="set-install-command" type="text" placeholder="e.g. npm install or pip install -r requirements.txt">
+                                    <button class="chip-btn" type="button" onclick="runStoredCommand('set-install-command')">
+                                        <i class="bi bi-terminal"></i> Run
+                                    </button>
+                                </div>
+                                <small id="install-command-hint">Used for one-click dependency bootstrap from the workspace terminal.</small>
+                            </div>
+                        </div>
+
+                        <div class="settings-pane-block">
+                            <div class="form-group">
+                                <label>Domain</label>
+                                <input id="set-domain" type="text" placeholder="e.g. app.example.com" oninput="updateLaunchPreview()">
+                                <small>Leave empty to use current panel host and selected published port.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Launch URL</label>
+                                <div class="inline-field-row">
+                                    <input id="set-launch-url" type="text" placeholder="e.g. https://app.example.com" oninput="updateLaunchPreview()">
+                                    <button class="chip-btn" type="button" onclick="openLaunchPreview()">
+                                        <i class="bi bi-box-arrow-up-right"></i> Open
+                                    </button>
+                                </div>
+                                <small id="launch-url-hint">If empty, Nebula builds a preview URL from host/domain and active ports.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="launch-preview-grid">
+                        <div class="launch-preview-card">
+                            <span class="launch-preview-label">Panel Host</span>
+                            <strong id="launch-current-host">detecting...</strong>
+                            <small>Current web panel origin used when no custom domain is set.</small>
+                        </div>
+                        <div class="launch-preview-card">
+                            <span class="launch-preview-label">Published Route</span>
+                            <strong id="launch-route-preview">waiting for port data...</strong>
+                            <small>First active route from the published port selection.</small>
+                        </div>
+                        <div class="launch-preview-card wide">
+                            <span class="launch-preview-label">Launch Address</span>
+                            <strong id="launch-public-preview">waiting for settings...</strong>
+                            <small id="launch-public-note">Saved launch URL or generated preview will appear here.</small>
+                        </div>
+                    </div>
+
+                    <div class="port-routing-shell">
+                        <div class="port-routing-intro">
+                            <div>
+                                <span class="port-routing-kicker">Routing Control</span>
+                                <h4>Active Port Exposure</h4>
+                                <p>Keep only the routes that should stay published for this environment and build the final mapping string without malformed entries.</p>
+                            </div>
+                            <div class="port-routing-stats">
+                                <div class="port-routing-stat">
+                                    <span>Selected</span>
+                                    <strong id="ports-selected-count">0</strong>
+                                </div>
+                                <div class="port-routing-stat">
+                                    <span>Visible</span>
+                                    <strong id="ports-visible-count">0</strong>
+                                </div>
+                                <div class="port-routing-stat">
+                                    <span>Available</span>
+                                    <strong id="ports-total-count">0</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group port-routing-manual">
+                            <label>Published Port Rules</label>
+                            <input id="set-ports" type="text" placeholder="e.g. 25565:25565, 19132:19132/udp" oninput="updateLaunchPreview()">
+                            <small id="ports-summary-text">Selected forwarding rules. Toggle published routes below to build this value safely.</small>
+                        </div>
+
+                        <div class="port-routing-board">
+                            <div class="port-routing-board-head">
+                                <div>
+                                    <label>Available Port Routing</label>
+                                    <div id="ports-selection-meta" class="ports-selection-meta">Loading available container ports...</div>
+                                </div>
+                                <div id="ports-filter-meta" class="ports-filter-meta">Showing 0 routes</div>
+                            </div>
+                            <div class="ports-toolbar">
+                                <input id="ports-search" type="text" placeholder="Filter rules, port numbers, protocol or bind IP" oninput="filterPortsSelection()">
+                                <button class="chip-btn" type="button" onclick="setAllPortsSelection(true)">Select All</button>
+                                <button class="chip-btn" type="button" onclick="setAllPortsSelection(false)">Clear</button>
+                            </div>
+                            <div id="ports-selection" class="ports-selection"></div>
+                            <small>Only pre-allocated container ports can be enabled here.</small>
+                        </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Startup Command</label>
-                        <input id="set-command" type="text" placeholder="e.g. ./start.sh or python app.py">
+                        <label>Auto-Start Command</label>
+                        <div class="inline-field-row">
+                            <input id="set-command" type="text" placeholder="e.g. ./start.sh or python app.py">
+                            <button class="chip-btn" type="button" onclick="runStoredCommand('set-command')">
+                                <i class="bi bi-play-circle"></i> Run
+                            </button>
+                        </div>
                         <small id="startup-command-hint">Overrides default startup command.</small>
                     </div>
 
-                    <div class="form-group restart-card">
-                        <label>Auto-Restart Policy</label>
-                        <div class="restart-row">
-                            <select id="restart-policy-select">
-                                <option value="always">always</option>
-                                <option value="unless-stopped">unless-stopped</option>
-                                <option value="on-failure">on-failure</option>
-                                <option value="no">no (disabled)</option>
-                            </select>
-                            <input id="restart-retries" type="number" value="0" min="0" max="50" placeholder="Retries" title="Used for on-failure only">
-                            <button class="btn-ghost" onclick="saveRestartPolicy()"><i class="bi bi-arrow-repeat"></i> Apply Policy</button>
+                    <details class="settings-advanced-toggle">
+                        <summary>
+                            <span>
+                                <strong>Advanced Runtime</strong>
+                                <small>Restart policy and other less frequently used controls.</small>
+                            </span>
+                            <i class="bi bi-chevron-down"></i>
+                        </summary>
+                        <div class="advanced-toggle-body">
+                            <div class="form-group restart-card">
+                                <label>Auto-Restart Policy</label>
+                                <div class="restart-row">
+                                    <select id="restart-policy-select">
+                                        <option value="always">always</option>
+                                        <option value="unless-stopped">unless-stopped</option>
+                                        <option value="on-failure">on-failure</option>
+                                        <option value="no">no (disabled)</option>
+                                    </select>
+                                    <input id="restart-retries" type="number" value="0" min="0" max="50" placeholder="Retries" title="Used for on-failure only">
+                                    <button class="btn-ghost" onclick="saveRestartPolicy()"><i class="bi bi-arrow-repeat"></i> Apply Policy</button>
+                                </div>
+                                <small id="restart-policy-hint" class="policy-hint">Tip: if you are testing mods/builds, disabling auto-restart can make debugging easier.</small>
+                            </div>
                         </div>
-                        <small id="restart-policy-hint" class="policy-hint">Tip: if you are testing mods/builds, disabling auto-restart can make debugging easier.</small>
-                    </div>
+                    </details>
 
                     <div class="settings-footer">
                         <button class="btn-save" onclick="saveSettings()">
@@ -319,8 +502,10 @@ window.NebulaWorkspace = {
                         </div>
                         <button class="btn-ghost" onclick="loadAuditLog(true)"><i class="bi bi-arrow-repeat"></i> Refresh Activity</button>
                     </div>
-                    <div id="workspace-audit-list" class="workspace-audit-list">
-                        <div class="audit-empty">Loading recent activity...</div>
+                    <div class="workspace-audit-scroller">
+                        <div id="workspace-audit-list" class="workspace-audit-list">
+                            <div class="audit-empty">Loading recent activity...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -329,6 +514,8 @@ window.NebulaWorkspace = {
 </div>
 
 <div id="toast-zone" class="toast-zone" aria-live="polite" aria-atomic="true"></div>
+<input id="workspace-upload-files" type="file" multiple hidden onchange="handleFileUpload(event, false)">
+<input id="workspace-upload-folder" type="file" multiple webkitdirectory hidden onchange="handleFileUpload(event, true)">
 
 <div id="file-preview-modal" class="file-modal-overlay" onclick="if(event.target===this){closeFilePreviewModal();}">
     <div class="file-modal-content">

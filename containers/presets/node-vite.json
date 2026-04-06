@@ -1,22 +1,22 @@
 {
-  "name": "python-fastapi",
-  "title": "Python FastAPI",
-  "description": "FastAPI/uvicorn service preset",
+  "name": "node-vite",
+  "title": "Node Vite Frontend",
+  "description": "Frontend development preset for Vite with host bind and dependency install flow",
   "ui": {
-    "protocol_label": "FastAPI / Uvicorn",
-    "protocol_hint": "FastAPI service launched through uvicorn.",
+    "protocol_label": "Vite Frontend",
+    "protocol_hint": "Frontend dev server with public host bind.",
     "protocol_preferred": true,
     "website_wizard": {
       "enabled": true,
-      "type": "python-fastapi",
-      "label": "FastAPI Service",
+      "type": "node-vite",
+      "label": "Vite Frontend",
       "preferred": true,
-      "internal_port": 8000,
-      "default_public_port": 8000
+      "internal_port": 5173,
+      "default_public_port": 5173
     }
   },
   "config": {
-    "image": "python:3.12-slim",
+    "image": "node:20-alpine",
     "ram": 1024,
     "swap": 2048,
     "disk": 20,
@@ -27,14 +27,18 @@
     "cpu_period": "",
     "pids_limit": 256,
     "shm": 128,
-    "ports": "8000:8000",
-    "command": "uvicorn app.main:app --host 0.0.0.0 --port 8000",
-    "env": "APP_ENV=production\nPYTHONUNBUFFERED=1",
+    "ports": "5173:5173",
+    "project_protocol": "node-vite",
+    "install_command": "npm install",
+    "command": "npm run dev -- --host 0.0.0.0 --port 5173",
+    "env": "NODE_ENV=development\nPORT=5173",
     "volumes": "",
+    "domain_name": "",
+    "launch_url": "",
     "workspace_mount": "/app",
     "explorer_root": "/app",
     "console_cwd": "/app",
-    "profile_name": "python-fastapi",
+    "profile_name": "node-vite",
     "restart": true
   },
   "permissions": {

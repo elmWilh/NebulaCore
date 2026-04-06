@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/access_control.css') }}">
+{% endblock %}
+{% block extra_js %}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/access_control.js') }}"></script>
+{% endblock %}
+{% block page_content %}
+<div class="access-control-page">
+  <section class="access-shell">
+    <section class="access-hero">
+      <div class="hero-copy">
+        <div class="eyebrow">Security</div>
+        <h2>Access Control</h2>
+        <p>Manage roles, permissions, groups, and user access from one simple page.</p>
+      </div>
+      <div class="hero-actions">
+        <select id="access_db_selector" class="premium-select" aria-label="Database"></select>
+        <button class="btn-primary" id="access_refresh_btn" type="button">Refresh</button>
+      </div>
+    </section>
+
+    <section class="access-metrics" id="access_summary_cards"></section>
+
+    <section class="access-layout">
+      <div class="access-sidebar">
+        <article class="access-card">
+          <div class="card-head">
+            <div>
+              <span class="eyebrow">Roles</span>
+              <h3>Roles</h3>
+            </div>
+            <button type="button" class="btn-secondary" id="create_role_btn">New role</button>
+          </div>
+          <div id="roles_board" class="stack-list"></div>
+        </article>
+
+        <article class="access-card">
+          <div class="card-head">
+            <div>
+              <span class="eyebrow">Permissions</span>
+              <h3>Permissions</h3>
+            </div>
+            <button type="button" class="btn-secondary" id="create_permission_btn">New permission</button>
+          </div>
+          <div id="permissions_list" class="stack-list"></div>
+        </article>
+
+        <article class="access-card">
+          <div class="card-head">
+            <div>
+              <span class="eyebrow">Groups</span>
+              <h3>Groups</h3>
+            </div>
+            <button type="button" class="btn-secondary" id="create_group_btn">New group</button>
+          </div>
+          <div id="groups_list" class="stack-list"></div>
+        </article>
+      </div>
+
+      <article class="access-card access-card-main">
+        <div class="card-head card-head-users">
+          <div>
+            <span class="eyebrow">Users</span>
+            <h3>Users</h3>
+          </div>
+          <div class="inline-filters">
+            <input type="search" id="access_user_search" placeholder="Search by username">
+          </div>
+        </div>
+        <div id="users_table_wrap" class="table-wrap"></div>
+      </article>
+    </section>
+  </section>
+</div>
+
+<div id="access_modal" class="modal-overlay" style="display:none;">
+  <div class="modal-content access-modal-card">
+    <div class="modal-header">
+      <div>
+        <span class="eyebrow" id="access_modal_label">Editor</span>
+        <h3 id="access_modal_title">Access Editor</h3>
+        <p id="access_modal_subtitle" class="access-modal-subtitle">Manage access settings and assignments.</p>
+      </div>
+      <button type="button" class="close-modal-btn" id="access_modal_close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="access-modal-body">
+      <div id="access_modal_content"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

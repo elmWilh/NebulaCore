@@ -17,7 +17,7 @@
     "ports": "25565:25565",
     "command": "",
     "env": "EULA=TRUE\nTYPE=PAPER\nMEMORY=5G",
-    "volumes": "/srv/minecraft-paper:/data:rw",
+    "volumes": "",
     "workspace_mount": "/data",
     "explorer_root": "/data",
     "console_cwd": "/data",

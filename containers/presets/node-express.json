@@ -2,6 +2,19 @@
   "name": "node-express",
   "title": "Node Express",
   "description": "Node.js/Express API preset",
+  "ui": {
+    "protocol_label": "Node.js / npm",
+    "protocol_hint": "Typical Node.js runtime using package.json scripts.",
+    "protocol_preferred": true,
+    "website_wizard": {
+      "enabled": true,
+      "type": "node-npm",
+      "label": "Node.js App",
+      "preferred": true,
+      "internal_port": 3000,
+      "default_public_port": 3000
+    }
+  },
   "config": {
     "image": "node:20-alpine",
     "ram": 1024,
@@ -17,7 +30,7 @@
     "ports": "3000:3000",
     "command": "npm run start",
     "env": "NODE_ENV=production\nPORT=3000",
-    "volumes": "/srv/node-express:/app:rw",
+    "volumes": "",
     "workspace_mount": "/app",
     "explorer_root": "/app",
     "console_cwd": "/app",

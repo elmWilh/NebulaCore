@@ -34,6 +34,12 @@ function safeNumber(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function safeCapacityGb(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n > 1_000_000 ? 0 : n;
+}
+
 function fastIntervalMs() {
   return document.hidden ? 12000 : 3000;
 }
@@ -314,10 +320,20 @@ function refreshChartLoadingState() {
 
 function payloadHasMeaningfulDashboardData(data) {
   if (!data || typeof data !== 'object') return false;
+  const overview = (data.overview && typeof data.overview === 'object') ? data.overview : {};
+  const hasUserOverview = (
+    String(data.scope || overview.scope || '') === 'user_containers'
+    && (
+      overview.containers !== undefined && overview.containers !== null
+      || overview.active_containers !== undefined && overview.active_containers !== null
+      || (typeof overview.cpu === 'string' && overview.cpu !== '—')
+      || (typeof overview.ram === 'string' && overview.ram !== '—')
+    )
+  );
   const hasTelemetry = Boolean(data.ram && Array.isArray(data.ram.history) && data.network);
   const hasContainersBreakdown = Boolean(data.included && data.included.containers && Array.isArray(data.containers_memory));
   const hasDisksBreakdown = Boolean(data.included && data.included.disks && Array.isArray(data.disks));
-  return hasTelemetry || hasContainersBreakdown || hasDisksBreakdown;
+  return hasTelemetry || hasContainersBreakdown || hasDisksBreakdown || hasUserOverview;
 }
 
 function setBriefValue(id, value, subValue) {
@@ -333,11 +349,15 @@ function renderOperationsBrief(overview, payload) {
   const netDown = safeNumber(overview?.network_recv_mb);
   const health = String(overview?.health_status || 'optimal').toLowerCase();
   const pressure = Math.max(cpu, ram, disk);
-  const totalContainers = safeNumber(overview?.containers);
-  const activeContainers = safeNumber(overview?.active_containers);
+  const totalContainers = overview?.containers !== undefined && overview?.containers !== null
+    ? safeNumber(overview?.containers)
+    : safeNumber(lastDashboardCounts.containers);
+  const activeContainers = overview?.active_containers !== undefined && overview?.active_containers !== null
+    ? safeNumber(overview?.active_containers)
+    : safeNumber(lastDashboardCounts.activeContainers);
   const stoppedContainers = Math.max(0, totalContainers - activeContainers);
-  const ramHeadroom = Math.max(0, safeNumber(overview?.ram_total_gb) - safeNumber(overview?.ram_used_gb));
-  const diskHeadroom = Math.max(0, safeNumber(overview?.disk_total_gb) - safeNumber(overview?.disk_used_gb));
+  const ramHeadroom = Math.max(0, safeCapacityGb(overview?.ram_total_gb) - safeCapacityGb(overview?.ram_used_gb));
+  const diskHeadroom = Math.max(0, safeCapacityGb(overview?.disk_total_gb) - safeCapacityGb(overview?.disk_used_gb));
   const trafficTotal = netUp + netDown;
   const reportStamp = document.getElementById('ops-report-stamp');
   if (reportStamp) {

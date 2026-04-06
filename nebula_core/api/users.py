@@ -25,11 +25,13 @@ from ..db import (
 )
 from .security import create_session_token, require_session, verify_staff_or_internal
 from ..utils.mailer import send_password_reset_code
+from ..services.security_service import SecurityService
 import bcrypt
 import pyotp
 
 router = APIRouter(prefix="/users", tags=["Users"])
 user_service = UserService()
+security_service = SecurityService()
 logger = logging.getLogger("nebula_core.users")
 
 LOGIN_RATE_WINDOW_SECONDS = int(os.getenv("NEBULA_CORE_LOGIN_WINDOW_SECONDS", "300"))
@@ -70,10 +72,25 @@ def _role_exists(role_tag: str) -> bool:
 
 
 def _get_user_row(conn, username: str):
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+    select_cols = ["id", "username", "is_staff", "is_active"]
+    if "two_factor_secret" in cols:
+        select_cols.append("two_factor_secret")
+    if "two_factor_enabled" in cols:
+        select_cols.append("two_factor_enabled")
     return conn.execute(
-        "SELECT id, username, is_staff, is_active, two_factor_secret, two_factor_enabled FROM users WHERE username=?",
+        f"SELECT {', '.join(select_cols)} FROM users WHERE username=?",
         (username,),
     ).fetchone()
+
+
+def _ensure_user_two_factor_columns(conn):
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+    if "two_factor_secret" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN two_factor_secret TEXT")
+    if "two_factor_enabled" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER DEFAULT 0")
+    return {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
 
 
 def _db_name_variants(db_name: str):
@@ -338,6 +355,21 @@ def set_user_identity_tag(
             """,
             (normalized_db, username, role_tag, session_user),
         )
+    security_service.append_audit_event(
+        event_kind="user",
+        action="user.identity_tag.update",
+        summary=f"Updated role tag for {username}",
+        severity="info",
+        risk_level="medium",
+        username=username,
+        db_name=normalized_db,
+        actor=session_user,
+        actor_db="system.db",
+        source_ip=_resolve_requester_ip(request),
+        target_type="user",
+        target_id=username,
+        details={"role_tag": role_tag},
+    )
     return {"status": "updated", "username": username, "db_name": normalized_db, "role_tag": role_tag}
 
 
@@ -457,6 +489,21 @@ def login(
                 continue
 
         if not row:
+            security_service.append_audit_event(
+                event_kind="user",
+                action="auth.login.failed",
+                summary=f"Failed login for {username}",
+                severity="warn",
+                risk_level="medium",
+                username=str(username or "").strip() or None,
+                db_name=requested_db,
+                actor=str(username or "").strip() or "anonymous",
+                actor_db=requested_db,
+                source_ip=_resolve_requester_ip(request),
+                target_type="session",
+                target_id=str(username or "").strip() or None,
+                details={"reason": "invalid_credentials"},
+            )
             raise HTTPException(status_code=401, detail="Invalid Identity or Security Key")
         if bool(row["password_set_required"]) if "password_set_required" in row.keys() else False:
             raise HTTPException(status_code=403, detail="PASSWORD_RESET_REQUIRED")
@@ -479,10 +526,41 @@ def login(
             secure=secure_cookie,
         )
         _login_rate_success(rate_keys)
+        ip_meta = security_service.observe_user_ip(username, resolved_db, _resolve_requester_ip(request))
+        security_service.append_audit_event(
+            event_kind="user",
+            action="auth.login.success",
+            summary=f"User {username} signed in",
+            severity="info",
+            risk_level=ip_meta.get("risk_level") or "low",
+            username=username,
+            db_name=resolved_db,
+            actor=username,
+            actor_db=resolved_db,
+            source_ip=_resolve_requester_ip(request),
+            target_type="session",
+            target_id=username,
+            details={"ip_classification": ip_meta.get("classification"), "reason": ip_meta.get("reason")},
+        )
         return {"status": "authorized", "redirect": "/dashboard", "db_name": resolved_db}
     except HTTPException as exc:
         if exc.status_code != 429:
             _login_rate_fail(rate_keys)
+            security_service.append_audit_event(
+                event_kind="user",
+                action="auth.login.denied",
+                summary=f"Denied login for {username}",
+                severity="warn",
+                risk_level="medium" if exc.status_code < 500 else "high",
+                username=str(username or "").strip() or None,
+                db_name=str(db_name or "").strip() or "system.db",
+                actor=str(username or "").strip() or "anonymous",
+                actor_db=str(db_name or "").strip() or "system.db",
+                source_ip=_resolve_requester_ip(request),
+                target_type="session",
+                target_id=str(username or "").strip() or None,
+                details={"status_code": exc.status_code, "detail": exc.detail},
+            )
         raise
     except Exception:
         _login_rate_fail(rate_keys)
@@ -628,13 +706,14 @@ def user_2fa_status(request: Request):
         row = _get_user_row(conn, username)
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
-        return {"enabled": bool(row["two_factor_enabled"])}
+        return {"enabled": bool(row["two_factor_enabled"]) if "two_factor_enabled" in row.keys() else False}
 
 
 @router.post("/2fa/setup")
 def user_2fa_setup(request: Request):
     username, db_name, _ = _session_from_request(request)
     with (get_connection(SYSTEM_DB) if db_name == "system.db" else get_client_db(db_name, create_if_missing=False)) as conn:
+        _ensure_user_two_factor_columns(conn)
         row = _get_user_row(conn, username)
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
@@ -656,10 +735,11 @@ def user_2fa_setup(request: Request):
 def user_2fa_confirm(request: Request, code: str = Form(...)):
     username, db_name, _ = _session_from_request(request)
     with (get_connection(SYSTEM_DB) if db_name == "system.db" else get_client_db(db_name, create_if_missing=False)) as conn:
+        _ensure_user_two_factor_columns(conn)
         row = _get_user_row(conn, username)
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
-        secret = row["two_factor_secret"]
+        secret = row["two_factor_secret"] if "two_factor_secret" in row.keys() else None
         if not secret:
             raise HTTPException(status_code=400, detail="2FA_SETUP_NOT_STARTED")
         if not _verify_totp_code(secret, code):
@@ -674,12 +754,13 @@ def user_2fa_confirm(request: Request, code: str = Form(...)):
 def user_2fa_disable(request: Request, code: str = Form(...)):
     username, db_name, _ = _session_from_request(request)
     with (get_connection(SYSTEM_DB) if db_name == "system.db" else get_client_db(db_name, create_if_missing=False)) as conn:
+        _ensure_user_two_factor_columns(conn)
         row = _get_user_row(conn, username)
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
-        if not bool(row["two_factor_enabled"]):
+        if not ("two_factor_enabled" in row.keys() and bool(row["two_factor_enabled"])):
             return {"status": "already_disabled"}
-        secret = row["two_factor_secret"]
+        secret = row["two_factor_secret"] if "two_factor_secret" in row.keys() else None
         if not _verify_totp_code(secret, code):
             raise HTTPException(status_code=400, detail="INVALID_2FA_CODE")
 
@@ -724,6 +805,21 @@ def register_user(data: dict, db_name: str = Query(...), request: Request = None
                 """,
                 (normalized_db, username, role_tag, actor),
             )
+        security_service.append_audit_event(
+            event_kind="user",
+            action="user.create",
+            summary=f"Created user {username}",
+            severity="info",
+            risk_level="medium" if not is_staff else "high",
+            username=username,
+            db_name=normalized_db,
+            actor=actor,
+            actor_db="system.db",
+            source_ip=_resolve_requester_ip(request) if request is not None else None,
+            target_type="user",
+            target_id=username,
+            details={"role_tag": role_tag, "is_staff": bool(user.is_staff), "email": email},
+        )
         return {
             "id": user.id,
             "username": user.username,
@@ -738,7 +834,7 @@ def register_user(data: dict, db_name: str = Query(...), request: Request = None
         raise HTTPException(status_code=400, detail=f"Registration failed: {str(e)}")
 
 @router.post("/update")
-def update_user(data: dict, _=Depends(verify_staff_or_internal)):
+def update_user(data: dict, request: Request, _=Depends(verify_staff_or_internal)):
     source_db = data.get("source_db")
     target_db = data.get("target_db")
     old_name = data.get("old_username")
@@ -794,6 +890,21 @@ def update_user(data: dict, _=Depends(verify_staff_or_internal)):
                             "DELETE FROM user_identity_tags WHERE db_name = ? AND username = ?",
                             (normalized_source_db, old_name),
                         )
+                security_service.append_audit_event(
+                    event_kind="user",
+                    action="user.update",
+                    summary=f"Updated user {old_name}",
+                    severity="info",
+                    risk_level="medium" if not is_staff else "high",
+                    username=new_name,
+                    db_name=normalized_source_db,
+                    actor=_session_from_request(request)[0],
+                    actor_db="system.db",
+                    source_ip=_resolve_requester_ip(request),
+                    target_type="user",
+                    target_id=new_name,
+                    details={"old_username": old_name, "target_db": normalized_source_db, "role_tag": role_tag, "is_active": bool(is_active)},
+                )
                 return {"status": "updated", "location": "local"}
 
             with get_client_db(normalized_target_db) as conn_dst:
@@ -833,6 +944,21 @@ def update_user(data: dict, _=Depends(verify_staff_or_internal)):
                             "DELETE FROM user_identity_tags WHERE db_name = ? AND username = ?",
                             (normalized_source_db, old_name),
                         )
+                    security_service.append_audit_event(
+                        event_kind="user",
+                        action="user.migrate",
+                        summary=f"Moved user {old_name} to {normalized_target_db}",
+                        severity="info",
+                        risk_level="high",
+                        username=new_name,
+                        db_name=normalized_target_db,
+                        actor=_session_from_request(request)[0],
+                        actor_db="system.db",
+                        source_ip=_resolve_requester_ip(request),
+                        target_type="user",
+                        target_id=new_name,
+                        details={"old_username": old_name, "source_db": normalized_source_db, "target_db": normalized_target_db, "role_tag": role_tag},
+                    )
                     return {"status": "moved", "location": normalized_target_db}
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=f"Migration fatal error: {str(e)}")
@@ -840,7 +966,7 @@ def update_user(data: dict, _=Depends(verify_staff_or_internal)):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/terminate")
-def delete_user(username: str = Query(...), db_name: str = Query(...), _=Depends(verify_staff_or_internal)):
+def delete_user(username: str = Query(...), db_name: str = Query(...), request: Request = None, _=Depends(verify_staff_or_internal)):
     try:
         with get_client_db(db_name) as conn:
             exists = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
@@ -849,9 +975,38 @@ def delete_user(username: str = Query(...), db_name: str = Query(...), _=Depends
             
             conn.execute("DELETE FROM users WHERE username=?", (username,))
             conn.commit()
+            actor = "system"
+            source_ip = None
+            if request is not None:
+                try:
+                    actor = _session_from_request(request)[0]
+                    source_ip = _resolve_requester_ip(request)
+                except Exception:
+                    actor = "system"
+            security_service.append_audit_event(
+                event_kind="user",
+                action="user.delete",
+                summary=f"Deleted user {username}",
+                severity="warn",
+                risk_level="high",
+                username=username,
+                db_name=db_name,
+                actor=actor,
+                actor_db="system.db",
+                source_ip=source_ip,
+                target_type="user",
+                target_id=username,
+                details={},
+            )
             return {"status": "terminated", "target": username}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/delete")
+def delete_user_compat(username: str = Query(...), db_name: str = Query(...), request: Request = None, _=Depends(verify_staff_or_internal)):
+    return delete_user(username=username, db_name=db_name, request=request)
+
 
 @router.post("/logout")
 def logout(response: Response):

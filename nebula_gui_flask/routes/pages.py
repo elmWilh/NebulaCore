@@ -155,11 +155,13 @@ def register_pages_routes(app, bridge):
     @bridge.login_required
     @bridge.staff_required
     def audit_log_page():
-        return _render_module_page(
-            title='Audit Log',
-            description='Track security-relevant actions and administrative changes.',
-            icon='bi-clipboard2-pulse',
-        )
+        return render_template('pages/audit_log.html')
+
+    @app.route('/access-control')
+    @bridge.login_required
+    @bridge.staff_required
+    def access_control_page():
+        return render_template('pages/access_control.html')
 
     @app.route('/fault-sentinel')
     @bridge.login_required

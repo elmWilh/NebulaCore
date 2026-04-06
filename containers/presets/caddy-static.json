@@ -1,21 +1,22 @@
 {
-  "name": "nginx-static",
-  "title": "Nginx Static Site",
-  "description": "Static site hosting with Nginx",
+  "name": "caddy-static",
+  "title": "Caddy Static Site",
+  "description": "Static site hosting preset using Caddy with simple public routing defaults",
   "ui": {
     "protocol_label": "Static Web Content",
     "protocol_hint": "Best for caddy/nginx static images that already ship their own entrypoint.",
+    "protocol_preferred": true,
     "website_wizard": {
       "enabled": true,
       "type": "static-web",
       "label": "Static Site",
-      "preferred": false,
+      "preferred": true,
       "internal_port": 80,
       "default_public_port": 8080
     }
   },
   "config": {
-    "image": "nginx:stable",
+    "image": "caddy:2-alpine",
     "ram": 512,
     "swap": 1024,
     "disk": 10,
@@ -27,13 +28,17 @@
     "pids_limit": 128,
     "shm": 64,
     "ports": "8080:80",
+    "project_protocol": "static-web",
+    "install_command": "",
     "command": "",
     "env": "TZ=UTC",
     "volumes": "",
-    "workspace_mount": "/usr/share/nginx/html",
-    "explorer_root": "/usr/share/nginx/html",
-    "console_cwd": "/usr/share/nginx/html",
-    "profile_name": "nginx-static",
+    "domain_name": "",
+    "launch_url": "",
+    "workspace_mount": "/usr/share/caddy",
+    "explorer_root": "/usr/share/caddy",
+    "console_cwd": "/usr/share/caddy",
+    "profile_name": "caddy-static",
     "restart": true
   },
   "permissions": {

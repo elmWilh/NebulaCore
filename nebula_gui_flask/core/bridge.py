@@ -250,7 +250,7 @@ class NebulaBridge:
             pass
         return None
 
-    def proxy_request(self, method, endpoint, params=None, json_data=None, form_data=None, timeout=10):
+    def proxy_request(self, method, endpoint, params=None, json_data=None, form_data=None, files=None, timeout=10):
         if method == "GET" and endpoint == "/logs/history":
             limit = 200
             try:
@@ -281,6 +281,7 @@ class NebulaBridge:
                 params=params,
                 json=json_data,
                 data=form_data,
+                files=files,
                 cookies=cookies,
                 timeout=timeout
             )

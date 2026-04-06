@@ -142,7 +142,9 @@
               <a href="/audit-log" class="nav-link {{ 'active' if request.path == '/audit-log' else '' }}">
                 <i class="bi bi-clipboard2-pulse"></i> Audit Log
               </a>
-              <a href="#" class="nav-link"><i class="bi bi-key"></i> Authentication</a>
+              <a href="/access-control" class="nav-link {{ 'active' if request.path == '/access-control' else '' }}">
+                <i class="bi bi-diagram-3"></i> Access Control
+              </a>
             </div>
           </div>
           {% endif %}

@@ -29,6 +29,7 @@ from core.bridge import NebulaBridge
 from routes.api_containers import register_container_api_routes
 from routes.api_plugins import register_plugins_api_routes
 from routes.api_projects import register_projects_api_routes, link_container_to_projects
+from routes.api_security import register_security_api_routes
 from routes.api_users import register_user_api_routes
 from routes.pages import register_pages_routes
 
@@ -99,6 +100,22 @@ def _resolve_gui_secret_key():
     return secrets.token_urlsafe(32)
 
 
+def _core_container_request(core_session: str, method: str, endpoint: str, *, params=None, json_data=None, timeout: float = 15.0):
+    response = requests.request(
+        method=method,
+        url=f"{bridge.core_url}{endpoint}",
+        params=params,
+        json=json_data,
+        cookies={"nebula_session": core_session},
+        timeout=timeout,
+    )
+    try:
+        payload = response.json()
+    except Exception:
+        payload = {"detail": response.text}
+    return payload, response.status_code
+
+
 def _resolve_gui_allowed_origins():
     raw = _resolve_env_value(
         "NEBULA_GUI_CORS_ORIGINS",
@@ -158,6 +175,10 @@ metrics_cache_lock = threading.Lock()
 METRICS_CACHE_TTL = 2.5
 dashboard_streams = {}
 dashboard_streams_lock = threading.Lock()
+container_streams = {}
+container_streams_lock = threading.Lock()
+pty_streams = {}
+pty_streams_lock = threading.Lock()
 error_quotes_lock = threading.Lock()
 error_quotes_cache = []
 error_quotes_mtime = None
@@ -637,6 +658,12 @@ def _build_user_dashboard_stream_payload(core_session: str, previous_payload: di
     summary = summary if summary_code < 400 and isinstance(summary, dict) else {}
     summary_valid = "total_containers" in summary or "running_containers" in summary
 
+    if not summary_valid and isinstance(previous_payload, dict):
+        fallback_payload = dict(previous_payload)
+        fallback_payload["loading"] = {"telemetry": False, "containers": True, "disks": True, "counts": True}
+        fallback_payload["updated_at"] = int(time.time())
+        return fallback_payload
+
     previous_overview = {}
     if previous_payload and isinstance(previous_payload.get("overview"), dict):
         previous_overview = previous_payload["overview"]
@@ -664,7 +691,11 @@ def _build_user_dashboard_stream_payload(core_session: str, previous_payload: di
     cpu_cores_total = psutil.cpu_count(logical=True) or 1
     cpu_cores_active = round((float(cpu_percent or 0.0)) * cpu_cores_total / 100.0, 1)
     ram_used_gb = (_to_float(summary.get("memory_used_mb")) or _to_float(previous_overview.get("ram_used_gb")) or 0.0)
-    ram_total_gb = (_to_float(summary.get("memory_limit_mb")) or (_to_float(previous_overview.get("ram_total_gb")) or 0.0) * 1024.0)
+    ram_total_gb = (
+        (_to_float(summary.get("memory_limit_mb")) or 0.0)
+        if summary.get("memory_limit_mb") is not None
+        else (_to_float(previous_overview.get("ram_total_gb")) or 0.0)
+    )
     if summary.get("memory_used_mb") is not None:
         ram_used_gb = float(ram_used_gb) / 1024.0
     if summary.get("memory_limit_mb") is not None:
@@ -770,6 +801,131 @@ def _dashboard_stream_worker(sid: str, core_session: str, is_staff: bool):
             socketio.emit("dashboard_status", {"state": "sync_delayed"}, to=sid)
 
         socketio.sleep(0.25 if is_staff and last_payload and last_payload.get("loading", {}).get("telemetry") else _dashboard_stream_sleep_seconds())
+
+
+def _container_stream_worker(sid: str, core_session: str, container_id: str):
+    last_logs = None
+    while True:
+        with container_streams_lock:
+            state = dict(container_streams.get(sid) or {})
+        if not state.get("active") or str(state.get("container_id") or "") != str(container_id or ""):
+            break
+        try:
+            payload, status = _core_container_request(
+                core_session,
+                "GET",
+                f"/containers/logs/{container_id}",
+                params={"tail": 300, "streaming": 1},
+                timeout=20,
+            )
+            if status == 200 and isinstance(payload, dict):
+                logs = str(payload.get("logs") or "")
+                if logs != last_logs:
+                    last_logs = logs
+                    socketio.emit(
+                        "container_stream_update",
+                        {
+                            "container_id": container_id,
+                            "name": payload.get("name") or container_id,
+                            "logs": logs,
+                            "updated_at": int(time.time()),
+                        },
+                        to=sid,
+                    )
+            else:
+                socketio.emit(
+                    "container_stream_status",
+                    {
+                        "container_id": container_id,
+                        "state": "error",
+                        "detail": str((payload or {}).get("detail") or "stream unavailable"),
+                    },
+                    to=sid,
+                )
+        except Exception as exc:
+            socketio.emit(
+                "container_stream_status",
+                {
+                    "container_id": container_id,
+                    "state": "error",
+                    "detail": str(exc),
+                },
+                to=sid,
+            )
+        socketio.sleep(1.2)
+
+
+def _pty_stream_worker(sid: str, core_session: str, session_id: str):
+    cursor = 0
+    while True:
+        with pty_streams_lock:
+            state = dict(pty_streams.get(sid) or {})
+        if not state.get("active") or str(state.get("session_id") or "") != str(session_id or ""):
+            break
+        try:
+            payload, status = _core_container_request(
+                core_session,
+                "GET",
+                f"/containers/pty/read/{session_id}",
+                params={"cursor": cursor},
+                timeout=15,
+            )
+            if status == 200 and isinstance(payload, dict):
+                cursor = int(payload.get("cursor") or cursor)
+                output = str(payload.get("output") or "")
+                if output:
+                    socketio.emit(
+                        "container_pty_update",
+                        {
+                            "session_id": session_id,
+                            "container_id": payload.get("container_id"),
+                            "output": output,
+                            "cursor": cursor,
+                            "clipped": bool(payload.get("clipped")),
+                            "updated_at": payload.get("updated_at"),
+                        },
+                        to=sid,
+                    )
+                if payload.get("closed"):
+                    socketio.emit(
+                        "container_pty_status",
+                        {
+                            "session_id": session_id,
+                            "container_id": payload.get("container_id"),
+                            "state": "closed",
+                            "detail": payload.get("close_reason") or "Shell session closed",
+                            "exit_code": payload.get("exit_code"),
+                        },
+                        to=sid,
+                    )
+                    with pty_streams_lock:
+                        if sid in pty_streams and str(pty_streams[sid].get("session_id") or "") == str(session_id):
+                            pty_streams[sid]["active"] = False
+                            pty_streams.pop(sid, None)
+                    break
+            else:
+                socketio.emit(
+                    "container_pty_status",
+                    {
+                        "session_id": session_id,
+                        "state": "error",
+                        "detail": str((payload or {}).get("detail") or "pty stream unavailable"),
+                    },
+                    to=sid,
+                )
+                socketio.sleep(0.75)
+        except Exception as exc:
+            socketio.emit(
+                "container_pty_status",
+                {
+                    "session_id": session_id,
+                    "state": "error",
+                    "detail": str(exc),
+                },
+                to=sid,
+            )
+            socketio.sleep(0.75)
+        socketio.sleep(0.18)
 
 
 def _run_deploy_job(job_id: str, payload: dict, started_by: str, core_session: str):
@@ -890,6 +1046,7 @@ register_container_api_routes(
 register_user_api_routes(app, bridge)
 register_projects_api_routes(app, bridge)
 register_plugins_api_routes(app, bridge)
+register_security_api_routes(app, bridge)
 
 @app.route('/login', methods=['GET', 'POST'])
 def admin_login():
@@ -1125,6 +1282,21 @@ def _build_metrics_payload(summary: dict | None = None):
         "tasks": 0,
     }, None
 
+def _user_summary_has_metrics(summary: dict | None) -> bool:
+    if not isinstance(summary, dict):
+        return False
+    metric_keys = (
+        "cpu_percent",
+        "memory_percent",
+        "network_tx_mbps",
+        "network_rx_mbps",
+        "total_containers",
+        "running_containers",
+        "memory_used_mb",
+        "memory_limit_mb",
+    )
+    return any(key in summary and summary.get(key) is not None for key in metric_keys)
+
 @app.route('/api/metrics')
 @bridge.login_required
 def api_metrics():
@@ -1153,13 +1325,26 @@ def api_dashboard_payload():
     include_disks = str(request.args.get("include_disks", "1")).strip().lower() in {"1", "true", "yes", "on"}
 
     if not session.get('is_staff'):
+        cache_key = f"{session.get('core_session', '')}:{session.get('user_id', '')}:{int(bool(session.get('is_staff')))}"
+        cached_overview = None
+        with metrics_cache_lock:
+            cached = metrics_cache.get(cache_key)
+            if cached and isinstance(cached.get("payload"), dict):
+                cached_overview = dict(cached["payload"])
+
         summary, summary_code = bridge.proxy_request("GET", "/containers/summary", timeout=2.5)
         if summary_code >= 400:
             summary = {}
+        summary_valid = _user_summary_has_metrics(summary)
         overview, error = _build_metrics_payload(summary=summary)
         if error:
             body, status = error
             return jsonify(body), status
+        if not summary_valid and cached_overview:
+            overview = cached_overview
+        else:
+            with metrics_cache_lock:
+                metrics_cache[cache_key] = {"ts": time.time(), "payload": overview}
         return jsonify({
             "scope": overview.get("scope"),
             "overview": overview,
@@ -1168,6 +1353,7 @@ def api_dashboard_payload():
             "containers_memory": None,
             "disks": None,
             "included": {"containers": False, "disks": False},
+            "loading": {"telemetry": False, "containers": False, "disks": False, "counts": not summary_valid and not bool(cached_overview)},
             "updated_at": int(time.time()),
         })
 
@@ -1334,8 +1520,214 @@ def handle_dashboard_subscribe(_payload=None):
             "core_session": core_session,
             "last_payload": None,
         }
-    socketio.emit("dashboard_update", _dashboard_placeholder_payload(is_staff), to=sid)
+    if is_staff:
+        socketio.emit("dashboard_update", _dashboard_placeholder_payload(is_staff), to=sid)
     socketio.start_background_task(_dashboard_stream_worker, sid, core_session, is_staff)
+
+
+@socketio.on('subscribe_container_stream')
+def handle_container_stream_subscribe(payload=None):
+    if 'user_id' not in session or not session.get("core_session"):
+        return
+    sid = request.sid
+    container_id = str((payload or {}).get("container_id") or "").strip()
+    if not container_id:
+        socketio.emit("container_stream_status", {"state": "error", "detail": "container_id is required"}, to=sid)
+        return
+    core_session = session.get("core_session")
+    with container_streams_lock:
+        container_streams[sid] = {
+            "active": True,
+            "container_id": container_id,
+            "core_session": core_session,
+        }
+    socketio.emit("container_stream_status", {"state": "connecting", "container_id": container_id}, to=sid)
+    socketio.start_background_task(_container_stream_worker, sid, core_session, container_id)
+
+
+@socketio.on('unsubscribe_container_stream')
+def handle_container_stream_unsubscribe(_payload=None):
+    sid = request.sid
+    with container_streams_lock:
+        if sid in container_streams:
+            container_streams[sid]["active"] = False
+            container_streams.pop(sid, None)
+
+
+@socketio.on('container_attach_input')
+def handle_container_attach_input(payload=None):
+    if 'user_id' not in session or not session.get("core_session"):
+        return
+    sid = request.sid
+    container_id = str((payload or {}).get("container_id") or "").strip()
+    command = str((payload or {}).get("command") or "").strip()
+    if not container_id or not command:
+        socketio.emit("container_attach_ack", {"ok": False, "detail": "container_id and command are required"}, to=sid)
+        return
+    core_session = session.get("core_session")
+    try:
+        result, status = _core_container_request(
+            core_session,
+            "POST",
+            f"/containers/console-send/{container_id}",
+            json_data={"command": command},
+            timeout=20,
+        )
+        socketio.emit(
+            "container_attach_ack",
+            {
+                "ok": status < 400,
+                "container_id": container_id,
+                "detail": result.get("detail") if isinstance(result, dict) else None,
+                "transport": result.get("transport") if isinstance(result, dict) else None,
+            },
+            to=sid,
+        )
+    except Exception as exc:
+        socketio.emit("container_attach_ack", {"ok": False, "container_id": container_id, "detail": str(exc)}, to=sid)
+
+
+@socketio.on('start_container_pty')
+def handle_start_container_pty(payload=None):
+    if 'user_id' not in session or not session.get("core_session"):
+        return
+    sid = request.sid
+    container_id = str((payload or {}).get("container_id") or "").strip()
+    cols = int((payload or {}).get("cols") or 120)
+    rows = int((payload or {}).get("rows") or 32)
+    if not container_id:
+        socketio.emit("container_pty_status", {"state": "error", "detail": "container_id is required"}, to=sid)
+        return
+    core_session = session.get("core_session")
+    with pty_streams_lock:
+        existing = dict(pty_streams.get(sid) or {})
+    if existing.get("session_id"):
+        try:
+            _core_container_request(core_session, "POST", f"/containers/pty/close/{existing['session_id']}", timeout=10)
+        except Exception:
+            pass
+    try:
+        result, status = _core_container_request(
+            core_session,
+            "POST",
+            f"/containers/pty/start/{container_id}",
+            json_data={"cols": cols, "rows": rows},
+            timeout=20,
+        )
+        if status >= 400:
+            socketio.emit(
+                "container_pty_status",
+                {
+                    "state": "error",
+                    "container_id": container_id,
+                    "detail": result.get("detail") if isinstance(result, dict) else "Failed to start shell session",
+                },
+                to=sid,
+            )
+            return
+        session_id = str((result or {}).get("session_id") or "").strip()
+        if not session_id:
+            socketio.emit("container_pty_status", {"state": "error", "container_id": container_id, "detail": "PTY session id is missing"}, to=sid)
+            return
+        with pty_streams_lock:
+            pty_streams[sid] = {
+                "active": True,
+                "container_id": container_id,
+                "session_id": session_id,
+                "core_session": core_session,
+            }
+        socketio.emit(
+            "container_pty_status",
+            {
+                "state": "ready",
+                "container_id": container_id,
+                "session_id": session_id,
+                "shell": result.get("shell"),
+                "cols": result.get("cols"),
+                "rows": result.get("rows"),
+            },
+            to=sid,
+        )
+        socketio.start_background_task(_pty_stream_worker, sid, core_session, session_id)
+    except Exception as exc:
+        socketio.emit("container_pty_status", {"state": "error", "container_id": container_id, "detail": str(exc)}, to=sid)
+
+
+@socketio.on('stop_container_pty')
+def handle_stop_container_pty(payload=None):
+    if 'user_id' not in session or not session.get("core_session"):
+        return
+    sid = request.sid
+    session_id = str((payload or {}).get("session_id") or "").strip()
+    core_session = session.get("core_session")
+    with pty_streams_lock:
+        existing = dict(pty_streams.get(sid) or {})
+        if not session_id:
+            session_id = str(existing.get("session_id") or "").strip()
+        if sid in pty_streams:
+            pty_streams[sid]["active"] = False
+            pty_streams.pop(sid, None)
+    if not session_id:
+        return
+    try:
+        _core_container_request(core_session, "POST", f"/containers/pty/close/{session_id}", timeout=10)
+    except Exception:
+        pass
+
+
+@socketio.on('container_pty_input')
+def handle_container_pty_input(payload=None):
+    if 'user_id' not in session or not session.get("core_session"):
+        return
+    sid = request.sid
+    session_id = str((payload or {}).get("session_id") or "").strip()
+    data = str((payload or {}).get("data") or "")
+    if not session_id or not data:
+        socketio.emit("container_pty_ack", {"ok": False, "detail": "session_id and data are required"}, to=sid)
+        return
+    core_session = session.get("core_session")
+    try:
+        result, status = _core_container_request(
+            core_session,
+            "POST",
+            f"/containers/pty/input/{session_id}",
+            json_data={"data": data},
+            timeout=15,
+        )
+        socketio.emit(
+            "container_pty_ack",
+            {
+                "ok": status < 400,
+                "session_id": session_id,
+                "detail": result.get("detail") if isinstance(result, dict) else None,
+            },
+            to=sid,
+        )
+    except Exception as exc:
+        socketio.emit("container_pty_ack", {"ok": False, "session_id": session_id, "detail": str(exc)}, to=sid)
+
+
+@socketio.on('container_pty_resize')
+def handle_container_pty_resize(payload=None):
+    if 'user_id' not in session or not session.get("core_session"):
+        return
+    sid = request.sid
+    session_id = str((payload or {}).get("session_id") or "").strip()
+    cols = int((payload or {}).get("cols") or 120)
+    rows = int((payload or {}).get("rows") or 32)
+    if not session_id:
+        return
+    core_session = session.get("core_session")
+    try:
+        _core_container_request(
+            core_session,
+            "POST",
+            f"/containers/pty/resize/{session_id}",
+            json_data={"cols": cols, "rows": rows},
+            timeout=10,
+        )
+    except Exception:
+        pass
 
 
 @socketio.on('disconnect')
@@ -1345,6 +1737,22 @@ def handle_socket_disconnect():
         if sid in dashboard_streams:
             dashboard_streams[sid]["active"] = False
             dashboard_streams.pop(sid, None)
+    with container_streams_lock:
+        if sid in container_streams:
+            container_streams[sid]["active"] = False
+            container_streams.pop(sid, None)
+    session_id = ""
+    core_session = session.get("core_session")
+    with pty_streams_lock:
+        if sid in pty_streams:
+            pty_streams[sid]["active"] = False
+            session_id = str(pty_streams[sid].get("session_id") or "")
+            pty_streams.pop(sid, None)
+    if session_id and core_session:
+        try:
+            _core_container_request(core_session, "POST", f"/containers/pty/close/{session_id}", timeout=10)
+        except Exception:
+            pass
 
 
 @app.errorhandler(HTTPException)

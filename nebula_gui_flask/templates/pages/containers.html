@@ -13,6 +13,7 @@ window.NebulaContainers = {
     isStaff: {{ 'true' if session.get('is_staff') else 'false' }}
 };
 </script>
+<script nonce="{{ csp_nonce }}" src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/pages/containers.js') }}"></script>
 {% endblock %}
 {% block page_content %}
@@ -31,10 +32,16 @@ window.NebulaContainers = {
             {% endif %}
         </div>
         {% if session.get('is_staff') %}
-        <button onclick="openCreateModal()" class="add-user-btn" style="border: none; cursor: pointer;">
-            <i class="bi bi-box-seam-fill"></i>
-            <span>Deploy Container</span>
-        </button>
+        <div style="display:flex; align-items:center; gap:12px;">
+            <button onclick="openWebsiteWizard()" class="add-user-btn" style="border: none; cursor: pointer; background: linear-gradient(135deg, #2dbf7f, #1f8f64);">
+                <i class="bi bi-globe2"></i>
+                <span>Deploy Website</span>
+            </button>
+            <button onclick="openCreateModal()" class="add-user-btn" style="border: none; cursor: pointer;">
+                <i class="bi bi-box-seam-fill"></i>
+                <span>Deploy Container</span>
+            </button>
+        </div>
         {% endif %}
     </div>
 
@@ -112,16 +119,213 @@ window.NebulaContainers = {
         <div style="padding: 20px 24px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <div id="consoleStatus" style="font-size:0.8rem; color: var(--text-muted);">Waiting for logs...</div>
+                <div style="display:flex; gap:10px;">
+                <button class="btn-secondary console-mode-btn is-active" id="consoleLogsModeBtn" style="padding:8px 14px;" onclick="switchConsoleMode('logs')">
+                    <i class="bi bi-journal-text"></i> Logs
+                </button>
+                <button class="btn-secondary console-mode-btn" id="consoleShellModeBtn" style="padding:8px 14px; display:none;" onclick="switchConsoleMode('shell')">
+                    <i class="bi bi-terminal"></i> Shell
+                </button>
                 <button class="btn-secondary" style="padding:8px 14px;" onclick="refreshConsoleLogs()">
                     <i class="bi bi-arrow-repeat"></i> Refresh
                 </button>
+                <button class="btn-secondary" style="padding:8px 14px;" onclick="openInspectDrawerFromConsole()">
+                    <i class="bi bi-code-square"></i> Inspect
+                </button>
+                </div>
             </div>
+            <div id="consoleModeHint" class="console-mode-hint">Live log stream with optional app console input.</div>
             <pre id="consoleOutput" style="margin:0; max-height: 55vh; overflow:auto; padding:14px; border:1px solid var(--border); border-radius:12px; background:#060609; color:#d6d6de; font-size:0.78rem; line-height:1.45;"></pre>
+            <div class="console-attach-bar">
+                <input type="text" id="consoleAttachInput" placeholder="Attach input to container console">
+                <button class="btn-secondary" type="button" id="consoleCtrlCBtn" style="display:none;" onclick="sendConsoleCtrlC()">
+                    <i class="bi bi-slash-circle"></i> Ctrl+C
+                </button>
+                <button class="btn-primary" type="button" onclick="sendConsoleAttachInput()">Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="inspectDrawer" class="inspect-drawer">
+    <div class="inspect-drawer-backdrop" onclick="closeInspectDrawer()"></div>
+    <div class="inspect-drawer-panel">
+        <div class="modal-header">
+            <div>
+                <h3 id="inspectDrawerTitle" style="margin: 0; font-weight: 700; color: white;">Container Inspect</h3>
+                <p id="inspectDrawerSub" style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">JSON and tree view</p>
+            </div>
+            <button onclick="closeInspectDrawer()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="inspect-drawer-body">
+            <div class="inspect-drawer-toolbar">
+                <button type="button" class="btn-secondary btn-inline-compact" onclick="setInspectViewMode('tree')">Tree</button>
+                <button type="button" class="btn-secondary btn-inline-compact" onclick="setInspectViewMode('json')">JSON</button>
+            </div>
+            <div id="inspectTreeView" class="inspect-tree-view"></div>
+            <pre id="inspectJsonView" class="settings-code-preview" style="display:none;"></pre>
+        </div>
+    </div>
+</div>
+
+<div id="recreateDiffModal" class="modal-overlay">
+    <div class="modal-content" style="width: 900px;">
+        <div class="modal-header">
+            <div>
+                <h3 style="margin: 0; font-weight: 700; color: white;">Recreate Diff Review</h3>
+                <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Review config drift before replacing the live container.</p>
+            </div>
+            <button onclick="closeRecreateDiffModal()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div style="padding: 24px 28px; max-height: 72vh; overflow-y: auto;">
+            <div id="recreateDiffContent" class="recreate-diff-list"></div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeRecreateDiffModal()" class="btn-secondary">Cancel</button>
+            <button onclick="confirmRecreateFromDiff()" class="btn-primary" id="confirmRecreateBtn">Recreate Container</button>
         </div>
     </div>
 </div>
 
 {% if session.get('is_staff') %}
+<div id="websiteWizardModal" class="modal-overlay">
+    <div class="modal-content website-modal">
+        <div class="modal-header">
+            <div>
+                <h3 style="margin: 0; font-weight: 700; color: white;">Deploy Website</h3>
+                <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Simple website-first flow with preset bootstrap and public route preview</p>
+            </div>
+            <button onclick="closeWebsiteWizard()" class="close-modal-btn"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="website-wizard-body">
+            <div class="website-wizard-hero">
+                <div>
+                    <span class="website-kicker">Quick Launch</span>
+                    <h4>Pick the site type, give it a name, and Nebula will prepare the container.</h4>
+                    <p>After deploy, open Container Workspace to upload files and start the project if needed. Advanced runtime knobs stay hidden unless you want them.</p>
+                </div>
+                <div class="website-hero-note">
+                    <strong>Best for</strong>
+                    <span>Flask, FastAPI, Node apps and static sites</span>
+                </div>
+            </div>
+
+            <div class="website-wizard-grid">
+                <div class="input-field">
+                    <label>Website Name</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-window"></i>
+                        <input type="text" id="site_name" placeholder="e.g. my-landing-page" oninput="updateWebsiteWizardPreview()">
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Website Type</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-diagram-3"></i>
+                        <select id="site_type" onchange="onWebsiteTypeChange()">
+                            <option value="python-flask">Flask Website</option>
+                            <option value="python-fastapi">FastAPI Service</option>
+                            <option value="node-vite">Vite Frontend</option>
+                            <option value="node-npm">Node.js App</option>
+                            <option value="static-web">Static Site</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Public Port</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-ethernet"></i>
+                        <input type="number" id="site_public_port" min="1" max="65535" value="5000" oninput="updateWebsiteWizardPreview()">
+                    </div>
+                </div>
+                <div class="input-field">
+                    <label>Domain (optional)</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-globe2"></i>
+                        <input type="text" id="site_domain" placeholder="e.g. app.example.com" oninput="updateWebsiteWizardPreview()">
+                    </div>
+                </div>
+            </div>
+
+            <div class="website-preview-grid">
+                <div class="website-preview-card">
+                    <span>Preset</span>
+                    <strong id="site_preset_preview">Python Flask</strong>
+                </div>
+                <div class="website-preview-card">
+                    <span>Published Route</span>
+                    <strong id="site_route_preview">5000:5000</strong>
+                </div>
+                <div class="website-preview-card wide">
+                    <span>Public Address</span>
+                    <strong id="site_public_preview">http://panel-host:5000</strong>
+                    <small id="site_preview_note">Nebula will use a managed workspace so File Explorer upload works without custom Linux volume setup.</small>
+                </div>
+            </div>
+
+            <details class="architect-advanced-block">
+                <summary>
+                    <span>
+                        <strong>Advanced Website Settings</strong>
+                        <small>Only open this if you want to override the suggested bootstrap or resources.</small>
+                    </span>
+                    <i class="bi bi-chevron-down"></i>
+                </summary>
+                <div class="architect-advanced-body">
+                    <div class="website-wizard-grid">
+                        <div class="input-field">
+                            <label>Auto-Install Command</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-download"></i>
+                                <input type="text" id="site_install_command" placeholder="Auto-detected from website type">
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>Auto-Start Command</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-terminal"></i>
+                                <input type="text" id="site_start_command" placeholder="Auto-detected from website type">
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>Memory Limit (MB)</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-memory"></i>
+                                <input type="number" id="site_ram" min="128" value="1024">
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>Writable Disk (GB)</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-device-hdd"></i>
+                                <input type="number" id="site_disk" min="1" value="20">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="website-wizard-checks">
+                        <label class="website-check">
+                            <input type="checkbox" id="site_restart" checked>
+                            <span>Auto-restart container on crash or reboot</span>
+                        </label>
+                        <label class="website-check">
+                            <input type="checkbox" id="site_open_architect">
+                            <span>Open full Container Architect instead of deploying immediately</span>
+                        </label>
+                    </div>
+                </div>
+            </details>
+
+            <div id="site_wizard_validation" class="website-validation ok">
+                Nebula will create a managed workspace, map the public port, and keep the advanced host mounts empty by default.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeWebsiteWizard()" class="btn-secondary">Cancel</button>
+            <button onclick="deployWebsiteWizard()" class="btn-primary" id="siteDeployBtn">Deploy Website</button>
+        </div>
+    </div>
+</div>
+
 <div id="containerModal" class="modal-overlay">
     <div class="modal-content" style="width: 850px;">
         <div class="modal-header">
@@ -135,12 +339,9 @@ window.NebulaContainers = {
         <div style="padding: 32px; max-height: 70vh; overflow-y: auto;">
             <div class="preset-block">
                 <div class="preset-title">Deployment Presets</div>
-                <div class="preset-grid" style="grid-template-columns: 1fr auto;">
-                    <select id="cont_preset_select" class="premium-select" style="min-width:0; width:100%; padding-left:12px;">
+                <div class="preset-grid" style="grid-template-columns: 1fr;">
+                    <select id="cont_preset_select" class="premium-select" style="min-width:0; width:100%; padding-left:12px;" onchange="applySelectedPreset()">
                     </select>
-                    <button type="button" class="btn-secondary" style="padding: 10px 14px;" onclick="applySelectedPreset()">
-                        <i class="bi bi-check2-square"></i> Apply
-                    </button>
                 </div>
                 <div class="preset-grid" style="grid-template-columns: 1fr 1fr auto; margin-top: 8px;">
                     <input type="text" id="preset_save_name" placeholder="my-custom-preset" style="width:100%; padding: 10px 12px; background:#050507; border:1px solid var(--border); border-radius: 10px; color:white;">
@@ -217,14 +418,7 @@ window.NebulaContainers = {
                         <label>Port Mapping</label>
                         <div class="input-wrapper">
                             <i class="bi bi-ethernet"></i>
-                            <input type="text" id="cont_ports" placeholder="8080:80, 8443:443, 127.0.0.1:2222:22">
-                        </div>
-                    </div>
-                    <div class="input-field">
-                        <label>CPU Weight</label>
-                        <div class="input-wrapper">
-                            <i class="bi bi-speedometer2"></i>
-                            <input type="number" id="cont_cpu" value="1024" min="2" max="262144">
+                            <input type="text" id="cont_ports" placeholder="8080:80, 8443:443, 127.0.0.1:2222:22" oninput="updateArchitectLaunchPreview()">
                         </div>
                     </div>
                     <div class="input-field">
@@ -234,14 +428,102 @@ window.NebulaContainers = {
                             <input type="number" id="cont_cpu_limit" value="1.0" min="0.1" step="0.1">
                         </div>
                     </div>
-                    <div class="input-field">
-                        <label>Pin CPU Cores (cpuset)</label>
-                        <div class="input-wrapper">
-                            <i class="bi bi-diagram-3"></i>
-                            <input type="text" id="cont_cpuset" placeholder="0-1 or 0,2,4">
+                </div>
+            </div>
+
+            <div class="architect-panel-grid" style="margin-top: 24px;">
+                <div class="architect-panel">
+                    <div class="architect-panel-head">
+                        <div>
+                            <span class="architect-panel-kicker">Project Bootstrap</span>
+                            <h4>Install, Start & Address</h4>
                         </div>
                     </div>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="architect-inline-grid">
+                        <div class="input-field">
+                            <label>Project Protocol</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-diagram-3"></i>
+                                <select id="cont_project_protocol" onchange="onArchitectProtocolChange(false)">
+                                    <option value="generic">Generic Project</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>Domain</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-globe2"></i>
+                                <input type="text" id="cont_domain_name" placeholder="e.g. app.example.com" oninput="updateArchitectLaunchPreview()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Auto-Install Command</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-download"></i>
+                            <input type="text" id="cont_install_command" placeholder="e.g. npm install or pip install -r requirements.txt">
+                        </div>
+                        <span class="input-hint" id="cont_protocol_hint">Select a protocol to prefill install/start commands.</span>
+                    </div>
+                    <div class="architect-inline-grid">
+                        <div class="input-field">
+                            <label>Auto-Start Command</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-terminal"></i>
+                                <input type="text" id="cont_command" placeholder="e.g. python app.py --port 80">
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>Launch URL</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-link-45deg"></i>
+                                <input type="text" id="cont_launch_url" placeholder="e.g. https://app.example.com" oninput="updateArchitectLaunchPreview()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="architect-launch-preview">
+                        <div class="architect-launch-card">
+                            <span>Host Preview</span>
+                            <strong id="cont_launch_host_preview">panel host</strong>
+                        </div>
+                        <div class="architect-launch-card">
+                            <span>Route Preview</span>
+                            <strong id="cont_launch_route_preview">waiting for ports</strong>
+                        </div>
+                        <div class="architect-launch-card wide">
+                            <span>Public Address</span>
+                            <strong id="cont_launch_public_preview">waiting for data</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <details class="architect-advanced-block">
+                <summary>
+                    <span>
+                        <strong>Advanced Runtime</strong>
+                        <small>CPU weight, pinning, shm and other lower-level limits.</small>
+                    </span>
+                    <i class="bi bi-chevron-down"></i>
+                </summary>
+                <div class="architect-advanced-body">
+                    <div class="architect-inline-grid">
+                        <div class="input-field">
+                            <label>CPU Weight</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-speedometer2"></i>
+                                <input type="number" id="cont_cpu" value="1024" min="2" max="262144">
+                            </div>
+                        </div>
+                        <div class="input-field">
+                            <label>Pin CPU Cores (cpuset)</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-diagram-3"></i>
+                                <input type="text" id="cont_cpuset" placeholder="0-1 or 0,2,4">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="architect-inline-grid">
                         <div class="input-field">
                             <label>CPU Quota</label>
                             <div class="input-wrapper">
@@ -257,7 +539,7 @@ window.NebulaContainers = {
                             </div>
                         </div>
                     </div>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="architect-inline-grid">
                         <div class="input-field">
                             <label>PIDs Limit</label>
                             <div class="input-wrapper">
@@ -274,36 +556,56 @@ window.NebulaContainers = {
                         </div>
                     </div>
                 </div>
-            </div>
+            </details>
 
-            <div style="margin-top: 24px; display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-                <div class="input-field">
-                    <label>Startup Command</label>
-                    <div class="input-wrapper">
-                        <i class="bi bi-terminal"></i>
-                        <input type="text" id="cont_command" placeholder="e.g. python app.py --port 80">
+            <details class="architect-advanced-block">
+                <summary>
+                    <span>
+                        <strong>Environment & Storage</strong>
+                        <small>Environment variables and optional custom host mounts for advanced setups.</small>
+                    </span>
+                    <i class="bi bi-chevron-down"></i>
+                </summary>
+                <div class="architect-advanced-body">
+                    <div class="input-field">
+                        <label>Environment Variables (KEY=VALUE)</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-braces"></i>
+                            <textarea id="cont_env" rows="4" placeholder="APP_ENV=prod&#10;LOG_LEVEL=info"></textarea>
+                        </div>
+                    </div>
+                    <div class="input-field">
+                        <label>Custom Host Mounts (Advanced / optional)</label>
+                        <div class="input-wrapper">
+                            <i class="bi bi-folder-symlink"></i>
+                            <textarea id="cont_volumes" rows="4" placeholder="/srv/app/data:/app/data:rw&#10;/srv/app/config:/app/config:ro" oninput="updateArchitectVolumeAdvisory()"></textarea>
+                        </div>
+                        <span class="input-hint">Leave this empty for normal deploys. Nebula will create and manage its own workspace automatically.</span>
+                        <div id="volume_advisory" class="volume-advisory neutral">
+                            <strong>Workspace ownership check</strong>
+                            <p>Managed Nebula workspaces are preferred because permissions can be prepared automatically.</p>
+                            <code id="volume_advisory_command">No external host path detected yet.</code>
+                        </div>
                     </div>
                 </div>
-                <div class="input-field">
-                    <label>Environment Variables (KEY=VALUE)</label>
-                    <div class="input-wrapper">
-                        <i class="bi bi-braces"></i>
-                        <textarea id="cont_env" rows="4" placeholder="APP_ENV=prod&#10;LOG_LEVEL=info"></textarea>
+            </details>
+
+            <details class="architect-advanced-block">
+                <summary>
+                    <span>
+                        <strong>Access Matrix</strong>
+                        <small>Role-based workspace permissions for users assigned to this container.</small>
+                    </span>
+                    <i class="bi bi-chevron-down"></i>
+                </summary>
+                <div class="architect-advanced-body">
+                    <div class="input-field">
+                        <label>Role Permissions</label>
+                        <div id="role_permissions_grid" style="border:1px solid var(--border); border-radius: 12px; overflow:auto; background:#07070b;"></div>
+                        <span class="input-hint" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; display: block;">Permissions apply to roles from `/roles/list` and are inherited by users via their `role_tag`.</span>
                     </div>
                 </div>
-            </div>
-            <div class="input-field" style="margin-top: 16px;">
-                <label>Volume Mounts (/host:/container[:ro|rw])</label>
-                <div class="input-wrapper">
-                    <i class="bi bi-folder-symlink"></i>
-                    <textarea id="cont_volumes" rows="4" placeholder="/srv/app/data:/app/data:rw&#10;/srv/app/config:/app/config:ro"></textarea>
-                </div>
-            </div>
-            <div class="input-field" style="margin-top: 16px;">
-                <label>Role Permissions</label>
-                <div id="role_permissions_grid" style="border:1px solid var(--border); border-radius: 12px; overflow:auto; background:#07070b;"></div>
-                <span class="input-hint" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; display: block;">Permissions apply to roles from `/roles/list` and are inherited by users via their `role_tag`.</span>
-            </div>
+            </details>
 
             <div class="status-box">
                 <div style="display: flex; align-items: center; gap: 16px;">
@@ -424,6 +726,81 @@ window.NebulaContainers = {
                     </div>
                 </div>
             </div>
+
+            <details class="architect-advanced-block" style="margin-top: 18px;">
+                <summary>
+                    <span>
+                        <strong>Advanced Docker Ops</strong>
+                        <small>Inspect internals, edit env/labels/mounts for duplicate or recreate, and watch object activity without crowding the default form.</small>
+                    </span>
+                    <i class="bi bi-chevron-down"></i>
+                </summary>
+                <div class="architect-advanced-body">
+                    <div id="docker_objects_summary" class="settings-ops-grid">
+                        <div class="settings-ops-card"><span>Images</span><strong>Loading...</strong></div>
+                        <div class="settings-ops-card"><span>Volumes</span><strong>Loading...</strong></div>
+                        <div class="settings-ops-card"><span>Networks</span><strong>Loading...</strong></div>
+                    </div>
+
+                    <div class="settings-ops-split">
+                        <div class="input-field">
+                            <label>Environment Editor</label>
+                            <textarea id="advanced_env_editor" rows="8" placeholder="KEY=value&#10;ANOTHER=value"></textarea>
+                            <span class="input-hint">Used for duplicate/recreate actions. Normal Save Changes does not mutate live env.</span>
+                        </div>
+                        <div class="input-field">
+                            <label>Labels Editor</label>
+                            <textarea id="advanced_labels_editor" rows="8" placeholder="com.nebula.role=frontend&#10;com.example.tier=gold"></textarea>
+                            <span class="input-hint">Useful for governance, discovery and routing labels.</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-ops-split">
+                        <div class="input-field">
+                            <label>Mounts Editor</label>
+                            <textarea id="advanced_mounts_editor" rows="7" placeholder="/srv/app/data:/app/data:rw&#10;shared-assets:/app/assets:ro"></textarea>
+                            <span class="input-hint">Bind mounts and named volumes for duplicate/recreate flow.</span>
+                        </div>
+                        <div class="input-field">
+                            <label>Network</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-diagram-3"></i>
+                                <input type="text" id="advanced_network_name" placeholder="bridge">
+                            </div>
+                            <label style="margin-top: 12px;">Healthcheck Command</label>
+                            <div class="input-wrapper">
+                                <i class="bi bi-heart-pulse"></i>
+                                <input type="text" id="advanced_health_test" placeholder="curl -f http://localhost:8080/health || exit 1">
+                            </div>
+                            <div class="settings-health-grid">
+                                <input type="number" id="advanced_health_interval" min="0" placeholder="Interval s">
+                                <input type="number" id="advanced_health_timeout" min="0" placeholder="Timeout s">
+                                <input type="number" id="advanced_health_retries" min="1" placeholder="Retries">
+                                <input type="number" id="advanced_health_start_period" min="0" placeholder="Start period s">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-ops-split">
+                        <div class="input-field">
+                            <label>Recent Docker Events</label>
+                            <div id="advanced_events_list" class="settings-log-panel">Loading Docker events...</div>
+                        </div>
+                        <div class="input-field">
+                            <label>Inspect / Live Logs</label>
+                            <div id="advanced_runtime_facts" class="settings-fact-list"></div>
+                            <pre id="advanced_inspect_preview" class="settings-code-preview">Loading container inspect...</pre>
+                        </div>
+                    </div>
+
+                    <div class="settings-inline-actions">
+                        <button type="button" class="btn-secondary" onclick="refreshAdvancedDockerOps()">Refresh Advanced Data</button>
+                        <button type="button" class="btn-secondary" onclick="openInspectDrawer()">Open Inspect Drawer</button>
+                        <button type="button" class="btn-secondary" onclick="duplicateContainerFromSettings()">Duplicate as Variant</button>
+                        <button type="button" class="btn-primary" onclick="recreateContainerFromSettings()">Recreate From Editors</button>
+                    </div>
+                </div>
+            </details>
 
             <div class="input-field" style="margin-top: 16px;">
                 <label>Assigned Users</label>

@@ -24,7 +24,7 @@ window.NebulaSettings = {
         <div class="settings-hero-copy">
             <span class="settings-kicker">Control Plane</span>
             <h2>Panel Settings</h2>
-            <p>Shape your workspace the way you like it. This page brings together personal appearance preferences, language, security, mail, infrastructure, and platform policy controls in one place.</p>
+            <p>{% if settings_is_staff %}Shape your workspace the way you like it. This page brings together personal appearance preferences, language, security, mail, infrastructure, and platform policy controls in one place.{% else %}Adjust only your personal panel appearance and language without affecting anyone else in the panel.{% endif %}</p>
             <div class="settings-identity-row">
                 <span class="identity-pill"><i class="bi bi-person"></i> {{ settings_user_id }}</span>
                 <span class="identity-pill"><i class="bi bi-shield-check"></i> {{ 'staff' if settings_is_staff else settings_role_tag }}</span>
@@ -34,8 +34,8 @@ window.NebulaSettings = {
         <div class="settings-hero-meta">
             <div class="meta-stat-card">
                 <span class="meta-label">Sections</span>
-                <strong>11</strong>
-                <small>Workspace preferences, security, mail, ports, performance, certificates, and observability.</small>
+                <strong>{{ '11' if settings_is_staff else '2' }}</strong>
+                <small>{% if settings_is_staff %}Workspace preferences, security, mail, ports, performance, certificates, and observability.{% else %}Personal theme and panel language for the current profile only.{% endif %}</small>
             </div>
             <div class="meta-stat-card">
                 <span class="meta-label">Audience</span>
@@ -54,6 +54,7 @@ window.NebulaSettings = {
         <div class="settings-anchor-row">
             <a href="#section-personal" class="anchor-chip">Personal</a>
             <a href="#section-language" class="anchor-chip">Language</a>
+            {% if settings_is_staff %}
             <a href="#section-security" class="anchor-chip">Security</a>
             <a href="#section-mail" class="anchor-chip">Mail</a>
             <a href="#section-unique-mail" class="anchor-chip">Unique Mail</a>
@@ -63,6 +64,7 @@ window.NebulaSettings = {
             <a href="#section-limits" class="anchor-chip">Limits</a>
             <a href="#section-certs" class="anchor-chip">Certificates</a>
             <a href="#section-observability" class="anchor-chip">Observability</a>
+            {% endif %}
         </div>
         <div class="settings-actions-row">
             <button type="button" class="btn-secondary" onclick="resetSettingsDraft()"><i class="bi bi-arrow-counterclockwise"></i> Reset Draft</button>
@@ -99,6 +101,7 @@ window.NebulaSettings = {
                     </div>
                 </div>
                 <div class="settings-grid two-col">
+                    {% if settings_is_staff %}
                     <label class="setting-field">
                         <span>Default landing page</span>
                         <select data-setting-key="personal.default_page" data-default="dashboard">
@@ -139,6 +142,18 @@ window.NebulaSettings = {
                         <input type="checkbox" data-setting-key="personal.reduce_motion" data-default="false">
                         <span>Reduce interface motion and animation</span>
                     </label>
+                    {% else %}
+                    <label class="setting-field">
+                        <span>Panel theme</span>
+                        <select id="personal-theme-select" data-setting-key="personal.theme_id" data-default="nebula">
+                            <option value="nebula">Loading themes...</option>
+                        </select>
+                    </label>
+                    <label class="setting-field">
+                        <span>Selected theme</span>
+                        <div id="personal-theme-description" class="setting-readonly">Choose a theme to preview its style direction.</div>
+                    </label>
+                    {% endif %}
                 </div>
             </section>
 
@@ -154,6 +169,7 @@ window.NebulaSettings = {
                     </div>
                 </div>
                 <div class="settings-grid three-col">
+                    {% if settings_is_staff %}
                     <label class="setting-field">
                         <span>Panel language</span>
                         <select id="language-panel-select" data-setting-key="language.panel_language" data-default="en">
@@ -202,9 +218,18 @@ window.NebulaSettings = {
                             <option value="blank">Leave untranslated</option>
                         </select>
                     </label>
+                    {% else %}
+                    <label class="setting-field">
+                        <span>Panel language</span>
+                        <select id="language-panel-select" data-setting-key="language.panel_language" data-default="en">
+                            <option value="en">Loading languages...</option>
+                        </select>
+                    </label>
+                    {% endif %}
                 </div>
             </section>
 
+            {% if settings_is_staff %}
             <section id="section-security" class="settings-section" data-availability="planned">
                 <div class="section-head">
                     <div>
@@ -796,6 +821,7 @@ window.NebulaSettings = {
                     </label>
                 </div>
             </section>
+            {% endif %}
         </div>
     </div>
 

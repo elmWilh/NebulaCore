@@ -1,0 +1,189 @@
+.audit-log-page {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  --audit-surface:
+    linear-gradient(180deg, color-mix(in srgb, var(--card-strong) 94%, transparent), color-mix(in srgb, var(--card) 92%, transparent));
+  --audit-soft-border: color-mix(in srgb, var(--border) 100%, transparent);
+  --audit-soft-border-strong: color-mix(in srgb, var(--border-strong) 100%, transparent);
+}
+
+.audit-hero,
+.audit-panel {
+  border-radius: 26px;
+  border: 1px solid var(--audit-soft-border);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--hero-overlay-2) 72%, transparent), transparent 30%),
+    radial-gradient(circle at 84% 18%, color-mix(in srgb, var(--hero-overlay-1) 58%, transparent), transparent 34%),
+    var(--audit-surface);
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+}
+
+.audit-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.audit-hero h2 {
+  margin: 6px 0 8px;
+  color: var(--text);
+}
+
+.audit-hero p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.hero-actions,
+.audit-toolbar,
+.audit-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.audit-tabs {
+  padding: 0 4px;
+}
+
+.audit-tab {
+  border: 1px solid var(--audit-soft-border);
+  background: color-mix(in srgb, var(--glass-bg) 100%, transparent);
+  color: var(--text-soft);
+  border-radius: 999px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.audit-tab:hover,
+.audit-tab:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--audit-soft-border-strong);
+  background: color-mix(in srgb, var(--glass-bg-strong) 100%, transparent);
+  color: var(--text);
+  outline: none;
+}
+
+.audit-tab.is-active {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 28%, transparent), color-mix(in srgb, var(--accent-strong) 34%, transparent));
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.audit-panel {
+  display: none;
+  gap: 16px;
+}
+
+.audit-panel.is-active {
+  display: grid;
+}
+
+.audit-toolbar input,
+.audit-toolbar select {
+  border-radius: 14px;
+  border: 1px solid var(--audit-soft-border);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  color: var(--text);
+  padding: 11px 14px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.audit-toolbar input:focus,
+.audit-toolbar select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-wash) 100%, transparent);
+}
+
+.audit-list {
+  display: grid;
+  gap: 12px;
+}
+
+.audit-item {
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid var(--audit-soft-border);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.audit-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--audit-soft-border));
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+}
+
+.audit-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.audit-item-title {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.audit-item-meta {
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.audit-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.audit-tag {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  background: color-mix(in srgb, var(--accent-wash) 100%, transparent);
+  color: var(--text-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.audit-log-page .btn-primary,
+.audit-log-page .btn-secondary,
+.audit-log-page .premium-select,
+.audit-log-page button {
+  cursor: pointer;
+}
+
+.audit-log-page .btn-primary,
+.audit-log-page .btn-secondary {
+  text-decoration: none;
+}
+
+.audit-log-page .btn-primary:hover,
+.audit-log-page .btn-primary:focus-visible,
+.audit-log-page .btn-secondary:hover,
+.audit-log-page .btn-secondary:focus-visible {
+  outline: none;
+}
+
+.risk-low { background: rgba(34, 197, 94, 0.14); color: #b7f7c9; }
+.risk-medium { background: rgba(234, 179, 8, 0.16); color: #f6df9c; }
+.risk-elevated, .risk-high { background: rgba(249, 115, 22, 0.18); color: #ffc998; }
+.risk-critical { background: rgba(239, 68, 68, 0.2); color: #ffc3c3; }
+
+@media (max-width: 720px) {
+  .audit-log-page {
+    padding: 16px;
+  }
+
+  .audit-hero,
+  .audit-panel {
+    padding: 18px;
+  }
+}

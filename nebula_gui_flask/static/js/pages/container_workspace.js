@@ -16,9 +16,19 @@ let consoleEvents = [];
 let availablePorts = [];
 let currentConsoleMode = 'console';
 let activePreviewPath = '';
+let currentExplorerEntries = [];
+let selectedExplorerPath = '';
+let selectedExplorerPaths = new Set();
+let explorerAnchorPath = '';
+let explorerClipboard = { mode: '', paths: [] };
+let explorerContextPath = '';
+let explorerSelectionMode = false;
 let previewEditMode = false;
 let previewDirty = false;
 let latestAuditEntries = [];
+let latestSftpInfo = null;
+let explorerDragDepth = 0;
+const WORKSPACE_UPLOAD_LIMIT_BYTES = 1024 * 1024 * 1024;
 
 const capabilityDefinitions = [
     { key: 'allow_explorer', label: 'Explorer' },
@@ -30,11 +40,75 @@ const capabilityDefinitions = [
     { key: 'allow_edit_startup', label: 'Edit Startup' },
     { key: 'allow_edit_ports', label: 'Edit Ports' }
 ];
+const workspaceProtocolDefinitions = {
+    generic: {
+        label: 'Generic Project',
+        install: '',
+        startup: '',
+        hint: 'Manual flow for custom apps or containers with a non-standard bootstrap process.',
+        profiles: ['generic', 'web', 'python', 'steam', 'database', 'minecraft']
+    },
+    'node-npm': {
+        label: 'Node.js / npm',
+        install: 'npm install',
+        startup: 'npm run start',
+        hint: 'Standard Node.js app flow using package.json scripts.',
+        profiles: ['web', 'generic']
+    },
+    'node-vite': {
+        label: 'Vite Frontend',
+        install: 'npm install',
+        startup: 'npm run dev -- --host 0.0.0.0 --port 5173',
+        hint: 'Frontend development server published for browser access.',
+        profiles: ['web', 'generic']
+    },
+    'python-pip': {
+        label: 'Python / requirements.txt',
+        install: 'python -m pip install -r requirements.txt',
+        startup: 'python app.py',
+        hint: 'Simple Python entrypoint with dependencies installed from requirements.txt.',
+        profiles: ['python', 'generic']
+    },
+    'python-flask': {
+        label: 'Flask Site',
+        install: 'python -m pip install -r requirements.txt',
+        startup: 'python -m flask --app app:app run --host=0.0.0.0 --port ${PORT:-5000}',
+        hint: 'Flask app served from app:app using the published container port.',
+        profiles: ['python', 'web', 'generic']
+    },
+    'python-fastapi': {
+        label: 'FastAPI / Uvicorn',
+        install: 'python -m pip install -r requirements.txt',
+        startup: 'uvicorn app.main:app --host 0.0.0.0 --port 8000',
+        hint: 'FastAPI service started through uvicorn on port 8000.',
+        profiles: ['python', 'web', 'generic']
+    },
+    'python-django': {
+        label: 'Django App',
+        install: 'python -m pip install -r requirements.txt',
+        startup: 'python manage.py runserver 0.0.0.0:8000',
+        hint: 'Django project served with a public bind for quick access.',
+        profiles: ['python', 'web', 'generic']
+    },
+    'static-web': {
+        label: 'Static Web Content',
+        install: '',
+        startup: '',
+        hint: 'Use the container image default entrypoint for static content.',
+        profiles: ['web', 'generic']
+    }
+};
 
 function canManageFileContent() {
     const isStaff = !!(profilePolicy && profilePolicy.is_staff);
     if (isStaff) return true;
     return !!(accessPolicy && accessPolicy.allow_edit_files === true);
+}
+
+function canDownloadFileContent() {
+    const isStaff = !!(profilePolicy && profilePolicy.is_staff);
+    if (isStaff) return true;
+    return !(accessPolicy && accessPolicy.allow_explorer === false);
 }
 
 function updateFilePreviewActions() {
@@ -43,9 +117,211 @@ function updateFilePreviewActions() {
     const saveBtn = document.getElementById('preview-save-btn');
     const hasPath = !!activePreviewPath;
     const canManage = canManageFileContent();
+    const canDownload = canDownloadFileContent();
     if (editBtn) editBtn.disabled = !hasPath || !canManage;
-    if (downloadBtn) downloadBtn.disabled = !hasPath || !canManage;
+    if (downloadBtn) downloadBtn.disabled = !hasPath || !canDownload;
     if (saveBtn) saveBtn.disabled = !hasPath || !canManage || !previewEditMode || !previewDirty;
+}
+
+function currentExplorerPath() {
+    return String(document.getElementById('files-path')?.value || activeWorkspaceRoot || '/data').trim() || '/data';
+}
+
+function getSelectedExplorerPaths() {
+    if (selectedExplorerPaths.size) return Array.from(selectedExplorerPaths);
+    if (selectedExplorerPath) return [selectedExplorerPath];
+    return [];
+}
+
+function updateExplorerSelectionModeUi() {
+    const list = document.getElementById('files-list');
+    const batchBar = document.getElementById('explorer-batch-bar');
+    const toggleBtn = document.getElementById('explorer-select-mode-btn');
+    if (list) list.classList.toggle('selection-mode', explorerSelectionMode);
+    if (batchBar) batchBar.classList.toggle('visible', explorerSelectionMode);
+    if (toggleBtn) {
+        toggleBtn.classList.toggle('active', explorerSelectionMode);
+        toggleBtn.innerHTML = explorerSelectionMode
+            ? '<i class="bi bi-x-lg"></i> Exit Selection'
+            : '<i class="bi bi-check2-square"></i> Select';
+    }
+}
+
+function toggleExplorerSelectionMode(forceValue = null) {
+    explorerSelectionMode = typeof forceValue === 'boolean' ? forceValue : !explorerSelectionMode;
+    if (!explorerSelectionMode && selectedExplorerPaths.size > 1) {
+        const primary = getPrimarySelectedExplorerPath();
+        setSelectedExplorerPath(primary);
+    }
+    updateExplorerSelectionModeUi();
+    updateExplorerSelectionStatus();
+}
+
+function renderExplorerBreadcrumbs(path = currentExplorerPath()) {
+    const host = document.getElementById('explorer-breadcrumbs');
+    if (!host) return;
+    const raw = String(path || '/').trim() || '/';
+    const root = String(activeWorkspaceRoot || '/').trim() || '/';
+    let parts = raw.split('/').filter(Boolean);
+    if (root !== '/' && raw.startsWith(root)) {
+        parts = raw.slice(root.length).split('/').filter(Boolean);
+    }
+    const crumbs = [{ label: 'Workspace', path: root }];
+    let cursor = root === '/' ? '' : root;
+    parts.forEach((part) => {
+        cursor = `${cursor}/${part}`.replace(/\/+/g, '/');
+        crumbs.push({ label: part, path: cursor || '/' });
+    });
+    host.innerHTML = '';
+    crumbs.forEach((crumb, index) => {
+        if (index > 0) {
+            const sep = document.createElement('span');
+            sep.className = 'breadcrumb-separator';
+            sep.innerHTML = '<i class="bi bi-chevron-right"></i>';
+            host.appendChild(sep);
+        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'breadcrumb-chip';
+        btn.textContent = crumb.label;
+        btn.onclick = () => {
+            const pathEl = document.getElementById('files-path');
+            if (pathEl) pathEl.value = crumb.path;
+            loadFiles();
+        };
+        host.appendChild(btn);
+    });
+}
+
+function updateExplorerSelectionStatus() {
+    const el = document.getElementById('explorer-selection-status');
+    if (!el) return;
+    const selected = getSelectedExplorerPaths();
+    if (!selected.length) {
+        el.textContent = explorerSelectionMode
+            ? 'Selection mode is active. Pick one or more files and folders for batch actions.'
+            : 'Open folders with a double click, use the right mouse button for actions, or drop files here to upload.';
+        return;
+    }
+    if (selected.length === 1) {
+        const entry = currentExplorerEntries.find((item) => item.path === selected[0]);
+        if (!entry) {
+            el.textContent = 'Selection cleared.';
+            return;
+        }
+        const clipboardText = explorerClipboard.paths.length
+            ? ` Clipboard: ${explorerClipboard.mode === 'cut' ? 'cut' : 'copied'} ${explorerClipboard.paths.length} item(s).`
+            : '';
+        el.textContent = explorerSelectionMode
+            ? `${entry.type === 'dir' ? 'Folder' : 'File'} ready for batch actions: ${selected[0]}.${clipboardText}`
+            : `${entry.type === 'dir' ? 'Folder' : 'File'} selected: ${selected[0]}.${clipboardText}`;
+        return;
+    }
+    const dirs = selected.filter((path) => currentExplorerEntries.find((item) => item.path === path && item.type === 'dir')).length;
+    const files = selected.length - dirs;
+    const clipboardText = explorerClipboard.paths.length
+        ? ` Clipboard: ${explorerClipboard.mode === 'cut' ? 'cut' : 'copied'} ${explorerClipboard.paths.length} item(s).`
+        : '';
+    el.textContent = `${selected.length} items selected (${files} files, ${dirs} folders).${clipboardText}`;
+}
+
+function syncExplorerSelectionClasses() {
+    document.querySelectorAll('.file-row').forEach((node) => {
+        const nodePath = String(node.dataset.path || '').trim();
+        node.classList.toggle('is-selected', selectedExplorerPaths.has(nodePath));
+        node.classList.toggle('is-cut', explorerClipboard.mode === 'cut' && explorerClipboard.paths.includes(nodePath));
+        const checkbox = node.querySelector('.file-select');
+        if (checkbox) checkbox.checked = selectedExplorerPaths.has(nodePath);
+    });
+}
+
+function setSelectedExplorerPaths(paths = [], anchorPath = '') {
+    const clean = Array.from(new Set((Array.isArray(paths) ? paths : [paths])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)));
+    selectedExplorerPaths = new Set(clean);
+    selectedExplorerPath = clean[0] || '';
+    explorerAnchorPath = String(anchorPath || clean[clean.length - 1] || '').trim();
+    syncExplorerSelectionClasses();
+    updateExplorerSelectionModeUi();
+    updateExplorerSelectionStatus();
+}
+
+function setSelectedExplorerPath(path = '') {
+    const clean = String(path || '').trim();
+    setSelectedExplorerPaths(clean ? [clean] : [], clean);
+}
+
+function toggleExplorerPathSelection(path, { additive = false, range = false } = {}) {
+    const target = String(path || '').trim();
+    if (!target) {
+        setSelectedExplorerPath('');
+        return;
+    }
+    if (range && explorerAnchorPath) {
+        const ordered = currentExplorerEntries.map((item) => item.path);
+        const start = ordered.indexOf(explorerAnchorPath);
+        const end = ordered.indexOf(target);
+        if (start !== -1 && end !== -1) {
+            const [from, to] = start <= end ? [start, end] : [end, start];
+            const rangeItems = ordered.slice(from, to + 1);
+            setSelectedExplorerPaths(rangeItems, target);
+            return;
+        }
+    }
+    if (additive) {
+        const next = new Set(selectedExplorerPaths);
+        if (next.has(target)) next.delete(target);
+        else next.add(target);
+        setSelectedExplorerPaths(Array.from(next), target);
+        return;
+    }
+    setSelectedExplorerPaths([target], target);
+}
+
+function getPrimarySelectedExplorerPath() {
+    const selected = getSelectedExplorerPaths();
+    return selected[0] || '';
+}
+
+function getExplorerEntry(path) {
+    return currentExplorerEntries.find((item) => item.path === path) || null;
+}
+
+function hideExplorerContextMenu() {
+    const menu = document.getElementById('explorer-context-menu');
+    if (!menu) return;
+    menu.classList.remove('open');
+    menu.setAttribute('aria-hidden', 'true');
+}
+
+function showExplorerContextMenu(event, path) {
+    const menu = document.getElementById('explorer-context-menu');
+    if (!menu) return;
+    if (menu.parentElement !== document.body) {
+        document.body.appendChild(menu);
+    }
+    const target = String(path || '').trim();
+    explorerContextPath = target;
+    if (!selectedExplorerPaths.has(target)) {
+        setSelectedExplorerPath(target);
+    }
+    menu.classList.add('open');
+    menu.setAttribute('aria-hidden', 'false');
+    menu.style.visibility = 'hidden';
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+
+    const rect = menu.getBoundingClientRect();
+    const pointerOffset = 6;
+    const maxLeft = Math.max(12, window.innerWidth - rect.width - 12);
+    const maxTop = Math.max(12, window.innerHeight - rect.height - 12);
+    const left = Math.min(event.clientX + pointerOffset, maxLeft);
+    const top = Math.min(event.clientY + pointerOffset, maxTop);
+
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = 'visible';
 }
 
 function showToast(message, level = 'ok', lifeMs = 2600) {
@@ -181,9 +457,12 @@ function switchTab(tab) {
     }
 
     if (tab === 'terminal') {
-        loadLogs();
+        Promise.all([loadContainerMeta(), loadLogs()]);
         if (logsAutoEnabled) {
-            logsInterval = setInterval(loadLogs, 4000);
+            logsInterval = setInterval(() => {
+                loadContainerMeta();
+                loadLogs();
+            }, 4000);
         }
     } else if (tab === 'files') {
         loadFiles();
@@ -261,6 +540,212 @@ function parsePorts(raw) {
         .split(',')
         .map(s => s.trim())
         .filter(Boolean);
+}
+
+function parsePortRuleDescriptor(rule) {
+    const raw = String(rule || '').trim();
+    const withoutProto = raw.replace(/\/(tcp|udp)$/i, '');
+    const protocolMatch = raw.match(/\/(tcp|udp)$/i);
+    const protocol = protocolMatch ? protocolMatch[1].toUpperCase() : 'TCP';
+    const parts = withoutProto.split(':').map(part => String(part || '').trim()).filter(Boolean);
+
+    let bind = '0.0.0.0';
+    let hostPort = '';
+    let containerPort = '';
+
+    if (parts.length >= 3) {
+        bind = parts[0] || bind;
+        hostPort = parts[1] || '';
+        containerPort = parts[2] || '';
+    } else if (parts.length === 2) {
+        hostPort = parts[0] || '';
+        containerPort = parts[1] || '';
+    } else if (parts.length === 1) {
+        hostPort = parts[0] || '';
+        containerPort = parts[0] || '';
+    }
+
+    return {
+        raw,
+        protocol,
+        bind,
+        hostPort,
+        containerPort,
+        title: hostPort && containerPort ? `${hostPort} -> ${containerPort}` : raw || 'Unknown route',
+        meta: `${protocol} traffic from ${bind}:${hostPort || '?'} reaches container port ${containerPort || '?'}.`
+    };
+}
+
+function inferWorkspaceProtocol(profileName = '', imageName = '') {
+    const profile = String(profileName || '').toLowerCase();
+    const image = String(imageName || '').toLowerCase();
+    if (profile.includes('flask') || image.includes('flask')) return 'python-flask';
+    if (profile.includes('fastapi') || image.includes('fastapi') || image.includes('uvicorn')) return 'python-fastapi';
+    if (profile.includes('django') || image.includes('django')) return 'python-django';
+    if (profile.includes('vite') || image.includes('vite')) return 'node-vite';
+    if (profile.includes('express') || image.includes('node')) return 'node-npm';
+    if (profile.includes('nginx') || profile.includes('caddy') || image.includes('nginx') || image.includes('caddy')) return 'static-web';
+    if (profile === 'python') return 'python-pip';
+    return 'generic';
+}
+
+function allowedWorkspaceProtocols(profileName = 'generic') {
+    const raw = String(profileName || 'generic').toLowerCase();
+    const profile = raw.includes('python')
+        ? 'python'
+        : (raw.includes('nginx') || raw.includes('caddy') || raw.includes('web') || raw.includes('node'))
+            ? 'web'
+            : raw;
+    return Object.entries(workspaceProtocolDefinitions)
+        .filter(([, item]) => Array.isArray(item.profiles) && item.profiles.includes(profile))
+        .map(([key]) => key);
+}
+
+function populateWorkspaceProtocolOptions(profileName = 'generic', selectedValue = '') {
+    const select = document.getElementById('set-project-protocol');
+    if (!select) return;
+    const options = allowedWorkspaceProtocols(profileName);
+    const selected = selectedValue || inferWorkspaceProtocol(profileName, currentContainerImage);
+    select.innerHTML = '';
+    options.forEach((key) => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = workspaceProtocolDefinitions[key]?.label || key;
+        select.appendChild(option);
+    });
+    if (selected && !options.includes(selected)) {
+        const fallback = document.createElement('option');
+        fallback.value = selected;
+        fallback.textContent = workspaceProtocolDefinitions[selected]?.label || selected;
+        select.appendChild(fallback);
+    }
+    select.value = selected || 'generic';
+}
+
+function updateProtocolHint(protocolKey) {
+    const protocol = workspaceProtocolDefinitions[protocolKey] || workspaceProtocolDefinitions.generic;
+    const hint = document.getElementById('protocol-hint');
+    const installHint = document.getElementById('install-command-hint');
+    if (hint) hint.textContent = protocol.hint || 'Select a protocol to prefill install/start commands.';
+    if (installHint) {
+        installHint.textContent = protocol.install
+            ? `Suggested install command: ${protocol.install}`
+            : 'No dependency install command is suggested for this protocol.';
+    }
+}
+
+function onProjectProtocolChange(forceApply = false) {
+    const protocolKey = String(document.getElementById('set-project-protocol')?.value || 'generic');
+    const protocol = workspaceProtocolDefinitions[protocolKey] || workspaceProtocolDefinitions.generic;
+    const installEl = document.getElementById('set-install-command');
+    const startEl = document.getElementById('set-command');
+    updateProtocolHint(protocolKey);
+    if (installEl && (forceApply || !String(installEl.value || '').trim())) {
+        installEl.value = protocol.install || '';
+    }
+    if (startEl && (forceApply || !String(startEl.value || '').trim())) {
+        startEl.value = protocol.startup || '';
+    }
+    updateLaunchPreview();
+}
+
+function getSelectedLaunchRoute() {
+    const selectedRules = Array.from(document.querySelectorAll('#ports-selection input[type="checkbox"]:checked'))
+        .map((node) => node.value);
+    const fallbackRules = parsePorts(document.getElementById('set-ports')?.value || '');
+    const pool = selectedRules.length ? selectedRules : fallbackRules;
+    return pool.length ? parsePortRuleDescriptor(pool[0]) : null;
+}
+
+function buildLaunchPreviewUrl() {
+    const manualUrl = String(document.getElementById('set-launch-url')?.value || '').trim();
+    if (manualUrl) {
+        return {
+            value: manualUrl,
+            note: 'Using the custom launch URL saved for this project.'
+        };
+    }
+    const route = getSelectedLaunchRoute();
+    const domain = String(document.getElementById('set-domain')?.value || '').trim();
+    const host = domain || window.location.hostname || 'localhost';
+    if (!route || !route.hostPort) {
+        return {
+            value: domain ? `${window.location.protocol}//${domain}` : (window.location.origin || 'http://localhost'),
+            note: 'No published route is selected yet, so the preview falls back to the panel host/domain.'
+        };
+    }
+    const portSegment = route.hostPort && !['80', '443'].includes(String(route.hostPort)) ? `:${route.hostPort}` : '';
+    const scheme = String(route.hostPort) === '443' ? 'https:' : window.location.protocol;
+    return {
+        value: `${scheme}//${host}${portSegment}`,
+        note: domain
+            ? 'Preview combines your custom domain with the first active published route.'
+            : 'Preview combines the current panel host with the first active published route.'
+    };
+}
+
+function updateLaunchPreview() {
+    const hostEl = document.getElementById('launch-current-host');
+    const routeEl = document.getElementById('launch-route-preview');
+    const urlEl = document.getElementById('launch-public-preview');
+    const noteEl = document.getElementById('launch-public-note');
+    const hintEl = document.getElementById('launch-url-hint');
+    const route = getSelectedLaunchRoute();
+    const preview = buildLaunchPreviewUrl();
+    if (hostEl) hostEl.textContent = window.location.origin || 'unknown origin';
+    if (routeEl) routeEl.textContent = route ? route.raw : 'No published route selected';
+    if (urlEl) urlEl.textContent = preview.value;
+    if (noteEl) noteEl.textContent = preview.note;
+    if (hintEl) hintEl.textContent = preview.note;
+}
+
+function runStoredCommand(fieldId) {
+    const cmd = String(document.getElementById(fieldId)?.value || '').trim();
+    if (!cmd) {
+        showToast('Command field is empty.', 'warn');
+        return;
+    }
+    const modeSelect = document.getElementById('cmd-mode');
+    const shellOpt = modeSelect?.querySelector('option[value="shell"]');
+    if (modeSelect && shellOpt && !shellOpt.disabled) {
+        modeSelect.value = 'shell';
+        onConsoleModeChange();
+    }
+    switchTab('terminal');
+    runCommandText(cmd, { detached: true });
+}
+
+function openLaunchPreview() {
+    const preview = buildLaunchPreviewUrl();
+    if (!preview.value) {
+        showToast('Launch URL is not available yet.', 'warn');
+        return;
+    }
+    window.open(preview.value, '_blank', 'noopener');
+}
+
+function updatePortsSelectionTelemetry() {
+    const cards = Array.from(document.querySelectorAll('#ports-selection .port-toggle'));
+    const selected = cards.filter((card) => {
+        const node = card.querySelector('input[type="checkbox"]');
+        return !!node?.checked;
+    }).length;
+    const visible = cards.filter((card) => card.style.display !== 'none').length;
+    const total = cards.length;
+
+    const selectedCount = document.getElementById('ports-selected-count');
+    const visibleCount = document.getElementById('ports-visible-count');
+    const totalCount = document.getElementById('ports-total-count');
+    const filterMeta = document.getElementById('ports-filter-meta');
+
+    if (selectedCount) selectedCount.textContent = String(selected);
+    if (visibleCount) visibleCount.textContent = String(visible);
+    if (totalCount) totalCount.textContent = String(total);
+    if (filterMeta) {
+        filterMeta.textContent = total
+            ? `Showing ${visible} of ${total} routes`
+            : 'Showing 0 routes';
+    }
 }
 
 function configureQuickRow(profile, mode) {
@@ -354,12 +839,12 @@ function configureStartupCommandHint(profileName) {
             helper: 'For Minecraft presets, keep default entrypoint unless you know exact start flags.'
         },
         python: {
-            placeholder: 'e.g. python app.py or gunicorn app:app',
-            helper: 'Overrides default startup command for Python services.'
+            placeholder: 'e.g. python app.py or flask run --host=0.0.0.0 --port 5000',
+            helper: 'Defines the auto-start command used for Python apps and sites.'
         },
         web: {
             placeholder: 'e.g. nginx -g "daemon off;" or npm run start',
-            helper: 'Overrides default startup command for web services.'
+            helper: 'Defines the auto-start command used for web apps and frontend services.'
         },
         database: {
             placeholder: 'e.g. (usually keep image default)',
@@ -367,7 +852,7 @@ function configureStartupCommandHint(profileName) {
         },
         generic: {
             placeholder: 'e.g. ./start.sh or python app.py',
-            helper: 'Overrides default startup command for this container.'
+            helper: 'Defines the saved auto-start command for this container.'
         }
     };
     const cfg = byProfile[profileName] || byProfile.generic;
@@ -396,18 +881,23 @@ function syncPortsInputFromSelection() {
     document.querySelectorAll('#ports-selection .port-toggle').forEach(card => {
         const node = card.querySelector('input[type="checkbox"]');
         card.classList.toggle('is-selected', !!node?.checked);
+        card.classList.toggle('is-disabled', !!node?.disabled);
     });
     const meta = document.getElementById('ports-selection-meta');
     const summary = document.getElementById('ports-summary-text');
     const total = document.querySelectorAll('#ports-selection .port-toggle').length;
     if (meta && total > 0) {
         meta.textContent = `Selected ${selected.length} of ${total} available rules.`;
+    } else if (meta) {
+        meta.textContent = 'No pre-allocated ports found for this container.';
     }
     if (summary) {
         summary.textContent = selected.length
             ? `${selected.length} published route(s) will remain active after save.`
             : 'No route selected. Manual mappings from the text field will be saved as entered.';
     }
+    updatePortsSelectionTelemetry();
+    updateLaunchPreview();
 }
 
 function filterPortsSelection() {
@@ -416,6 +906,7 @@ function filterPortsSelection() {
         const text = String(label.dataset.rule || '').toLowerCase();
         label.style.display = !filter || text.includes(filter) ? '' : 'none';
     });
+    updatePortsSelectionTelemetry();
 }
 
 function setAllPortsSelection(enabled) {
@@ -439,6 +930,7 @@ function renderPortsSelection(rules, selectedRules = []) {
         empty.className = 'head-note';
         empty.textContent = 'Deploy/recreate container with port bindings to manage allocation here.';
         host.appendChild(empty);
+        updatePortsSelectionTelemetry();
         return;
     }
 
@@ -464,23 +956,40 @@ function renderPortsSelection(rules, selectedRules = []) {
         icon.className = 'port-rule-icon';
         icon.innerHTML = '<i class="bi bi-plug-fill"></i>';
 
+        const checkMark = document.createElement('span');
+        checkMark.className = 'port-rule-check';
+        checkMark.innerHTML = '<i class="bi bi-check2"></i>';
+
+        const descriptor = parsePortRuleDescriptor(rule);
         const text = document.createElement('span');
         text.className = 'port-rule-text';
-        text.textContent = rule;
+        text.innerHTML = `
+            <span class="port-rule-title">${descriptor.title}</span>
+            <span class="port-rule-meta">${descriptor.meta}</span>
+            <span class="port-rule-badges">
+                <span class="port-rule-badge protocol-${descriptor.protocol.toLowerCase()}">${descriptor.protocol}</span>
+                <span class="port-rule-badge">Bind ${descriptor.bind}</span>
+                <span class="port-rule-badge">Host ${descriptor.hostPort || '?'}</span>
+                <span class="port-rule-badge">Container ${descriptor.containerPort || '?'}</span>
+            </span>
+        `;
 
         label.addEventListener('click', (event) => {
             event.preventDefault();
+            if (check.disabled) return;
             check.checked = !check.checked;
             syncPortsInputFromSelection();
         });
         label.addEventListener('keydown', (event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
+            if (check.disabled) return;
             check.checked = !check.checked;
             syncPortsInputFromSelection();
         });
 
         label.appendChild(check);
+        label.appendChild(checkMark);
         label.appendChild(icon);
         label.appendChild(text);
         host.appendChild(label);
@@ -538,6 +1047,8 @@ async function loadProfilePolicy() {
         }
         configureToolbox(profileName);
         configureStartupCommandHint(profileName);
+        populateWorkspaceProtocolOptions(profileName, inferWorkspaceProtocol(profileName, currentContainerImage));
+        updateProtocolHint(inferWorkspaceProtocol(profileName, currentContainerImage));
         applyWorkspacePermissions();
         renderCapabilitySummary(accessPolicy || {});
 
@@ -614,6 +1125,7 @@ async function containerAction(action) {
 
 async function runCommand() {
     const input = document.getElementById('cmd-input');
+    const detached = String(input?.dataset?.detached || '') === '1';
     const mode = currentConsoleMode === 'shell' ? 'shell' : 'console';
     if (accessPolicy) {
         if (mode === 'console' && accessPolicy.allow_console === false) {
@@ -641,11 +1153,20 @@ async function runCommand() {
             const data = await apiJson(`/api/containers/exec/${containerId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: cmd })
+                body: JSON.stringify({ command: cmd, detached })
             });
             const exitCode = Number(data.exit_code ?? 0);
-            appendConsoleBlock(`shell$ ${cmd} (exit ${exitCode})`, data.output || '(no output)', exitCode !== 0);
-            document.getElementById('cmd-status').textContent = `Shell command completed at ${formatNow()}`;
+            if (detached) {
+                appendConsoleBlock(
+                    `shell$ ${cmd} [detached pid ${data.pid || '?'}]`,
+                    `${String(data.output || '').trim() || 'Background process launched.'}\nStartup log: ${data.log_path || '/tmp/nebula-startup.log'}`,
+                    false
+                );
+                document.getElementById('cmd-status').textContent = `Background command launched at ${formatNow()}`;
+            } else {
+                appendConsoleBlock(`shell$ ${cmd} (exit ${exitCode})`, data.output || '(no output)', exitCode !== 0);
+                document.getElementById('cmd-status').textContent = `Shell command completed at ${formatNow()}`;
+            }
         } else {
             const data = await apiJson(`/api/containers/console-send/${containerId}`, {
                 method: 'POST',
@@ -660,22 +1181,26 @@ async function runCommand() {
         }
         await loadLogs();
         input.value = '';
+        if (input?.dataset) input.dataset.detached = '';
     } catch (e) {
         appendConsoleBlock(cmd, e.message, true);
         document.getElementById('cmd-status').textContent = 'Command failed.';
         showToast(e.message, 'error');
     } finally {
+        if (input?.dataset) input.dataset.detached = '';
+        await loadContainerMeta();
         setButtonBusy('cmd-run-btn', false, idleLabel, busyLabel);
     }
 }
 
-function runCommandText(text) {
+function runCommandText(text, options = {}) {
     if (document.getElementById('cmd-input')?.disabled) {
         showToast('Interactive console is unavailable for this profile.', 'warn');
         return;
     }
     const input = document.getElementById('cmd-input');
     input.value = text;
+    if (input.dataset) input.dataset.detached = options && options.detached ? '1' : '';
     switchTab('terminal');
     runCommand();
 }
@@ -709,8 +1234,12 @@ function toggleAutoLogs() {
         return;
     }
     logsAutoEnabled = true;
+    loadContainerMeta();
     loadLogs();
-    logsInterval = setInterval(loadLogs, 4000);
+    logsInterval = setInterval(() => {
+        loadContainerMeta();
+        loadLogs();
+    }, 4000);
     btn.classList.add('active');
     btn.textContent = 'Auto: ON';
     showToast('Auto log refresh enabled.', 'ok');
@@ -796,6 +1325,230 @@ async function initWorkspaceRoots() {
     }
 }
 
+async function loadSftpInfo() {
+    const targetEl = document.getElementById('sftp-target');
+    const noteEl = document.getElementById('sftp-note');
+    if (targetEl) targetEl.textContent = 'Loading SFTP profile...';
+    if (noteEl) noteEl.textContent = 'Checking host workspace connectivity.';
+    try {
+        const data = await apiJson(`/api/containers/sftp-info/${containerId}`);
+        latestSftpInfo = data;
+        if (targetEl) {
+            targetEl.textContent = data.available
+                ? `${data.username}@${data.host}:${data.port}`
+                : 'Workspace path unavailable';
+        }
+        if (noteEl) {
+            const pathHint = data.workspace_path ? ` Workspace path: ${data.workspace_path}` : '';
+            const permsHint = data.owner || data.group || data.mode
+                ? ` Ownership: ${data.owner || '?'}:${data.group || '?'} ${data.mode || ''}.`
+                : '';
+            const writableHint = data.writable === false
+                ? ` Panel service cannot write here${data.panel_group ? `; expected shared group: ${data.panel_group}` : ''}.`
+                : '';
+            noteEl.textContent = `${data.note || 'SFTP profile loaded.'}${pathHint}${permsHint}${writableHint}`;
+        }
+    } catch (e) {
+        latestSftpInfo = null;
+        if (targetEl) targetEl.textContent = 'SFTP profile unavailable';
+        if (noteEl) noteEl.textContent = e.message || 'Could not load SFTP access details.';
+    }
+}
+
+function copySftpCommand() {
+    const command = String(latestSftpInfo?.command || '').trim();
+    if (!command) {
+        showToast('SFTP command is not available yet.', 'warn');
+        return;
+    }
+    navigator.clipboard.writeText(command)
+        .then(() => showToast('SFTP command copied.', 'ok', 1400))
+        .catch(() => showToast('Clipboard is blocked in this browser.', 'warn'));
+}
+
+function copySftpPath() {
+    const path = String(latestSftpInfo?.workspace_path || '').trim();
+    if (!path) {
+        showToast('Workspace path is not available yet.', 'warn');
+        return;
+    }
+    navigator.clipboard.writeText(path)
+        .then(() => showToast('Workspace path copied.', 'ok', 1400))
+        .catch(() => showToast('Clipboard is blocked in this browser.', 'warn'));
+}
+
+function setUploadStatus(text, level = 'idle') {
+    const el = document.getElementById('upload-status');
+    if (!el) return;
+    el.textContent = text;
+    el.className = `workspace-upload-status ${level}`;
+}
+
+async function uploadWorkspaceEntries(entries, targetPath) {
+    const files = Array.isArray(entries) ? entries : [];
+    if (!files.length) {
+        setUploadStatus('No files selected.', 'idle');
+        return;
+    }
+    let totalBytes = 0;
+    files.forEach((item) => {
+        totalBytes += Number(item?.file?.size || 0);
+    });
+    if (totalBytes > WORKSPACE_UPLOAD_LIMIT_BYTES) {
+        setUploadStatus('Upload rejected: total request size exceeds 1 GB.', 'error');
+        showToast('Upload exceeds 1 GB limit.', 'error');
+        return;
+    }
+
+    const form = new FormData();
+    form.append('target_path', targetPath);
+    files.forEach((item) => {
+        const file = item.file;
+        const relativePath = String(item.relativePath || file?.name || '').trim();
+        if (!file || !relativePath) return;
+        form.append('files', file, file.name);
+        form.append('relative_paths', relativePath);
+    });
+
+    setUploadStatus(`Uploading ${files.length} item(s) to ${targetPath}...`, 'working');
+    try {
+        const res = await fetch(`/api/containers/upload-files/${containerId}`, {
+            method: 'POST',
+            body: form,
+            credentials: 'same-origin'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.detail || `Upload failed (${res.status})`);
+        }
+        setUploadStatus(`Uploaded ${data.files_saved || files.length} item(s), ${Math.round((Number(data.bytes_written || totalBytes) / 1048576) * 10) / 10} MB written.`, 'ok');
+        showToast('Upload completed.', 'ok');
+        await loadFiles();
+    } catch (e) {
+        setUploadStatus(`Upload failed: ${e.message}`, 'error');
+        showToast(e.message, 'error');
+    }
+}
+
+function readDroppedDirectoryEntries(reader) {
+    return new Promise((resolve, reject) => {
+        const all = [];
+        const pump = () => {
+            reader.readEntries((batch) => {
+                if (!batch.length) {
+                    resolve(all);
+                    return;
+                }
+                all.push(...batch);
+                pump();
+            }, reject);
+        };
+        pump();
+    });
+}
+
+function fileFromEntry(entry) {
+    return new Promise((resolve, reject) => {
+        entry.file(resolve, reject);
+    });
+}
+
+async function collectDroppedEntries(entry, prefix = '') {
+    const nextPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isFile) {
+        const file = await fileFromEntry(entry);
+        return [{ file, relativePath: nextPath }];
+    }
+    if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const children = await readDroppedDirectoryEntries(reader);
+        const nested = await Promise.all(children.map((child) => collectDroppedEntries(child, nextPath)));
+        return nested.flat();
+    }
+    return [];
+}
+
+async function collectDragDropFiles(dataTransfer) {
+    const items = Array.from(dataTransfer?.items || []);
+    if (!items.length) {
+        return Array.from(dataTransfer?.files || []).map((file) => ({ file, relativePath: file.name }));
+    }
+    const collected = [];
+    for (const item of items) {
+        const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null;
+        if (entry) {
+            const nested = await collectDroppedEntries(entry, '');
+            collected.push(...nested);
+            continue;
+        }
+        const file = item.getAsFile ? item.getAsFile() : null;
+        if (file) collected.push({ file, relativePath: file.name });
+    }
+    return collected;
+}
+
+function onExplorerDragEnter(event) {
+    event.preventDefault();
+    explorerDragDepth += 1;
+    document.getElementById('files-list')?.classList.add('is-drop-target');
+}
+
+function onExplorerDragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    document.getElementById('files-list')?.classList.add('is-drop-target');
+}
+
+function onExplorerDragLeave(event) {
+    event.preventDefault();
+    explorerDragDepth = Math.max(0, explorerDragDepth - 1);
+    if (explorerDragDepth === 0) {
+        document.getElementById('files-list')?.classList.remove('is-drop-target');
+    }
+}
+
+async function onExplorerDrop(event) {
+    event.preventDefault();
+    explorerDragDepth = 0;
+    document.getElementById('files-list')?.classList.remove('is-drop-target');
+    if (!canManageFileContent()) {
+        showToast('Upload requires file write permission.', 'warn');
+        return;
+    }
+    const entries = await collectDragDropFiles(event.dataTransfer);
+    await uploadWorkspaceEntries(entries, currentExplorerPath());
+}
+
+function triggerUploadFiles(isFolder) {
+    if (!canManageFileContent()) {
+        showToast('Upload requires file write permission.', 'warn');
+        return;
+    }
+    const input = document.getElementById(isFolder ? 'workspace-upload-folder' : 'workspace-upload-files');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+
+async function handleFileUpload(event, isFolder = false) {
+    const input = event?.target;
+    const files = Array.from(input?.files || []);
+    if (!files.length) {
+        setUploadStatus('No files selected.', 'idle');
+        return;
+    }
+    const currentPath = currentExplorerPath();
+    const entries = files.map((file) => ({
+        file,
+        relativePath: isFolder && file.webkitRelativePath ? file.webkitRelativePath : file.name,
+    }));
+    try {
+        await uploadWorkspaceEntries(entries, currentPath);
+    } finally {
+        if (input) input.value = '';
+    }
+}
+
 async function loadFiles() {
     if (accessPolicy && accessPolicy.allow_explorer === false) {
         const list = document.getElementById('files-list');
@@ -805,6 +1558,11 @@ async function loadFiles() {
     const pathEl = document.getElementById('files-path');
     const list = document.getElementById('files-list');
     const path = (pathEl.value || activeWorkspaceRoot || '/data').trim() || '/data';
+    currentExplorerEntries = [];
+    setSelectedExplorerPaths([]);
+    hideExplorerContextMenu();
+    renderExplorerBreadcrumbs(path);
+    updateExplorerSelectionModeUi();
     const renderFileState = (icon, text, isError = false) => {
         list.innerHTML = '';
         const row = document.createElement('div');
@@ -826,42 +1584,146 @@ async function loadFiles() {
     try {
         const data = await apiJson(`/api/containers/files/${containerId}?path=${encodeURIComponent(path)}`);
         pathEl.value = data.path || path;
+        renderExplorerBreadcrumbs(data.path || path);
+        currentExplorerEntries = Array.isArray(data.entries)
+            ? data.entries.map((entry) => ({ ...entry, path: safeJoin(data.path || path, entry.name || '') }))
+            : [];
+        const backendMode = document.getElementById('explorer-backend-mode');
+        const backendNote = document.getElementById('explorer-backend-note');
+        if (backendMode) {
+            backendMode.textContent = data.source === 'host-workspace'
+                ? 'Host Workspace Bridge'
+                : 'Live Container Filesystem';
+        }
+        if (backendNote) {
+            backendNote.textContent = data.source === 'host-workspace'
+                ? 'File Explorer is using the mounted workspace on the host, so it still works while the container is restarting.'
+                : 'File Explorer is reading directly from the running container filesystem.';
+        }
 
-        if (!Array.isArray(data.entries) || data.entries.length === 0) {
-            renderFileState('bi-inbox', 'This directory is empty.');
+        if (!currentExplorerEntries.length) {
+            list.innerHTML = `
+                <div class="dropzone-empty">
+                    <i class="bi bi-inbox"></i>
+                    <strong>This directory is empty</strong>
+                    <span>Upload files, create a folder, or drag items here.</span>
+                </div>
+            `;
             return;
         }
 
         list.innerHTML = '';
-        data.entries.forEach(entry => {
+        currentExplorerEntries.forEach(entry => {
             const row = document.createElement('div');
             row.className = 'file-row';
+            row.dataset.path = entry.path;
             const icon = entry.type === 'dir' ? 'bi-folder2-open' : (entry.type === 'link' ? 'bi-link-45deg' : 'bi-file-earmark-text');
             const info = document.createElement('div');
             info.className = 'file-info';
+            const selectBox = document.createElement('input');
+            selectBox.type = 'checkbox';
+            selectBox.className = 'file-select';
+            selectBox.checked = selectedExplorerPaths.has(entry.path);
+            selectBox.onclick = (event) => {
+                event.stopPropagation();
+                toggleExplorerPathSelection(entry.path, { additive: true });
+            };
             const iconEl = document.createElement('i');
             iconEl.className = `bi ${icon}`;
+            const metaWrap = document.createElement('div');
+            metaWrap.className = 'file-meta';
             const nameEl = document.createElement('span');
             nameEl.textContent = entry.name || '';
+            const subEl = document.createElement('small');
+            subEl.textContent = entry.type === 'dir'
+                ? `${entry.modified || 'folder'}`
+                : `${entry.size || '0'} bytes • ${entry.modified || 'unknown time'}`;
+            info.appendChild(selectBox);
             info.appendChild(iconEl);
-            info.appendChild(nameEl);
-            const sizeEl = document.createElement('div');
-            sizeEl.className = 'file-size';
-            sizeEl.textContent = entry.size || '';
+            metaWrap.appendChild(nameEl);
+            metaWrap.appendChild(subEl);
+            info.appendChild(metaWrap);
+            const actionsEl = document.createElement('div');
+            actionsEl.className = 'file-actions';
+            if (entry.type !== 'dir') {
+                const openBtn = document.createElement('button');
+                openBtn.className = 'file-action-btn';
+                openBtn.type = 'button';
+                openBtn.innerHTML = '<i class="bi bi-eye"></i>';
+                openBtn.title = 'Preview';
+                openBtn.onclick = (event) => {
+                    event.stopPropagation();
+                    previewFile(entry.path);
+                };
+                actionsEl.appendChild(openBtn);
+            }
+            if (entry.type !== 'dir') {
+                const dlBtn = document.createElement('button');
+                dlBtn.className = 'file-action-btn';
+                dlBtn.type = 'button';
+                dlBtn.innerHTML = '<i class="bi bi-download"></i>';
+                dlBtn.title = 'Download';
+                dlBtn.onclick = (event) => {
+                    event.stopPropagation();
+                    downloadFile(entry.path);
+                };
+                actionsEl.appendChild(dlBtn);
+            }
+            if (canManageFileContent()) {
+                const renameBtn = document.createElement('button');
+                renameBtn.className = 'file-action-btn';
+                renameBtn.type = 'button';
+                renameBtn.innerHTML = '<i class="bi bi-pencil-square"></i>';
+                renameBtn.title = 'Rename';
+                renameBtn.onclick = (event) => {
+                    event.stopPropagation();
+                    setSelectedExplorerPath(entry.path);
+                    renameSelectedPath();
+                };
+                actionsEl.appendChild(renameBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'file-action-btn danger';
+                deleteBtn.type = 'button';
+                deleteBtn.innerHTML = '<i class="bi bi-trash3"></i>';
+                deleteBtn.title = 'Delete';
+                deleteBtn.onclick = (event) => {
+                    event.stopPropagation();
+                    setSelectedExplorerPath(entry.path);
+                    deleteSelectedPath();
+                };
+                actionsEl.appendChild(deleteBtn);
+            }
             row.appendChild(info);
-            row.appendChild(sizeEl);
-            row.onclick = () => {
+            row.appendChild(actionsEl);
+            row.onclick = (event) => {
+                if (explorerSelectionMode) {
+                    toggleExplorerPathSelection(entry.path, {
+                        additive: event.ctrlKey || event.metaKey || true,
+                        range: event.shiftKey,
+                    });
+                    return;
+                }
+                setSelectedExplorerPath(entry.path);
+            };
+            row.oncontextmenu = (event) => {
+                event.preventDefault();
+                showExplorerContextMenu(event, entry.path);
+            };
+            row.ondblclick = () => {
                 if (entry.type === 'dir') {
-                    pathEl.value = safeJoin(data.path, entry.name);
+                    pathEl.value = entry.path;
                     loadFiles();
                 } else {
-                    previewFile(safeJoin(data.path, entry.name));
+                    previewFile(entry.path);
                 }
             };
             list.appendChild(row);
         });
 
         setStatus(`Browsing ${pathEl.value}`);
+        syncExplorerSelectionClasses();
+        updateExplorerSelectionStatus();
     } catch (e) {
         renderFileState('bi-exclamation-triangle', e.message || 'Failed to load directory.', true);
     }
@@ -913,8 +1775,8 @@ function downloadFile(path = activePreviewPath) {
         showToast('No file selected for download.', 'warn');
         return;
     }
-    if (!canManageFileContent()) {
-        showToast('Download is allowed only for users with file write permission.', 'warn');
+    if (!canDownloadFileContent()) {
+        showToast('Download is not allowed for this workspace role.', 'warn');
         return;
     }
     const link = document.createElement('a');
@@ -924,6 +1786,318 @@ function downloadFile(path = activePreviewPath) {
     link.click();
     link.remove();
     showToast('Download started.', 'ok', 1400);
+}
+
+function downloadSelectionFromContextMenu() {
+    hideExplorerContextMenu();
+    const selected = getSelectedExplorerPaths();
+    if (selected.length !== 1) {
+        showToast('Select one file to download.', 'warn');
+        return;
+    }
+    downloadFile(selected[0]);
+}
+
+function openSelectionFromContextMenu() {
+    hideExplorerContextMenu();
+    const target = explorerContextPath || getPrimarySelectedExplorerPath();
+    const entry = getExplorerEntry(target);
+    if (!entry) return;
+    if (entry.type === 'dir') {
+        const pathEl = document.getElementById('files-path');
+        if (pathEl) pathEl.value = entry.path;
+        loadFiles();
+        return;
+    }
+    previewFile(entry.path);
+}
+
+function previewSelectionFromContextMenu() {
+    hideExplorerContextMenu();
+    const selected = getSelectedExplorerPaths();
+    if (selected.length !== 1) {
+        showToast('Preview works with one file at a time.', 'warn');
+        return;
+    }
+    const entry = getExplorerEntry(selected[0]);
+    if (!entry || entry.type === 'dir') {
+        showToast('Select a file to preview.', 'warn');
+        return;
+    }
+    previewFile(entry.path);
+}
+
+async function createFolder() {
+    if (!canManageFileContent()) {
+        showToast('Creating folders requires file write permission.', 'warn');
+        return;
+    }
+    const name = window.prompt('Folder name');
+    if (!name) return;
+    const cleanName = String(name).trim().replaceAll('\\', '/').replace(/^\/+/, '');
+    if (!cleanName || cleanName.includes('..')) {
+        showToast('Folder name is invalid.', 'warn');
+        return;
+    }
+    const target = safeJoin(currentExplorerPath(), cleanName);
+    try {
+        await apiJson(`/api/containers/mkdir/${containerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: target })
+        });
+        showToast('Folder created.', 'ok');
+        await loadFiles();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function renameSelectedPath() {
+    if (!canManageFileContent()) {
+        showToast('Rename requires file write permission.', 'warn');
+        return;
+    }
+    const target = getPrimarySelectedExplorerPath();
+    const selected = getSelectedExplorerPaths();
+    hideExplorerContextMenu();
+    if (!target) {
+        showToast('Select a file or folder first.', 'warn');
+        return;
+    }
+    if (selected.length > 1) {
+        showToast('Rename works with one selected item.', 'warn');
+        return;
+    }
+    const currentName = target.split('/').pop() || '';
+    const nextName = window.prompt('New name', currentName);
+    if (!nextName) return;
+    const cleanName = String(nextName).trim().replaceAll('\\', '/').replace(/^\/+/, '');
+    if (!cleanName || cleanName.includes('..') || cleanName.includes('/')) {
+        showToast('New name is invalid.', 'warn');
+        return;
+    }
+    const parent = target.split('/').slice(0, -1).join('/') || '/';
+    const destination = safeJoin(parent, cleanName);
+    try {
+        await apiJson(`/api/containers/move-path/${containerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_path: target, destination_path: destination })
+        });
+        showToast('Item renamed.', 'ok');
+        setSelectedExplorerPath(destination);
+        await loadFiles();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function moveSelectedPath() {
+    if (!canManageFileContent()) {
+        showToast('Move requires file write permission.', 'warn');
+        return;
+    }
+    const selected = getSelectedExplorerPaths();
+    hideExplorerContextMenu();
+    if (!selected.length) {
+        showToast('Select a file or folder first.', 'warn');
+        return;
+    }
+    const hint = `${currentExplorerPath()}/`;
+    const raw = window.prompt(selected.length > 1 ? 'Move selected items to directory' : 'Move to path', hint);
+    if (!raw) return;
+    let destination = String(raw).trim().replaceAll('\\', '/');
+    if (!destination.startsWith('/')) {
+        destination = safeJoin(currentExplorerPath(), destination);
+    }
+    try {
+        for (const sourcePath of selected) {
+            const targetPath = selected.length > 1
+                ? safeJoin(destination, sourcePath.split('/').pop() || 'item')
+                : destination;
+            await apiJson(`/api/containers/move-path/${containerId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source_path: sourcePath, destination_path: targetPath })
+            });
+        }
+        showToast(selected.length > 1 ? `${selected.length} items moved.` : 'Item moved.', 'ok');
+        setSelectedExplorerPath('');
+        await loadFiles();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function deleteSelectedPath() {
+    if (!canManageFileContent()) {
+        showToast('Delete requires file write permission.', 'warn');
+        return;
+    }
+    const selected = getSelectedExplorerPaths();
+    hideExplorerContextMenu();
+    if (!selected.length) {
+        showToast('Select a file or folder first.', 'warn');
+        return;
+    }
+    const label = selected.length === 1
+        ? `"${selected[0].split('/').pop() || selected[0]}"`
+        : `${selected.length} selected items`;
+    const ok = window.confirm(`Delete ${label}? This cannot be undone.`);
+    if (!ok) return;
+    try {
+        for (const path of selected) {
+            await apiJson(`/api/containers/delete-path/${containerId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+        }
+        showToast(selected.length > 1 ? `${selected.length} items deleted.` : 'Item deleted.', 'ok');
+        setSelectedExplorerPath('');
+        await loadFiles();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+function copySelectedPaths() {
+    const selected = getSelectedExplorerPaths();
+    hideExplorerContextMenu();
+    if (!selected.length) {
+        showToast('Select at least one file or folder first.', 'warn');
+        return;
+    }
+    explorerClipboard = { mode: 'copy', paths: selected };
+    syncExplorerSelectionClasses();
+    updateExplorerSelectionStatus();
+    showToast(`${selected.length} item(s) copied to clipboard.`, 'ok');
+}
+
+function cutSelectedPaths() {
+    const selected = getSelectedExplorerPaths();
+    hideExplorerContextMenu();
+    if (!selected.length) {
+        showToast('Select at least one file or folder first.', 'warn');
+        return;
+    }
+    explorerClipboard = { mode: 'cut', paths: selected };
+    syncExplorerSelectionClasses();
+    updateExplorerSelectionStatus();
+    showToast(`${selected.length} item(s) marked to move.`, 'ok');
+}
+
+async function pasteClipboard() {
+    hideExplorerContextMenu();
+    if (!canManageFileContent()) {
+        showToast('Paste requires file write permission.', 'warn');
+        return;
+    }
+    const paths = Array.isArray(explorerClipboard.paths) ? explorerClipboard.paths : [];
+    if (!paths.length) {
+        showToast('Clipboard is empty.', 'warn');
+        return;
+    }
+    const destinationDir = currentExplorerPath();
+    try {
+        for (const sourcePath of paths) {
+            const baseName = sourcePath.split('/').pop() || 'item';
+            const destinationPath = safeJoin(destinationDir, baseName);
+            const endpoint = explorerClipboard.mode === 'cut' ? 'move-path' : 'copy-path';
+            await apiJson(`/api/containers/${endpoint}/${containerId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_path: sourcePath,
+                    destination_path: destinationPath,
+                })
+            });
+        }
+        const actionText = explorerClipboard.mode === 'cut' ? 'moved' : 'copied';
+        showToast(`${paths.length} item(s) ${actionText} to ${destinationDir}.`, 'ok');
+        if (explorerClipboard.mode === 'cut') {
+            explorerClipboard = { mode: '', paths: [] };
+        }
+        await loadFiles();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function archiveSelectedPaths() {
+    hideExplorerContextMenu();
+    if (!canManageFileContent()) {
+        showToast('Archive creation requires file write permission.', 'warn');
+        return;
+    }
+    const selected = getSelectedExplorerPaths();
+    if (!selected.length) {
+        showToast('Select at least one file or folder first.', 'warn');
+        return;
+    }
+    const defaultName = `${(selected.length === 1 ? selected[0].split('/').pop() : 'workspace-bundle') || 'workspace'}.zip`
+        .replace(/\.zip\.zip$/i, '.zip');
+    const fileName = window.prompt('ZIP file name', defaultName);
+    if (!fileName) return;
+    const cleanName = String(fileName).trim().replaceAll('\\', '/').replace(/^\/+/, '');
+    if (!cleanName || cleanName.includes('..') || cleanName.includes('/')) {
+        showToast('Archive name is invalid.', 'warn');
+        return;
+    }
+    try {
+        await apiJson(`/api/containers/archive-paths/${containerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source_paths: selected,
+                destination_path: safeJoin(currentExplorerPath(), cleanName.endsWith('.zip') ? cleanName : `${cleanName}.zip`)
+            })
+        });
+        showToast(`ZIP created from ${selected.length} item(s).`, 'ok');
+        await loadFiles();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function extractSelectedArchive() {
+    hideExplorerContextMenu();
+    if (!canManageFileContent()) {
+        showToast('Archive extraction requires file write permission.', 'warn');
+        return;
+    }
+    const selected = getSelectedExplorerPaths();
+    if (selected.length !== 1) {
+        showToast('Select one ZIP file to extract.', 'warn');
+        return;
+    }
+    const target = selected[0];
+    if (!target.toLowerCase().endsWith('.zip')) {
+        showToast('Only ZIP archives can be extracted from this panel.', 'warn');
+        return;
+    }
+    const suggested = currentExplorerPath();
+    const raw = window.prompt('Extract ZIP into directory', suggested);
+    if (!raw) return;
+    let destination = String(raw).trim().replaceAll('\\', '/');
+    if (!destination.startsWith('/')) {
+        destination = safeJoin(currentExplorerPath(), destination);
+    }
+    try {
+        await apiJson(`/api/containers/extract-archive/${containerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                archive_path: target,
+                destination_path: destination,
+            })
+        });
+        showToast('Archive extracted.', 'ok');
+        await loadFiles();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
 }
 
 function editTextFile(path = activePreviewPath) {
@@ -1028,6 +2202,32 @@ function goParentDir() {
     loadFiles();
 }
 
+function handleExplorerKeyboardShortcuts(event) {
+    const activeTag = String(document.activeElement?.tagName || '').toLowerCase();
+    const typing = activeTag === 'input' || activeTag === 'textarea' || document.activeElement?.isContentEditable;
+    if (typing) return;
+    if (activeTab !== 'files') return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        copySelectedPaths();
+        return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') {
+        event.preventDefault();
+        cutSelectedPaths();
+        return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        pasteClipboard();
+        return;
+    }
+    if (event.key === 'Delete') {
+        event.preventDefault();
+        deleteSelectedPath();
+    }
+}
+
 async function loadSettings() {
     if (accessPolicy && accessPolicy.allow_settings === false) {
         document.getElementById('settings-meta').textContent = 'Settings access disabled for your role.';
@@ -1040,16 +2240,32 @@ async function loadSettings() {
         document.getElementById('set-ports').value = savedRules.join(', ');
         renderPortsSelection(availablePorts, savedRules);
         document.getElementById('set-command').value = data.startup_command || '';
+        document.getElementById('set-install-command').value = data.install_command || '';
+        document.getElementById('set-domain').value = data.domain_name || '';
+        document.getElementById('set-launch-url').value = data.launch_url || '';
+        const profileName = (profilePolicy && profilePolicy.profile) || 'generic';
+        const protocolValue = data.project_protocol || inferWorkspaceProtocol(profileName, currentContainerImage);
+        populateWorkspaceProtocolOptions(profileName, protocolValue);
+        updateProtocolHint(protocolValue);
         if (accessPolicy) {
             const canEditStartup = accessPolicy.allow_edit_startup !== false;
             const canEditPorts = accessPolicy.allow_edit_ports !== false;
             const commandEl = document.getElementById('set-command');
+            const installEl = document.getElementById('set-install-command');
+            const protocolEl = document.getElementById('set-project-protocol');
             const portsEl = document.getElementById('set-ports');
+            const domainEl = document.getElementById('set-domain');
+            const launchEl = document.getElementById('set-launch-url');
             if (commandEl) commandEl.disabled = !canEditStartup;
+            if (installEl) installEl.disabled = !canEditStartup;
+            if (protocolEl) protocolEl.disabled = !canEditStartup;
             if (portsEl) portsEl.disabled = !canEditPorts;
+            if (domainEl) domainEl.disabled = !canEditPorts;
+            if (launchEl) launchEl.disabled = !canEditPorts;
             document.querySelectorAll('#ports-selection input[type="checkbox"]').forEach(node => {
                 node.disabled = !canEditPorts;
             });
+            syncPortsInputFromSelection();
         }
         if (currentContainerImage.includes('minecraft') && String(data.startup_command || '').trim()) {
             showToast('Minecraft image detected: custom startup command can break boot. Keep command empty.', 'warn', 4200);
@@ -1059,6 +2275,7 @@ async function loadSettings() {
         } else {
             document.getElementById('settings-meta').textContent = 'No saved settings yet.';
         }
+        updateLaunchPreview();
         renderCapabilitySummary(accessPolicy || {});
     } catch (e) {
         document.getElementById('settings-meta').textContent = e.message;
@@ -1076,11 +2293,23 @@ async function saveSettings() {
     const finalRules = selectedRules.length ? selectedRules : fallbackRules;
     const payload = {
         allowed_ports: finalRules.join(', '),
-        startup_command: document.getElementById('set-command').value
+        startup_command: document.getElementById('set-command').value,
+        project_protocol: document.getElementById('set-project-protocol').value,
+        install_command: document.getElementById('set-install-command').value,
+        domain_name: document.getElementById('set-domain').value,
+        launch_url: document.getElementById('set-launch-url').value
     };
     if (accessPolicy) {
-        if (accessPolicy.allow_edit_startup === false) payload.startup_command = '';
-        if (accessPolicy.allow_edit_ports === false) payload.allowed_ports = '';
+        if (accessPolicy.allow_edit_startup === false) {
+            payload.startup_command = '';
+            payload.project_protocol = '';
+            payload.install_command = '';
+        }
+        if (accessPolicy.allow_edit_ports === false) {
+            payload.allowed_ports = '';
+            payload.domain_name = '';
+            payload.launch_url = '';
+        }
     }
 
     try {
@@ -1187,15 +2416,33 @@ window.addEventListener('beforeunload', () => {
     if (logsInterval) clearInterval(logsInterval);
 });
 
+document.addEventListener('click', (event) => {
+    const menu = document.getElementById('explorer-context-menu');
+    if (!menu || !menu.classList.contains('open')) return;
+    if (!menu.contains(event.target)) {
+        hideExplorerContextMenu();
+    }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') hideExplorerContextMenu();
+    handleExplorerKeyboardShortcuts(event);
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
     configureQuickRow('generic', 'console');
     configureToolbox('generic');
     configureStartupCommandHint('generic');
     configureConsoleMode('console', 'generic');
+    populateWorkspaceProtocolOptions('generic', 'generic');
+    updateProtocolHint('generic');
+    updateLaunchPreview();
     updateFilePreviewActions();
+    renderExplorerBreadcrumbs(activeWorkspaceRoot || '/data');
     await loadContainerMeta();
     await loadProfilePolicy();
     await initWorkspaceRoots();
+    await loadSftpInfo();
     await loadSettings();
     await loadRestartPolicy();
     await loadAuditLog();

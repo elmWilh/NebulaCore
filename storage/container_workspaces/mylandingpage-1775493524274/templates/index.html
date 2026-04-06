@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nebula Docker Service</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="hero">
+        <div class="orb orb-one"></div>
+        <div class="orb orb-two"></div>
+        <section class="card">
+            <p class="eyebrow">Flask Test Page</p>
+            <h1>Hello From Nebula Docker Service</h1>
+            <p class="subtitle">
+                A clean demo Flask page with a configurable port for local runs and containers.
+            </p>
+            <div class="actions">
+                <code>python app.py --port 5100</code>
+                <code>PORT=5100 python app.py</code>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

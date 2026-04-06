@@ -249,9 +249,12 @@ function renderProfileCapabilities() {
     const zone = document.getElementById('settings-profile-capabilities');
     if (!zone) return;
 
-    const capabilities = [
+    const capabilities = settingsContext.isStaff ? [
         t('settings.workspace_theme_and_layout'),
         t('settings.default_page_and_sidebar_memory'),
+        t('settings.per_user_panel_behavior')
+    ] : [
+        t('settings.workspace_theme_and_layout'),
         t('settings.per_user_panel_behavior')
     ];
 
@@ -259,7 +262,6 @@ function renderProfileCapabilities() {
         capabilities.push(t('settings.admin_modules_and_policy'));
         capabilities.push(t('settings.security_and_operations_categories'));
     } else {
-        capabilities.push(t('settings.assigned_workspace_modules'));
         capabilities.push(t('settings.role_aware_profile_scope', {
             role: String(settingsContext.roleTag || 'user').toUpperCase(),
         }));

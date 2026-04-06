@@ -1,0 +1,127 @@
+:root {
+    --bg-top: #07111f;
+    --bg-bottom: #0f2742;
+    --card-bg: rgba(8, 17, 31, 0.72);
+    --card-border: rgba(160, 210, 255, 0.22);
+    --text-main: #f3f7fb;
+    --text-soft: #bcd0e4;
+    --accent: #7ee0ff;
+    --accent-strong: #3bb7ff;
+    --shadow: rgba(0, 0, 0, 0.35);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Space Grotesk", sans-serif;
+    color: var(--text-main);
+    background:
+        radial-gradient(circle at top left, rgba(61, 131, 255, 0.24), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(126, 224, 255, 0.18), transparent 24%),
+        linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+}
+
+.hero {
+    position: relative;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    overflow: hidden;
+}
+
+.card {
+    position: relative;
+    z-index: 2;
+    width: min(720px, 100%);
+    padding: 48px 40px;
+    border: 1px solid var(--card-border);
+    border-radius: 28px;
+    background: var(--card-bg);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 24px 80px var(--shadow);
+    text-align: center;
+}
+
+.eyebrow {
+    margin: 0 0 14px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+h1 {
+    margin: 0;
+    font-size: clamp(2.4rem, 6vw, 4.8rem);
+    line-height: 0.98;
+}
+
+.subtitle {
+    margin: 20px auto 0;
+    max-width: 540px;
+    color: var(--text-soft);
+    font-size: 1.05rem;
+    line-height: 1.7;
+}
+
+.actions {
+    margin-top: 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+}
+
+code {
+    padding: 12px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(126, 224, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
+    font-size: 0.95rem;
+}
+
+.orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(10px);
+    opacity: 0.9;
+}
+
+.orb-one {
+    top: 10%;
+    left: 12%;
+    width: 220px;
+    height: 220px;
+    background: radial-gradient(circle, rgba(59, 183, 255, 0.9), rgba(59, 183, 255, 0.05));
+}
+
+.orb-two {
+    right: 10%;
+    bottom: 12%;
+    width: 280px;
+    height: 280px;
+    background: radial-gradient(circle, rgba(126, 224, 255, 0.75), rgba(126, 224, 255, 0.05));
+}
+
+@media (max-width: 640px) {
+    .card {
+        padding: 34px 22px;
+        border-radius: 22px;
+    }
+
+    .subtitle {
+        font-size: 0.98rem;
+    }
+
+    code {
+        width: 100%;
+        overflow-wrap: anywhere;
+    }
+}

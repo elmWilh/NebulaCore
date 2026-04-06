@@ -6,6 +6,7 @@ import time
 import uuid
 
 from flask import jsonify, request, session, url_for
+from flask import Response
 
 
 def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, run_deploy_job):
@@ -151,6 +152,29 @@ def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, ru
         res, code = bridge.proxy_request("GET", f"/containers/detail/{container_id}")
         return jsonify(res), code
 
+    @app.route('/api/containers/inspect/<container_id>')
+    @bridge.login_required
+    @bridge.staff_required
+    def api_container_inspect(container_id):
+        res, code = bridge.proxy_request("GET", f"/containers/inspect/{container_id}")
+        return jsonify(res), code
+
+    @app.route('/api/containers/docker-objects')
+    @bridge.login_required
+    @bridge.staff_required
+    def api_container_docker_objects():
+        limit = request.args.get("limit", "12")
+        res, code = bridge.proxy_request("GET", "/containers/docker-objects", params={"limit": limit})
+        return jsonify(res), code
+
+    @app.route('/api/containers/docker-events')
+    @bridge.login_required
+    @bridge.staff_required
+    def api_container_docker_events():
+        limit = request.args.get("limit", "50")
+        res, code = bridge.proxy_request("GET", "/containers/docker-events", params={"limit": limit}, timeout=20)
+        return jsonify(res), code
+
     @app.route('/api/containers/profile/<container_id>')
     @bridge.login_required
     def api_container_profile(container_id):
@@ -160,13 +184,13 @@ def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, ru
     @app.route('/api/containers/exec/<container_id>', methods=['POST'])
     @bridge.login_required
     def api_container_exec(container_id):
-        res, code = bridge.proxy_request("POST", f"/containers/exec/{container_id}", json_data=request.json)
+        res, code = bridge.proxy_request("POST", f"/containers/exec/{container_id}", json_data=request.json, timeout=30)
         return jsonify(res), code
 
     @app.route('/api/containers/console-send/<container_id>', methods=['POST'])
     @bridge.login_required
     def api_container_console_send(container_id):
-        res, code = bridge.proxy_request("POST", f"/containers/console-send/{container_id}", json_data=request.json)
+        res, code = bridge.proxy_request("POST", f"/containers/console-send/{container_id}", json_data=request.json, timeout=30)
         return jsonify(res), code
 
     @app.route('/api/containers/files/<container_id>')
@@ -198,6 +222,114 @@ def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, ru
         res, code = bridge.proxy_request("GET", f"/containers/file-content/{container_id}", params=params)
         return jsonify(res), code
 
+    @app.route('/api/containers/download-file/<container_id>')
+    @bridge.login_required
+    def api_container_download_file(container_id):
+        path = request.args.get("path", "")
+        max_bytes = request.args.get("max_bytes", str(50 * 1024 * 1024))
+        core_session = session.get("core_session")
+        if not core_session:
+            session.clear()
+            return jsonify({"detail": "SESSION_EXPIRED", "redirect": url_for("admin_login")}), 401
+        headers = {}
+        cookies = {"nebula_session": core_session}
+        params = {"path": path, "max_bytes": max_bytes}
+        url = f"{bridge.core_url}/containers/download-file/{container_id}"
+        try:
+            import requests
+            resp = requests.get(url, params=params, cookies=cookies, headers=headers, timeout=60)
+            if resp.status_code == 401:
+                session.clear()
+                return jsonify({"detail": "SESSION_EXPIRED", "redirect": url_for("admin_login")}), 401
+            response_headers = {}
+            for key in ("Content-Disposition", "Content-Type"):
+                value = resp.headers.get(key)
+                if value:
+                    response_headers[key] = value
+            return Response(resp.content, status=resp.status_code, headers=response_headers)
+        except Exception as e:
+            return jsonify({"detail": f"Core Connection Error: {str(e)}"}), 500
+
+    @app.route('/api/containers/sftp-info/<container_id>')
+    @bridge.login_required
+    def api_container_sftp_info(container_id):
+        res, code = bridge.proxy_request("GET", f"/containers/sftp-info/{container_id}")
+        return jsonify(res), code
+
+    @app.route('/api/containers/upload-files/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_upload_files(container_id):
+        form_pairs = []
+        target_path = request.form.get("target_path", "")
+        form_pairs.append(("target_path", target_path))
+        for rel_path in request.form.getlist("relative_paths"):
+            form_pairs.append(("relative_paths", rel_path))
+
+        upload_files = []
+        for storage in request.files.getlist("files"):
+            upload_files.append(
+                (
+                    "files",
+                    (
+                        storage.filename or "upload.bin",
+                        storage.stream,
+                        storage.mimetype or "application/octet-stream",
+                    ),
+                )
+            )
+
+        res, code = bridge.proxy_request(
+            "POST",
+            f"/containers/upload-files/{container_id}",
+            form_data=form_pairs,
+            files=upload_files,
+            timeout=1800,
+        )
+        return jsonify(res), code
+
+    @app.route('/api/containers/save-file/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_save_file(container_id):
+        path = request.args.get("path", "")
+        res, code = bridge.proxy_request("POST", f"/containers/save-file/{container_id}", params={"path": path}, json_data=request.json, timeout=60)
+        return jsonify(res), code
+
+    @app.route('/api/containers/mkdir/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_mkdir(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/mkdir/{container_id}", json_data=request.json, timeout=60)
+        return jsonify(res), code
+
+    @app.route('/api/containers/move-path/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_move_path(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/move-path/{container_id}", json_data=request.json, timeout=60)
+        return jsonify(res), code
+
+    @app.route('/api/containers/delete-path/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_delete_path(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/delete-path/{container_id}", json_data=request.json, timeout=60)
+        return jsonify(res), code
+
+    @app.route('/api/containers/copy-path/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_copy_path(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/copy-path/{container_id}", json_data=request.json, timeout=120)
+        return jsonify(res), code
+
+    @app.route('/api/containers/archive-paths/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_archive_paths(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/archive-paths/{container_id}", json_data=request.json, timeout=300)
+        return jsonify(res), code
+
+    @app.route('/api/containers/extract-archive/<container_id>', methods=['POST'])
+    @bridge.login_required
+    def api_container_extract_archive(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/extract-archive/{container_id}", json_data=request.json, timeout=300)
+        return jsonify(res), code
+
     @app.route('/api/containers/settings/<container_id>')
     @bridge.login_required
     def api_container_settings_get(container_id):
@@ -227,4 +359,18 @@ def register_container_api_routes(app, bridge, deploy_jobs, deploy_jobs_lock, ru
     @bridge.staff_required
     def api_delete_container(container_id):
         res, code = bridge.proxy_request("POST", f"/containers/delete/{container_id}")
+        return jsonify(res), code
+
+    @app.route('/api/containers/duplicate/<container_id>', methods=['POST'])
+    @bridge.login_required
+    @bridge.staff_required
+    def api_duplicate_container(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/duplicate/{container_id}", json_data=request.json, timeout=120)
+        return jsonify(res), code
+
+    @app.route('/api/containers/recreate/<container_id>', methods=['POST'])
+    @bridge.login_required
+    @bridge.staff_required
+    def api_recreate_container(container_id):
+        res, code = bridge.proxy_request("POST", f"/containers/recreate/{container_id}", json_data=request.json, timeout=180)
         return jsonify(res), code

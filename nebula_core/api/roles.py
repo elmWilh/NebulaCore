@@ -5,8 +5,10 @@ from fastapi import APIRouter, HTTPException, Query, Depends, Request
 
 from ..db import SYSTEM_DB, get_client_db, get_connection
 from .security import verify_staff_or_internal, require_session
+from ..services.security_service import SecurityService
 
 router = APIRouter(prefix="/roles", tags=["Roles"])
+security_service = SecurityService()
 
 
 def _normalize_role_name(name: str) -> str:
@@ -21,11 +23,7 @@ def _normalize_role_name(name: str) -> str:
 def list_identity_roles(request: Request):
     # Any authenticated user can read role catalog for UI rendering.
     require_session(request)
-    with get_connection(SYSTEM_DB) as conn:
-        rows = conn.execute(
-            "SELECT name, description, is_staff FROM identity_roles ORDER BY name ASC"
-        ).fetchall()
-    return [dict(r) for r in rows]
+    return security_service.list_roles_with_permissions()
 
 
 @router.post("/create")
@@ -56,7 +54,22 @@ def create_identity_role(data: dict, request: Request, _=Depends(verify_staff_or
             """,
             (role_name, description, 1 if is_staff else 0, actor),
         )
-    return {"status": "upserted", "name": role_name, "description": description, "is_staff": is_staff}
+    permissions = (data or {}).get("permissions")
+    if isinstance(permissions, list):
+        security_service.set_role_permissions(role_name, permissions, actor)
+    security_service.append_audit_event(
+        event_kind="user",
+        action="role.upsert",
+        summary=f"Role {role_name} updated",
+        severity="info",
+        risk_level="medium" if not is_staff else "high",
+        actor=actor,
+        actor_db="system.db",
+        target_type="role",
+        target_id=role_name,
+        details={"description": description, "is_staff": is_staff, "permissions": permissions if isinstance(permissions, list) else None},
+    )
+    return {"status": "upserted", "name": role_name, "description": description, "is_staff": is_staff, "permissions": permissions if isinstance(permissions, list) else []}
 
 
 @router.post("/assign")

@@ -17,7 +17,7 @@
     "ports": "3306:3306",
     "command": "",
     "env": "MYSQL_ROOT_PASSWORD=change_me\nMYSQL_DATABASE=appdb",
-    "volumes": "/srv/mysql:/var/lib/mysql:rw",
+    "volumes": "",
     "workspace_mount": "/var/lib/mysql",
     "explorer_root": "/var/lib/mysql",
     "console_cwd": "/var/lib/mysql",

@@ -21,9 +21,11 @@ from .utils.logger import (
     register_lifecycle_shutdown,
 )
 from .api import api_router
+from .api.security import get_session_context
 from .core.runtime import NebulaRuntime
 from .core.context import context
 from .internal_grpc import InternalGrpcServer
+from .services.security_service import SecurityService
 
 logger = setup_logger("nebula_core")
 lifecycle_logger = setup_logger("nebula_core.lifecycle", with_console=False)
@@ -32,6 +34,7 @@ LICENSE_NOTICE = "Nebula Open Source Edition (non-corporate) • Licensed under 
 
 runtime = NebulaRuntime()
 grpc_server = InternalGrpcServer()
+security_service = SecurityService()
 context.runtime = runtime
 context.event_bus = runtime.event_bus
 context.logger = logger
@@ -61,6 +64,11 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Request: {request.method} {request.url.path}")
     response = await call_next(request)
     logger.info(f"Response: {response.status_code} {request.url.path}")
+    try:
+        session_ctx = get_session_context(request.cookies.get("nebula_session"))
+    except Exception:
+        session_ctx = None
+    security_service.observe_request(request, response, session_ctx=session_ctx)
     return response
 
 app.include_router(api_router)
@@ -81,6 +89,7 @@ async def on_startup():
     logger.info("Nebula Core startup: initializing runtime")
     logger.info(COPYRIGHT_NOTICE)
     logger.info(LICENSE_NOTICE)
+    security_service.ensure_schema()
     
     await grpc_server.start()
     logger.info(f"Nebula Core gRPC server started on {grpc_server.bind_target}")
