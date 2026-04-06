@@ -1,6 +1,7 @@
 <p align="center">
   <img title="nebula-core" src='https://github.com/elmWilh/NebulaCore/blob/main/docs/images/logo.png?raw=true' />
 </p>
+
 # NebulaCore
 
 NebulaCore is a pre-alpha control plane for single-host Docker environments. The repository combines:
