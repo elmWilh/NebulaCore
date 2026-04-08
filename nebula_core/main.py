@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()  # root .env
 installer_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'install', '.env')
 if os.path.exists(installer_env):
-    # installer .env may contain NEBULA_INSTALLER_TOKEN — prefer it when present
-    load_dotenv(installer_env, override=True)
+    # Legacy fallback: keep older install/.env support without overriding the root .env.
+    load_dotenv(installer_env, override=False)
 
 from .utils.config import settings
 from .utils.logger import (

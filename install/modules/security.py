@@ -5,7 +5,7 @@ import secrets
 import os
 from dotenv import load_dotenv, set_key
 
-ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
 
 def generate_installer_key():
     key = secrets.token_urlsafe(32)

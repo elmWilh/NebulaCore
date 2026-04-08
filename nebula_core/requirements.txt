@@ -5,6 +5,7 @@ bcrypt
 pyotp
 Jinja2
 python-multipart
+python-dotenv
 PyYAML
 
 docker

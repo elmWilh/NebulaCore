@@ -17,11 +17,18 @@ python3 install/main.py
 
 The interactive installer currently provides:
 
+- guided full install for Core + GUI
 - first-time admin setup
 - system status checks
 - Docker install/start helper
-- Core `systemd` install/update
-- Core service control
+- Core + GUI `systemd` install/update
+- service control
+
+Fast path:
+
+```bash
+./panelctl.sh install
+```
 
 ## 2. Health Check Mode
 
@@ -38,6 +45,7 @@ Exit codes:
 
 ```bash
 python3 install/main.py --core-service-install --core-service-name nebula-core
+python3 install/main.py --gui-service-install --gui-service-name nebula-gui
 ```
 
 Optional args:
@@ -52,9 +60,10 @@ Behavior:
 - reloads `systemd`
 - enables the service
 
-Recommended wrapper:
+Recommended wrappers:
 
 ```bash
+./panelctl.sh install
 ./corectl.sh install
 ```
 
@@ -64,11 +73,19 @@ Recommended wrapper:
 python3 install/main.py --core-service-action restart --core-service-name nebula-core
 python3 install/main.py --core-service-action status --core-service-name nebula-core
 python3 install/main.py --core-service-action logs --core-service-name nebula-core --core-service-log-lines 200
+python3 install/main.py --gui-service-action restart --gui-service-name nebula-gui
+python3 install/main.py --gui-service-action status --gui-service-name nebula-gui
+python3 install/main.py --gui-service-action logs --gui-service-name nebula-gui --gui-service-log-lines 200
 ```
 
 Wrapper shortcuts:
 
 ```bash
+./panelctl.sh start
+./panelctl.sh stop
+./panelctl.sh restart
+./panelctl.sh status
+./panelctl.sh logs
 ./corectl.sh start
 ./corectl.sh stop
 ./corectl.sh restart
@@ -183,13 +200,11 @@ This is useful for local and lab setups, but still fairly operator-driven rather
 
 ## 8. Recommended Production Path
 
-1. create virtualenv
-2. install Python dependencies
-3. install Docker separately or with the helper
-4. set explicit secrets in environment
-5. install Core as a `systemd` service
-6. run first-time admin initialization
-7. run GUI behind a reverse proxy if needed
+1. run `./panelctl.sh install`
+2. let the installer prepare `.venv`, dependencies, `.env`, Docker checks, and services
+3. create the first admin when prompted
+4. open the GUI on `http://127.0.0.1:5000`
+5. optionally place the GUI behind a reverse proxy later
 
 ## 9. Related Docs
 

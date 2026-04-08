@@ -10,6 +10,7 @@ It gives you:
 - supervised restarts
 - simple operational commands
 - a clean place to enable plugin cgroup delegation
+- a straightforward way to keep both Core and GUI running together
 
 ## Install Or Update Service
 
@@ -17,17 +18,22 @@ From the project root:
 
 ```bash
 python3 install/main.py --core-service-install --core-service-name nebula-core
+python3 install/main.py --gui-service-install --gui-service-name nebula-gui
 ```
 
 Or:
 
 ```bash
+./panelctl.sh install
 ./corectl.sh install
 ```
 
 ## Daily Operations
 
 ```bash
+./panelctl.sh status
+./panelctl.sh restart
+./panelctl.sh logs
 ./corectl.sh start
 ./corectl.sh stop
 ./corectl.sh restart
@@ -100,4 +106,4 @@ Even though the repo contains `docker-compose.yml`, it is currently not a real d
 So for now, the documented supported paths are:
 
 - direct Python startup for development
-- `systemd` for Core on Linux
+- `systemd` for Core + GUI on Linux

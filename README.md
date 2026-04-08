@@ -51,19 +51,14 @@ Nebula is not production-ready yet, but the codebase already contains a clear fo
 
 ## Important Reality Check
 
-Some parts are already substantial, and some are still unfinished:
+NebulaCore is still pre-alpha, but the install flow is now centered around one guided path for regular users on a single Linux host:
 
-- Core + GUI startup works and is the main supported run path.
-- `systemd` automation is implemented and is the most complete service-management path today.
-- Plugin runtime is real and non-trivial, including per-process workers, gRPC, restart policy, and optional cgroup v2 isolation.
-- RBAC exists in multiple layers and is functional, but the model is still evolving.
-- `docker-compose.yml` is currently only a placeholder comment, not a ready-made stack definition.
+- `./panelctl.sh install` prepares Python, dependencies, `.env`, Core, GUI, and the first admin account.
+- when `systemd` is available, the installer can set up both `nebula-core` and `nebula-gui` services automatically
+- Docker can be checked and installed from the same installer flow
+- `docker-compose.yml` is still not a real deployment stack today
 
-That means the recommended way to run the project today is still:
-
-1. Python virtualenv
-2. manual Core + GUI startup for development
-3. optional `systemd` for Core on Linux hosts
+The old manual multi-terminal flow still works for development, but it is no longer the primary path shown to new users.
 
 ## Architecture At A Glance
 
@@ -122,7 +117,41 @@ Detailed explanation: [GUI, i18n, and themes](docs/GUI_I18N_THEMES.md).
 
 ## Quick Start
 
-### 1. Prepare Python environment
+### Recommended install
+
+From the project root:
+
+```bash
+chmod +x panelctl.sh
+./panelctl.sh install
+```
+
+The guided installer will:
+
+- create `.venv`
+- install Core + GUI Python dependencies
+- generate a ready-to-use root `.env`
+- check Docker and offer to install/start it
+- install `nebula-core` and `nebula-gui` services when `systemd` is available
+- create the first admin account
+
+After installation, open:
+
+```text
+http://127.0.0.1:5000
+```
+
+### Daily commands
+
+```bash
+./panelctl.sh status
+./panelctl.sh restart
+./panelctl.sh logs
+```
+
+## Manual Development Start
+
+If you want the old manual development flow instead of the guided installer:
 
 ```bash
 python3 -m venv .venv
@@ -130,41 +159,10 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install -r nebula_gui_flask/requirements.txt
-```
-
-### 2. Ensure Docker is installed
-
-Interactive helper:
-
-```bash
-python install/main.py
-```
-
-Or install Docker manually and verify:
-
-```bash
-docker info
-```
-
-### 3. Start Nebula Core
-
-```bash
-source .venv/bin/activate
 python -m nebula_core
 ```
 
-### 4. Run first-time setup
-
 In another terminal:
-
-```bash
-source .venv/bin/activate
-python install/main.py
-```
-
-Choose `Run First-Time Setup / Create Admin`.
-
-### 5. Start Flask GUI
 
 ```bash
 cd nebula_gui_flask
@@ -172,18 +170,26 @@ source ../.venv/bin/activate
 python app.py
 ```
 
-Open `http://127.0.0.1:5000`.
+If no admin exists yet, run:
+
+```bash
+python install/main.py
+```
+
+Then choose `Easy install (recommended)` or `Create first admin`.
 
 ## systemd Service Flow
 
-On Linux, the best-supported service path today is Core-as-`systemd`:
+On Linux, the recommended service path is now Core + GUI together:
 
 ```bash
-python3 install/main.py --core-service-install --core-service-name nebula-core
-./corectl.sh restart
-./corectl.sh status
-./corectl.sh logs
+./panelctl.sh install
+./panelctl.sh restart
+./panelctl.sh status
+./panelctl.sh logs
 ```
+
+For Core-only administration, `./corectl.sh` still exists.
 
 See [Core service guide](docs/CORE_SERVICE.md).
 
